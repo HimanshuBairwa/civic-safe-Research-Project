@@ -197,12 +197,12 @@ class TestPanelBuilder:
     def test_panel_shapes(self, mini_inputs) -> None:
         crime_df, acs_df, crosswalk_df = mini_inputs
         panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
-        s_units = 2  # spatial units
-        c_units = 3  # categories
+        S = 2  # spatial units
+        C = 3  # categories
 
-        assert panel["counts"].shape[0] == s_units
-        assert panel["counts"].shape[2] == c_units
-        assert panel["features"].shape[0] == s_units
+        assert panel["counts"].shape[0] == S
+        assert panel["counts"].shape[2] == C
+        assert panel["features"].shape[0] == S
         assert panel["features"].shape[2] == 1  # one ACS variable
 
     def test_panel_counts_nonnegative(self, mini_inputs) -> None:
