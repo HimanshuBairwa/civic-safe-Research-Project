@@ -109,6 +109,8 @@ class TemporalEncoder(nn.Module):
             Temporally-encoded sequence. Shape: (B, T, D)
         """
         x = self.pos_encoder(x)
-        # is_causal=True: PyTorch auto-generates the causal mask
-        x = self.transformer(x, is_causal=True)
+        # PyTorch 2.1 requires an explicit mask even when is_causal=True
+        seq_len = x.size(1)
+        mask = nn.Transformer.generate_square_subsequent_mask(seq_len, device=x.device)
+        x = self.transformer(x, mask=mask, is_causal=True)
         return x
