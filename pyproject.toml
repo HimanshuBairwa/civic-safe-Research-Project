@@ -93,9 +93,12 @@ select = [
 ignore = [
     "E501",  # line-too-long (handled by formatter)
     "RUF001", "RUF002", "RUF003",  # Allow proper math symbols (×, –, −) in docs
+    "RUF059",  # Allow tensor shape unpacking (S, T, F = x.shape)
     "N806",  # Allow uppercase variables for matrix dimensions (S, T, C)
-    "N818",  # Allow exceptions without 'Error' suffix (e.g. KillCriterionTriggered)
+    "N812",  # Allow torch.nn.functional as F (PyTorch convention)
+    "N818",  # Allow exceptions without 'Error' suffix
     "SIM102",  # Allow nested ifs for readability
+    "TC002",  # Allow Tensor import outside TYPE_CHECKING block
 ]
 
 [tool.ruff.lint.isort]
