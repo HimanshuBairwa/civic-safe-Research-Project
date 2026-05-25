@@ -56,7 +56,13 @@ def safe_divide(
     Returns:
         Tensor of same shape and dtype as *numerator*.
     """
-    safe_denom: Tensor = torch.sign(denominator) * torch.clamp(  # (*,)
+    sign = torch.sign(denominator)
+    sign = torch.where(
+        sign == 0.0,
+        torch.tensor(1.0, dtype=sign.dtype, device=sign.device),
+        sign
+    )
+    safe_denom: Tensor = sign * torch.clamp(  # (*,)
         torch.abs(denominator), min=eps
     )
     return (numerator / safe_denom).to(numerator.dtype)
