@@ -103,7 +103,8 @@ def load_checkpoint(path: Path) -> CheckpointData:
         raise CheckpointCorruptionError(str(path))
 
     loaded: dict[str, Any] = torch.load(path, weights_only=False)
-    return CheckpointData(**loaded)  # type: ignore[typeddict-item]
+    from typing import cast
+    return cast(CheckpointData, loaded)
 
 
 def find_latest_checkpoint(directory: Path) -> Path | None:

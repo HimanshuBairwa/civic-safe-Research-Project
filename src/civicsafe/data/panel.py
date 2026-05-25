@@ -8,6 +8,7 @@ to handle millions of records in seconds, not hours.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,8 @@ def build_spatiotemporal_panel(
     start_year: int,
     end_year: int,
     taxonomy_categories: list[str] | None = None,
-) -> dict[str, Tensor | dict]:
+    temporal_covariates: dict[str, Any] | None = None,
+) -> dict[str, Tensor | dict[str, Any]]:
     """Integrate crime counts and demographics into a dense tensor panel.
 
     Performance: fully vectorized — handles 1.5M+ records in < 5 seconds
