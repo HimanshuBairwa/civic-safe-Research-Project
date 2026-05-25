@@ -58,13 +58,9 @@ def safe_divide(
     """
     sign = torch.sign(denominator)
     sign = torch.where(
-        sign == 0.0,
-        torch.tensor(1.0, dtype=sign.dtype, device=sign.device),
-        sign
+        sign == 0.0, torch.tensor(1.0, dtype=sign.dtype, device=sign.device), sign
     )
-    safe_denom: Tensor = sign * torch.clamp(  # (*,)
-        torch.abs(denominator), min=eps
-    )
+    safe_denom: Tensor = sign * torch.clamp(torch.abs(denominator), min=eps)  # (*,)
     return (numerator / safe_denom).to(numerator.dtype)
 
 

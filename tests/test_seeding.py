@@ -2,6 +2,7 @@
 Tests for civicsafe.utils.seeding — determinism, cross-framework sync,
 state round-trip, and input validation.
 """
+
 from __future__ import annotations
 
 import random
@@ -16,10 +17,10 @@ from civicsafe.utils.seeding import (
     set_seed_state,
 )
 
-
 # ---------------------------------------------------------------------------
 # Determinism — same seed yields identical draws
 # ---------------------------------------------------------------------------
+
 
 def test_seed_deterministic_torch(default_seed: int) -> None:
     """Same seed must produce identical torch.randn sequences."""
@@ -29,9 +30,9 @@ def test_seed_deterministic_torch(default_seed: int) -> None:
     seed_everything(default_seed)
     torch_draw_second = torch.randn(100)
 
-    assert torch.allclose(torch_draw_first, torch_draw_second), (
-        "torch.randn produced different values for the same seed"
-    )
+    assert torch.allclose(
+        torch_draw_first, torch_draw_second
+    ), "torch.randn produced different values for the same seed"
 
 
 def test_seed_deterministic_numpy(default_seed: int) -> None:
@@ -57,14 +58,15 @@ def test_seed_deterministic_python(default_seed: int) -> None:
     seed_everything(default_seed)
     python_draw_second = [random.random() for _ in range(100)]
 
-    assert python_draw_first == python_draw_second, (
-        "random.random() produced different values for the same seed"
-    )
+    assert (
+        python_draw_first == python_draw_second
+    ), "random.random() produced different values for the same seed"
 
 
 # ---------------------------------------------------------------------------
 # Cross-framework synchronisation
 # ---------------------------------------------------------------------------
+
 
 def test_seed_cross_framework_sync(default_seed: int) -> None:
     """After seed_everything(42), the first draws from torch AND numpy are
@@ -79,22 +81,23 @@ def test_seed_cross_framework_sync(default_seed: int) -> None:
     torch_first_value_again = torch.randn(1).item()
     numpy_first_value_again = np.random.randn(1).item()
 
-    assert torch_first_value == pytest.approx(torch_first_value_again), (
-        "Torch first draw is not reproducible"
-    )
-    assert numpy_first_value == pytest.approx(numpy_first_value_again), (
-        "Numpy first draw is not reproducible"
-    )
+    assert torch_first_value == pytest.approx(
+        torch_first_value_again
+    ), "Torch first draw is not reproducible"
+    assert numpy_first_value == pytest.approx(
+        numpy_first_value_again
+    ), "Numpy first draw is not reproducible"
     # Torch and numpy generators are independent — draws will almost
     # certainly differ.
-    assert torch_first_value != pytest.approx(numpy_first_value, abs=1e-6), (
-        "Torch and numpy first draws are unexpectedly identical"
-    )
+    assert torch_first_value != pytest.approx(
+        numpy_first_value, abs=1e-6
+    ), "Torch and numpy first draws are unexpectedly identical"
 
 
 # ---------------------------------------------------------------------------
 # Different seeds produce different sequences
 # ---------------------------------------------------------------------------
+
 
 def test_different_seeds_differ() -> None:
     """Seeds 42 and 43 must produce divergent torch.randn sequences."""
@@ -104,14 +107,15 @@ def test_different_seeds_differ() -> None:
     seed_everything(43)
     torch_draw_seed43 = torch.randn(100)
 
-    assert not torch.allclose(torch_draw_seed42, torch_draw_seed43), (
-        "Different seeds produced identical torch sequences"
-    )
+    assert not torch.allclose(
+        torch_draw_seed42, torch_draw_seed43
+    ), "Different seeds produced identical torch sequences"
 
 
 # ---------------------------------------------------------------------------
 # State round-trip — save / restore RNG state
 # ---------------------------------------------------------------------------
+
 
 def test_seed_state_roundtrip(default_seed: int) -> None:
     """get_seed_state → mutate generators → set_seed_state → verify restored."""
@@ -143,22 +147,23 @@ def test_seed_state_roundtrip(default_seed: int) -> None:
     numpy_after_restore = np.random.randn(10)
     python_after_restore = [random.random() for _ in range(10)]
 
-    assert torch.allclose(torch_after_advance, torch_after_restore), (
-        "Torch state was not correctly restored"
-    )
+    assert torch.allclose(
+        torch_after_advance, torch_after_restore
+    ), "Torch state was not correctly restored"
     np.testing.assert_array_equal(
         numpy_after_advance,
         numpy_after_restore,
         err_msg="Numpy state was not correctly restored",
     )
-    assert python_after_advance == python_after_restore, (
-        "Python random state was not correctly restored"
-    )
+    assert (
+        python_after_advance == python_after_restore
+    ), "Python random state was not correctly restored"
 
 
 # ---------------------------------------------------------------------------
 # Input validation
 # ---------------------------------------------------------------------------
+
 
 def test_seed_negative_raises() -> None:
     """seed_everything(-1) must raise AssertionError."""

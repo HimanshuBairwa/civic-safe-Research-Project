@@ -3,7 +3,7 @@
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -11,10 +11,10 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 _LEVEL_COLORS: dict[int, str] = {
-    logging.DEBUG: "\033[36m",     # cyan
-    logging.INFO: "\033[32m",      # green
-    logging.WARNING: "\033[33m",   # yellow
-    logging.ERROR: "\033[31m",     # red
+    logging.DEBUG: "\033[36m",  # cyan
+    logging.INFO: "\033[32m",  # green
+    logging.WARNING: "\033[33m",  # yellow
+    logging.ERROR: "\033[31m",  # red
     logging.CRITICAL: "\033[35m",  # magenta
 }
 _RESET: str = "\033[0m"
@@ -30,9 +30,9 @@ class _ColoredConsoleFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         color: str = _LEVEL_COLORS.get(record.levelno, "")
-        timestamp: str = datetime.fromtimestamp(
-            record.created, tz=timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%S")
+        timestamp: str = datetime.fromtimestamp(record.created, tz=UTC).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
         return (
             f"{color}{timestamp} [{record.levelname:<8}] "
             f"{record.name}: {record.getMessage()}{_RESET}"
@@ -44,9 +44,7 @@ class _JsonLinesFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_entry: dict[str, str] = {
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=timezone.utc
-            ).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "name": record.name,
             "message": record.getMessage(),

@@ -4,6 +4,7 @@ Endpoint: https://data.cityofchicago.org/resource/ijzp-q8t2.json
 Dataset:  "Crimes - 2001 to Present"
 Verified: 2025-05-25 — field names confirmed via live API query.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,12 +13,14 @@ import logging
 import time
 import urllib.parse
 import urllib.request
-from http.client import HTTPResponse
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from civicsafe.data.taxonomy import CHICAGO_MAPPING, get_unified_category
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +29,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _BASE_URL = "https://data.cityofchicago.org/resource/ijzp-q8t2.json"
 _SELECT = "id,date,primary_type,community_area,latitude,longitude"
-_PAGE_SIZE = 50_000        # SODA v2 maximum
-_TIMEOUT_SECONDS = 120     # Per-request timeout
-_MAX_RETRIES = 5           # Retry attempts per page
-_BACKOFF_BASE = 2.0        # Exponential backoff base (seconds)
+_PAGE_SIZE = 50_000  # SODA v2 maximum
+_TIMEOUT_SECONDS = 120  # Per-request timeout
+_MAX_RETRIES = 5  # Retry attempts per page
+_BACKOFF_BASE = 2.0  # Exponential backoff base (seconds)
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +100,7 @@ def fetch_chicago_year(year: int, save_dir: Path) -> Path:
     # --- Normalize to DataFrame ---
     df = _normalize_chicago_df(all_records)
 
-    logger.info(
-        f"  Chicago {year}: {len(df):,} records after dedup and normalization."
-    )
+    logger.info(f"  Chicago {year}: {len(df):,} records after dedup and normalization.")
 
     # --- Write Parquet + SHA-256 ---
     df.to_parquet(out_file, index=False, engine="pyarrow")
@@ -148,9 +149,7 @@ def _normalize_chicago_df(records: list[dict]) -> pd.DataFrame:
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["spatial_unit"] = (
-        pd.to_numeric(df["community_area"], errors="coerce")
-        .fillna(-1)
-        .astype(int)
+        pd.to_numeric(df["community_area"], errors="coerce").fillna(-1).astype(int)
     )
     df["latitude"] = pd.to_numeric(df.get("latitude"), errors="coerce")
     df["longitude"] = pd.to_numeric(df.get("longitude"), errors="coerce")
@@ -177,7 +176,7 @@ def _fetch_with_retry(url: str) -> list[dict]:
                 return json.loads(body)
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504):
-                wait = _BACKOFF_BASE ** attempt
+                wait = _BACKOFF_BASE**attempt
                 logger.warning(
                     f"  HTTP {e.code} on attempt {attempt+1}/{_MAX_RETRIES}. "
                     f"Retrying in {wait:.1f}s..."
@@ -186,7 +185,7 @@ def _fetch_with_retry(url: str) -> list[dict]:
             else:
                 raise
         except (urllib.error.URLError, TimeoutError) as e:
-            wait = _BACKOFF_BASE ** attempt
+            wait = _BACKOFF_BASE**attempt
             logger.warning(
                 f"  Network error on attempt {attempt+1}/{_MAX_RETRIES}: {e}. "
                 f"Retrying in {wait:.1f}s..."

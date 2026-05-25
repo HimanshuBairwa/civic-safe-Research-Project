@@ -7,25 +7,24 @@ Tests cover:
   - Panel builder shape correctness
   - Edge cases (null categories, empty DataFrames)
 """
+
 from __future__ import annotations
 
 import pandas as pd
 import pytest
-import torch
 
 from civicsafe.data.acs import load_acs_features
 from civicsafe.data.crosswalks import get_census_crosswalk
 from civicsafe.data.panel import build_spatiotemporal_panel
 from civicsafe.data.taxonomy import (
-    CHICAGO_MAPPING,
     NYC_MAPPING,
     get_unified_category,
 )
 
-
 # ===================================================================
 # Taxonomy
 # ===================================================================
+
 
 class TestChicagoTaxonomy:
     """Verify Chicago primary_type mappings against live API data."""
@@ -111,6 +110,7 @@ class TestNYCTaxonomy:
 # Crosswalks
 # ===================================================================
 
+
 class TestCrosswalks:
     """Structural integrity of spatial crosswalk tables."""
 
@@ -141,6 +141,7 @@ class TestCrosswalks:
 # Resilient ACS
 # ===================================================================
 
+
 class TestACS:
     """Verify resilient Census ACS fallback."""
 
@@ -161,56 +162,57 @@ class TestACS:
 # Panel Builder
 # ===================================================================
 
+
 class TestPanelBuilder:
     """Verify spatiotemporal panel construction."""
 
     @pytest.fixture
     def mini_inputs(self):
         """Create minimal valid inputs for the panel builder."""
-        crime_df = pd.DataFrame({
-            "id": ["1", "2", "3"],
-            "date": pd.to_datetime(["2020-01-15", "2020-01-20", "2020-06-01"]),
-            "spatial_unit": [1, 1, 2],
-            "category": ["violent", "property", "drug"],
-            "latitude": [41.8, 41.8, 41.9],
-            "longitude": [-87.6, -87.6, -87.7],
-        })
-        acs_df = pd.DataFrame({
-            "tract_id": ["T1", "T2", "T3", "T4"],
-            "income": [50.0, 60.0, 40.0, 55.0],
-        })
-        crosswalk_df = pd.DataFrame({
-            "spatial_unit": [1, 1, 2, 2],
-            "tract_id": ["T1", "T2", "T3", "T4"],
-            "weight": [0.6, 0.4, 0.5, 0.5],
-        })
+        crime_df = pd.DataFrame(
+            {
+                "id": ["1", "2", "3"],
+                "date": pd.to_datetime(["2020-01-15", "2020-01-20", "2020-06-01"]),
+                "spatial_unit": [1, 1, 2],
+                "category": ["violent", "property", "drug"],
+                "latitude": [41.8, 41.8, 41.9],
+                "longitude": [-87.6, -87.6, -87.7],
+            }
+        )
+        acs_df = pd.DataFrame(
+            {
+                "tract_id": ["T1", "T2", "T3", "T4"],
+                "income": [50.0, 60.0, 40.0, 55.0],
+            }
+        )
+        crosswalk_df = pd.DataFrame(
+            {
+                "spatial_unit": [1, 1, 2, 2],
+                "tract_id": ["T1", "T2", "T3", "T4"],
+                "weight": [0.6, 0.4, 0.5, 0.5],
+            }
+        )
         return crime_df, acs_df, crosswalk_df
 
     def test_panel_shapes(self, mini_inputs) -> None:
         crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(
-            crime_df, acs_df, crosswalk_df, 2020, 2020
-        )
-        S = 2  # spatial units
-        C = 3  # categories
+        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        s_units = 2  # spatial units
+        c_units = 3  # categories
 
-        assert panel["counts"].shape[0] == S
-        assert panel["counts"].shape[2] == C
-        assert panel["features"].shape[0] == S
+        assert panel["counts"].shape[0] == s_units
+        assert panel["counts"].shape[2] == c_units
+        assert panel["features"].shape[0] == s_units
         assert panel["features"].shape[2] == 1  # one ACS variable
 
     def test_panel_counts_nonnegative(self, mini_inputs) -> None:
         crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(
-            crime_df, acs_df, crosswalk_df, 2020, 2020
-        )
+        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
         assert (panel["counts"] >= 0).all()
 
     def test_panel_total_matches_input(self, mini_inputs) -> None:
         crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(
-            crime_df, acs_df, crosswalk_df, 2020, 2020
-        )
+        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
         assert panel["counts"].sum().item() == 3  # 3 input records
 
     def test_panel_does_not_mutate_input(self, mini_inputs) -> None:
@@ -224,15 +226,11 @@ class TestPanelBuilder:
         empty_df = pd.DataFrame(
             columns=["id", "date", "spatial_unit", "category", "latitude", "longitude"]
         )
-        panel = build_spatiotemporal_panel(
-            empty_df, acs_df, crosswalk_df, 2020, 2020
-        )
+        panel = build_spatiotemporal_panel(empty_df, acs_df, crosswalk_df, 2020, 2020)
         assert panel["counts"].sum().item() == 0
 
     def test_metadata_correct(self, mini_inputs) -> None:
         crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(
-            crime_df, acs_df, crosswalk_df, 2020, 2020
-        )
+        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
         assert panel["metadata"]["categories"] == ["violent", "property", "drug"]
         assert panel["metadata"]["time_range"] == [2020, 2020]
