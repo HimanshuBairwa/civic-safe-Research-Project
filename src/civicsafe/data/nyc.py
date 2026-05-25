@@ -14,7 +14,8 @@ import logging
 import time
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
@@ -77,7 +78,7 @@ def fetch_nyc_year(year: int, save_dir: Path) -> Path:
     )
 
     # --- Paginated fetch with retry ---
-    all_records: list[dict] = []
+    all_records: list[dict[str, Any]] = []
     offset = 0
 
     while True:
@@ -110,6 +111,24 @@ def fetch_nyc_year(year: int, save_dir: Path) -> Path:
     return out_file
 
 
+def _get_page_url(limit: int, offset: int, start: str, end: str) -> str:
+    ky_cds = ",".join(str(k) for k in NYC_MAPPING)
+    where_clause = (
+        f"cmplnt_fr_dt >= '{start}' AND "
+        f"cmplnt_fr_dt <= '{end}' AND "
+        f"addr_pct_cd IS NOT NULL AND "
+        f"ky_cd IN ({ky_cds})"
+    )
+    query = {
+        "$select": _SELECT,
+        "$where": where_clause,
+        "$limit": limit,
+        "$offset": offset,
+        "$order": "cmplnt_fr_dt ASC",
+    }
+    return f"{_BASE_URL}?{urllib.parse.urlencode(query)}"
+
+
 def process_nyc_crimes(start_year: int, end_year: int, save_dir: Path) -> pd.DataFrame:
     """Download and combine NYC crimes for a year range.
 
@@ -137,13 +156,8 @@ def process_nyc_crimes(start_year: int, end_year: int, save_dir: Path) -> pd.Dat
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-def _normalize_nyc_df(records: list[dict]) -> pd.DataFrame:
+def _normalize_nyc_df(records: list[dict[str, Any]]) -> pd.DataFrame:
     """Convert raw JSON records to a clean, typed DataFrame."""
-    if not records:
-        return pd.DataFrame(
-            columns=["id", "date", "spatial_unit", "category", "latitude", "longitude"]
-        )
-
     df = pd.DataFrame(records)
 
     # Rename API field names to our canonical schema
@@ -173,14 +187,14 @@ def _normalize_nyc_df(records: list[dict]) -> pd.DataFrame:
     return df[["id", "date", "spatial_unit", "category", "latitude", "longitude"]]
 
 
-def _fetch_with_retry(url: str) -> list[dict]:
+def _fetch_with_retry(url: str) -> list[dict[str, Any]]:
     """Fetch a single SODA page with exponential backoff retry."""
     for attempt in range(_MAX_RETRIES):
         try:
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
                 body = resp.read().decode("utf-8")
-                return json.loads(body)
+                return cast(list[dict[str, Any]], json.loads(body))
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504):
                 wait = _BACKOFF_BASE**attempt
