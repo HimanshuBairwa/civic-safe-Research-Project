@@ -200,9 +200,11 @@ class TestSpatialEncoder:
     def test_deterministic(self, small_graph) -> None:
         torch.manual_seed(42)
         enc = SpatialEncoder(in_channels=8, hidden_channels=32)
+        enc.eval()
         x = torch.randn(10, 8)
-        out1 = enc(x, small_graph["queen"])
-        out2 = enc(x, small_graph["queen"])
+        with torch.no_grad():
+            out1 = enc(x, small_graph["queen"])
+            out2 = enc(x, small_graph["queen"])
         assert torch.allclose(out1, out2)
 
 
@@ -401,9 +403,12 @@ class TestCivicSafeModel:
             num_categories=3,
             max_seq_len=10,
         )
+        m1.eval()
+        m2.eval()
         x = torch.randn(10, 5, 8)
-        o1 = m1(x, small_graph["queen"])
-        o2 = m2(x, small_graph["queen"])
+        with torch.no_grad():
+            o1 = m1(x, small_graph["queen"])
+            o2 = m2(x, small_graph["queen"])
         assert torch.allclose(o1["pi"], o2["pi"])
 
     def test_diversity_loss_returned(self, model_and_graph) -> None:
