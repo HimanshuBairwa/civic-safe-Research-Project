@@ -147,7 +147,7 @@ def test_log_sum_exp_numerical_stability() -> None:
 def test_clamp_probabilities_range(raw_probabilities: torch.Tensor) -> None:
     """clamp_probabilities must map every element into [eps, 1 - eps]."""
     eps = 1e-6
-    clamped = clamp_probabilities(raw_probabilities)
+    clamped = clamp_probabilities(raw_probabilities, eps=eps)
 
     assert (clamped >= eps).all(), (
         f"Values below eps found: {clamped[clamped < eps].tolist()}"

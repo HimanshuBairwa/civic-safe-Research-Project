@@ -53,13 +53,15 @@ def generate_zinb_samples(
     _validate_zinb_params(pi, mu, r)
     assert num_samples >= 1, f"num_samples must be ≥ 1, got {num_samples}"
 
-    generator = torch.Generator().manual_seed(seed)
+    with torch.random.fork_rng():
+        torch.manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
 
-    zero_mask = _sample_zero_mask(num_samples, pi, generator)
-    nb_counts = _sample_negative_binomial(num_samples, mu, r, generator)
+        zero_mask = _sample_zero_mask(num_samples, pi, generator)
+        nb_counts = _sample_negative_binomial(num_samples, mu, r, generator)
 
-    # Apply zero-inflation: structural zeros override NB draws
-    samples = nb_counts * (~zero_mask).long()  # (num_samples,)
+        # Apply zero-inflation: structural zeros override NB draws
+        samples = nb_counts * (~zero_mask).long()  # (num_samples,)
 
     true_params = {"pi": pi, "mu": mu, "r": r}
     return samples, true_params
@@ -137,10 +139,12 @@ def generate_poisson_samples(
     assert num_samples >= 1, f"num_samples must be ≥ 1, got {num_samples}"
     assert rate > MIN_POSITIVE, f"rate must be > 0, got {rate}"
 
-    generator = torch.Generator().manual_seed(seed)
+    with torch.random.fork_rng():
+        torch.manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
 
-    rate_tensor = torch.full((num_samples,), rate)  # (num_samples,)
-    samples = torch.poisson(rate_tensor, generator=generator).long()  # (num_samples,)
+        rate_tensor = torch.full((num_samples,), rate)  # (num_samples,)
+        samples = torch.poisson(rate_tensor, generator=generator).long()  # (num_samples,)
 
     true_params = {"rate": rate}
     return samples, true_params
@@ -186,23 +190,25 @@ def generate_spatiotemporal_panel(
         num_spatial_units, num_time_steps, num_categories, num_features
     )
 
-    generator = torch.Generator().manual_seed(seed)
+    with torch.random.fork_rng():
+        torch.manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
 
-    true_pi, true_mu, true_r = _sample_ground_truth_params(
-        num_spatial_units, num_categories, generator
-    )
+        true_pi, true_mu, true_r = _sample_ground_truth_params(
+            num_spatial_units, num_categories, generator
+        )
 
-    counts = _generate_panel_counts(
-        true_pi, true_mu, true_r, num_time_steps, generator
-    )
+        counts = _generate_panel_counts(
+            true_pi, true_mu, true_r, num_time_steps, generator
+        )
 
-    features = _generate_correlated_features(
-        true_mu, num_time_steps, num_features, generator
-    )
+        features = _generate_correlated_features(
+            true_mu, num_time_steps, num_features, generator
+        )
 
-    adjacency = _build_random_geometric_graph(
-        num_spatial_units, generator
-    )
+        adjacency = _build_random_geometric_graph(
+            num_spatial_units, generator
+        )
 
     return {
         "counts": counts,        # (spatial, time, category)
