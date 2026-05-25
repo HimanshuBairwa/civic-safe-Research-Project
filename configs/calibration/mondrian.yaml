@@ -1,0 +1,31 @@
+# =============================================================================
+# Mondrian Conformal Prediction Configuration
+# =============================================================================
+# Group-conditional CP: calibrates independently within each group (e.g.,
+# community area, crime category, or income quartile). Provides exact
+# per-group marginal coverage under exchangeability within each group.
+#
+# Guarantees: P(Y ∈ C(X) | G=g) ≥ 1 - α  for each group g
+# Limitation: requires sufficient calibration data per group. Small groups
+# get wide intervals or must fall back to global CP.
+#
+# Reference: Vovk (2005), "Algorithmic Learning in a Random World", §4.
+
+calibration:
+  # Method identifier used by the calibration dispatcher.
+  method: mondrian
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  # α = 0.1 → target coverage = 90% per group.
+  alpha: 0.1
+
+  # Minimum number of calibration points required per group to run
+  # group-specific calibration. Range [20, 200].
+  # Groups with fewer than min_group_size calibration points fall back to
+  # the global (pooled) quantile to avoid extreme interval widths.
+  #
+  # With cal set ≈ 26 weeks × 77 areas = 2002 points, most area groups have
+  # 26 points. 40 is a safe threshold when groups are formed by combining
+  # spatial × category (77 × 3 = 231 groups → ~8–9 points each without
+  # pooling). Adjust grouping granularity to keep n_group ≥ min_group_size.
+  min_group_size: 40

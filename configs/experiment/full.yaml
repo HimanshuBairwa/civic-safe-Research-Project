@@ -1,0 +1,35 @@
+# =============================================================================
+# Full CIVIC-SAFE Experiment Configuration
+# =============================================================================
+# Top-level Hydra config that composes sub-configs via the defaults list.
+# Override any nested parameter from the CLI:
+#   python train.py +experiment=full calibration.alpha=0.05 training.seed=137
+
+defaults:
+  - /data: chicago                   # Chicago crime dataset (77 community areas)
+  - /model: spatiotemporal_zinb      # GAT + Causal Transformer + ZINB head
+  - /calibration: ecrc               # Equalized Conditional Risk Control
+  - /training: default               # AdamW + cosine warmup + early stopping
+
+experiment:
+  # Human-readable experiment name. Used in output directory naming and W&B.
+  name: full_civicsafe
+
+  # Root directory for all outputs (logs, checkpoints, predictions, figures).
+  # Hydra will create a timestamped subdirectory: outputs/YYYY-MM-DD/HH-MM-SS/
+  output_dir: outputs/
+
+  # --- Weights & Biases logging ---
+  wandb:
+    # W&B project name. All runs in this project are grouped together.
+    project: civicsafe
+
+    # W&B entity (username or team). Set to your W&B username.
+    # null → uses the default entity from your wandb login.
+    entity: null
+
+    # Tags for filtering runs in the W&B UI.
+    tags:
+      - full
+      - chicago
+      - ecrc

@@ -1,0 +1,35 @@
+# =============================================================================
+# Weighted Conformal Prediction Configuration
+# =============================================================================
+# Extends split CP by assigning non-uniform weights to calibration points.
+# Here, an exponential decay gives higher weight to recent calibration points,
+# making intervals adaptive to temporal distribution shift.
+#
+# Weight formula: w_i = max(exp(-decay_rate × Δt_i), min_weight)
+# where Δt_i = (t_newest - t_i) in weeks.
+#
+# Guarantees: weighted exchangeability → approximate marginal coverage.
+# Reference: Tibshirani et al. (2019), "Conformal Prediction Under
+# Covariate Shift."
+
+calibration:
+  # Method identifier used by the calibration dispatcher.
+  method: weighted_cp
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  # α = 0.1 → target coverage = 90%.
+  alpha: 0.1
+
+  # Exponential decay rate for temporal weights. Range [0.001, 0.5].
+  # Controls how quickly old calibration points are down-weighted.
+  #   0.001 → nearly uniform (half-life ≈ 693 weeks)
+  #   0.05  → moderate recency bias (half-life ≈ 14 weeks)
+  #   0.5   → aggressive recency (half-life ≈ 1.4 weeks)
+  # Default 0.05 is tuned on validation to balance adaptivity and effective
+  # calibration-set size.
+  decay_rate: 0.05
+
+  # Minimum weight floor. Range [1e-6, 1e-2].
+  # Prevents any calibration point from having exactly zero weight, which
+  # would reduce effective calibration set size and hurt coverage.
+  min_weight: 1.0e-4

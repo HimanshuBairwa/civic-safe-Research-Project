@@ -1,0 +1,69 @@
+# =============================================================================
+# Chicago Crime Dataset Configuration
+# =============================================================================
+# Source: City of Chicago Open Data Portal (Socrata)
+# Dataset: Crimes — 2001 to Present
+# Granularity: weekly counts per community area per crime category
+
+# City identifier used for routing data-loader logic
+city: chicago
+
+# --- File paths (relative to project root) ---
+raw_data_dir: data/raw/chicago          # Raw CSV/JSON downloads from Socrata
+processed_data_dir: data/processed/chicago  # Cleaned parquet files
+
+# --- Socrata API access ---
+socrata_endpoint: data.cityofchicago.org   # Base domain for SODA API
+socrata_dataset_id: ijzp-q8t2             # "Crimes — 2001 to Present" 4-char ID
+
+# --- Temporal scope ---
+# [start_year, end_year] inclusive. 7 full calendar years give enough data
+# for a 4-year training window, 1-year validation/calibration, and 2 test years.
+year_range: [2017, 2023]
+
+# --- Spatial unit ---
+# Chicago has 77 officially defined community areas, stable over time.
+# Alternatives: beat (≈280, noisy), census tract (≈800, sparse counts).
+spatial_unit: community_area  # 77 units
+
+# --- Temporal aggregation ---
+# Weekly aggregation balances count density (≈100s per unit·week for common
+# types) against temporal resolution. Daily is too sparse for rare categories;
+# monthly is too coarse for short-horizon forecasting.
+temporal_unit: week
+
+# --- Crime taxonomy ---
+# Maps raw IUCR primary_type strings to three analysis categories.
+# Categories chosen to span the zero-inflation spectrum:
+#   violent → low counts, high zero-inflation
+#   property → moderate counts
+#   drug     → highly zero-inflated after policy shifts
+taxonomy:
+  violent:
+    - HOMICIDE
+    - ASSAULT
+    - BATTERY
+    - "CRIM SEXUAL ASSAULT"
+    - ROBBERY
+  property:
+    - THEFT
+    - BURGLARY
+    - "MOTOR VEHICLE THEFT"
+    - ARSON
+  drug:
+    - NARCOTICS
+    - "OTHER NARCOTIC VIOLATION"
+
+# --- Chronological splits ---
+# Strict temporal ordering prevents data leakage.
+#   train      → fit model parameters
+#   val        → tune hyperparameters, early stopping
+#   cal        → calibration set for conformal prediction (never seen during training)
+#   test       → primary evaluation
+#   zero_shot  → cross-city transfer evaluation period (aligned with NYC test window)
+splits:
+  train_years: [2017, 2018, 2019, 2020]    # 4 years ≈ 208 weeks × 77 units
+  val_year_half: [2021, first]              # Jan–Jun 2021 ≈ 26 weeks
+  cal_year_half: [2021, second]             # Jul–Dec 2021 ≈ 26 weeks (held out for CP)
+  test_year: 2022                           # Full year ≈ 52 weeks
+  zero_shot_year: 2023                      # NYC zero-shot evaluation alignment

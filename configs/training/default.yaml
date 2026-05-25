@@ -1,0 +1,123 @@
+# =============================================================================
+# Default Training Configuration
+# =============================================================================
+# Governs the training loop: optimiser, scheduler, early stopping, data
+# loading, checkpointing, and reproducibility.
+
+training:
+  # --- Reproducibility ---
+  # Master seed. All derived seeds (data shuffling, weight init, dropout) are
+  # deterministically derived from this value.
+  seed: 42
+
+  # Number of independent training runs. Range [3, 10].
+  # 5 gives sufficient statistical power for paired t-tests / Wilcoxon signed-
+  # rank tests across metrics (effect size d ≈ 0.8, power ≈ 0.80).
+  # 3 is underpowered per the analysis plan.
+  num_seeds: 5
+
+  # Explicit seed list (length must equal num_seeds).
+  # Chosen as widely-spaced, commonly used seeds for easy reproducibility.
+  seeds: [42, 137, 256, 512, 1024]
+
+  # --- Optimiser ---
+  optimizer:
+    # AdamW decouples weight decay from the gradient update, which produces
+    # more stable training with transformers than vanilla Adam.
+    name: adamw
+
+    # Peak learning rate. Range [1e-5, 1e-2].
+    # 1e-3 is the standard starting point for Adam-family optimisers on
+    # moderately-sized models (< 10 M params).
+    lr: 1.0e-3
+
+    # L2 weight decay coefficient. Range [0.0, 0.1].
+    # 0.01 provides light regularisation without impeding convergence.
+    weight_decay: 1.0e-2
+
+    # Adam momentum parameters (β₁, β₂). Standard defaults.
+    # β₁ = 0.9 controls the exponential moving average of gradients.
+    # β₂ = 0.999 controls the EMA of squared gradients.
+    betas: [0.9, 0.999]
+
+  # --- Learning-rate scheduler ---
+  scheduler:
+    # Cosine annealing with linear warmup. Smooth decay avoids the abrupt
+    # drops of step-wise schedules, which can destabilise ZINB log-likelihood.
+    name: cosine_with_warmup
+
+    # Number of warmup epochs where LR linearly ramps from 0 to peak.
+    # Range [1, 20]. 5 epochs ≈ 5% of training, enough to stabilise
+    # initial gradients before the cosine decay begins.
+    warmup_epochs: 5
+
+    # Minimum learning rate at end of cosine schedule. Range [1e-7, 1e-4].
+    # Non-zero floor prevents complete stalling in late epochs.
+    min_lr: 1.0e-6
+
+  # --- Training duration ---
+  # Maximum number of epochs. Range [50, 300].
+  # 100 is typically sufficient with early stopping; most runs converge
+  # in 40–60 epochs on the Chicago dataset.
+  epochs: 100
+
+  # --- Early stopping ---
+  early_stopping:
+    # Metric to monitor on the validation set.
+    # CRPS (Continuous Ranked Probability Score) is the primary metric because
+    # it evaluates the full predictive distribution, not just point estimates.
+    metric: val_crps
+
+    # Number of epochs without improvement before stopping. Range [5, 30].
+    # 10 epochs balances patience (avoiding premature termination during
+    # learning-rate warmup) with efficiency (not wasting GPU hours).
+    patience: 10
+
+    # 'min' = lower is better (CRPS is a loss).
+    mode: min
+
+  # --- Batch size ---
+  # Number of (spatial_unit, time_window) samples per gradient step.
+  # Range [4, 64]. 16 fits comfortably in 12 GB GPU memory with the
+  # default model config (seq_len=52, d_model=128, 77 spatial units).
+  # Effective batch can be increased via gradient accumulation if needed.
+  batch_size: 16
+
+  # --- Gradient clipping ---
+  # Maximum L2 norm of the gradient vector. Range [0.1, 10.0].
+  # 1.0 prevents gradient explosions common in ZINB log-likelihood
+  # when dispersion r is small.
+  gradient_clip_norm: 1.0
+
+  # --- Mixed precision ---
+  # Use torch.cuda.amp (float16 forward pass, float32 gradient accumulation).
+  # Safe for all operations except the ZINB log-prob computation, which is
+  # explicitly cast to float32 inside the loss function.
+  mixed_precision: true
+
+  # --- Gradient checkpointing ---
+  # Trade compute for memory: recompute intermediate activations during
+  # backward pass instead of storing them. Reduces peak memory by ~40%
+  # at the cost of ~20% slower training.
+  gradient_checkpointing: true
+
+  # --- DataLoader ---
+  dataloader:
+    # Number of worker processes for data loading. Range [0, 8].
+    # 4 workers keep the GPU saturated without excessive CPU contention.
+    num_workers: 4
+
+    # Pin host memory for faster CPU→GPU transfer.
+    pin_memory: true
+
+    # Keep workers alive between epochs (avoids respawn overhead).
+    persistent_workers: true
+
+  # --- Checkpointing ---
+  checkpoint:
+    # Save a checkpoint after every epoch (not just best).
+    # Useful for post-hoc analysis of training dynamics.
+    save_every_epoch: true
+
+    # Directory for checkpoint files (relative to experiment output_dir).
+    directory: checkpoints/
