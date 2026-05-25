@@ -92,8 +92,11 @@ select = [
 ]
 ignore = [
     "E501",  # line-too-long (handled by formatter)
+    "RUF001", # Allow math symbols in strings
     "RUF002", # Allow math symbols in docstrings
     "RUF003", # Allow math symbols in comments
+    "SIM102", # Allow nested if statements
+    "N818",   # Allow custom exception naming
 ]
 
 [tool.ruff.lint.isort]
