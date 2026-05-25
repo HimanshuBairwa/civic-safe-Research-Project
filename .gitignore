@@ -1,0 +1,57 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data (tracked by DVC, not git)
+data/raw/
+data/processed/
+*.parquet
+*.csv
+*.feather
+
+# Model artifacts
+checkpoints/
+outputs/
+wandb/
+*.pt
+*.pth
+*.onnx
+
+# DVC
+/data/*.dvc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+*.key

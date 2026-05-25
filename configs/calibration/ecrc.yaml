@@ -1,0 +1,64 @@
+# =============================================================================
+# Equalized Conditional Risk Control (ECRC) Configuration
+# =============================================================================
+# A PAC-style conformal method that provides high-probability per-group
+# coverage guarantees using Hoeffding's inequality. For each group g:
+#
+#   P(coverage(g) ≥ 1 - α - ε) ≥ 1 - δ
+#
+# where ε = sqrt(ln(2·G/δ) / (2·n_cal/G)) is derived from the Hoeffding
+# bound and depends on the number of groups G, calibration set size n_cal,
+# and confidence level δ.
+#
+# This is the primary calibration method for CIVIC-SAFE because it provides
+# the strongest fairness guarantees with a principled statistical foundation.
+#
+# Reference: Feldman et al. (2021), risk-control framework adapted for
+# equalized geographic coverage.
+
+calibration:
+  # Method identifier used by the calibration dispatcher.
+  method: ecrc
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  # α = 0.1 → base coverage target = 90%.
+  alpha: 0.1
+
+  # Confidence level for the Hoeffding bound on per-group coverage.
+  # Range [0.001, 0.2].
+  # δ = 0.05 means: with probability ≥ 95%, every group has coverage
+  # ≥ 1 - α - ε. Smaller δ → larger ε (wider intervals).
+  delta: 0.05
+
+  # How groups are defined. Determines G (number of groups) and the
+  # semantic meaning of "equalized" coverage.
+  #
+  # Options:
+  #   geographic   — one group per spatial unit (G=77 for both cities)
+  #   demographic  — groups by income quartile (G=4)
+  #
+  # geographic gives the strongest per-area guarantee but at the cost of
+  # a larger ε (more groups → wider Hoeffding bound).
+  group_type: geographic
+
+  # --- Derived quantities (for reference, not tunable) ---
+  # ε = sqrt(ln(2·G/δ) / (2·n_cal/G))
+  #
+  # Example calculations with n_cal ≈ 1500 (26 weeks × ~58 non-empty units):
+  #
+  #   geographic (G=77), δ=0.05:
+  #     ε = sqrt(ln(2·77/0.05) / (2·1500/77))
+  #     ε = sqrt(ln(3080) / 38.96)
+  #     ε = sqrt(8.03 / 38.96)
+  #     ε ≈ 0.061
+  #     → effective per-group coverage target: 1 - 0.1 - 0.061 = 0.839
+  #
+  #   demographic (G=4), δ=0.05:
+  #     ε = sqrt(ln(2·4/0.05) / (2·1500/4))
+  #     ε = sqrt(ln(160) / 750)
+  #     ε = sqrt(5.08 / 750)
+  #     ε ≈ 0.006
+  #     → effective per-group coverage target: 1 - 0.1 - 0.006 = 0.894
+  #
+  # The large gap illustrates the equity-precision trade-off:
+  # finer groups give stronger guarantees but require wider intervals.

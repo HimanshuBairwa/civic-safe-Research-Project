@@ -1,0 +1,117 @@
+# =============================================================================
+# Spatiotemporal ZINB Forecaster Configuration
+# =============================================================================
+# Architecture: GAT (spatial) → Causal Transformer (temporal) → MFFM → ZINB head
+# Design rationale: each component is sized for a single consumer GPU (≤12 GB).
+
+model:
+  name: spatiotemporal_zinb
+
+  # ---------------------------------------------------------------------------
+  # Spatial Encoder — Graph Attention Network (GAT)
+  # ---------------------------------------------------------------------------
+  # Learns spatial dependencies across community areas / precincts.
+  # Input: node features per time step. Output: spatially-aware embeddings.
+  spatial:
+    # Number of GAT layers. Range [1, 4].
+    # 2 gives a 2-hop receptive field — enough to capture neighbouring-area
+    # influence without the oversmoothing that occurs at ≥3 layers on small graphs.
+    num_layers: 2
+
+    # Hidden dimension per layer. Range [32, 512].
+    # 128 keeps total params under 5 M and fits in college-GPU memory.
+    hidden_dim: 128
+
+    # Number of attention heads per layer. Range [1, 8].
+    # 4 heads let the network attend to diverse spatial relationships
+    # (e.g., adjacency, socioeconomic similarity) in parallel.
+    num_heads: 4
+
+    # Dropout probability applied to attention coefficients and features.
+    # Range [0.0, 0.5]. 0.1 is a light regularizer sufficient for N=77 nodes.
+    dropout: 0.1
+
+    # Adjacency matrices to use. Dual adjacency captures both structural
+    # neighbourhood (queen contiguity) and distance-based proximity (k-NN).
+    # The model sums attention scores from both graphs.
+    adjacency:
+      - queen_contiguity   # Share a border or corner → edge
+      - knn_8              # 8 nearest centroids → edge (captures non-contiguous similarity)
+
+  # ---------------------------------------------------------------------------
+  # Temporal Encoder — Causal Transformer
+  # ---------------------------------------------------------------------------
+  # Processes the time-series of spatial embeddings with causal (left-only)
+  # attention so future information never leaks into forecasts.
+  temporal:
+    # Number of transformer decoder layers. Range [1, 6].
+    # 2 layers are sufficient for weekly crime series where dominant patterns
+    # (seasonality, trends) are relatively simple.
+    num_layers: 2
+
+    # Model dimension. Range [64, 512].
+    # Matches spatial.hidden_dim (128) for clean concatenation / addition at
+    # the fusion boundary — no projection layer needed.
+    d_model: 128
+
+    # Number of attention heads. Range [1, 8].
+    # Must evenly divide d_model: 128 / 4 = 32 dims per head.
+    num_heads: 4
+
+    # Feed-forward intermediate dimension. Range [128, 2048].
+    # 4 × d_model = 512 follows the standard transformer scaling rule.
+    dim_feedforward: 512
+
+    # Dropout on attention weights and feed-forward outputs.
+    # Range [0.0, 0.5]. Same light regularisation as spatial encoder.
+    dropout: 0.1
+
+    # Maximum sequence length in weeks. 52 = one full year of lookback.
+    # Positional encodings are generated up to this length.
+    max_seq_len: 52
+
+  # ---------------------------------------------------------------------------
+  # Feature Mixture — Multi-Factor Feature Mixer (MFFM)
+  # ---------------------------------------------------------------------------
+  # Soft-attention module that decomposes the fused spatiotemporal embedding
+  # into interpretable factor heads (e.g., spatial, temporal, exogenous).
+  feature_mixture:
+    # Number of soft-attention factor heads. 3 heads ≈ space / time / exogenous.
+    # More heads risk collapse to duplicate factors; fewer lose interpretability.
+    num_heads: 3
+
+    # Softmax temperature for factor attention weights. Range [0.1, 10.0].
+    # 1.0 = standard softmax. Lower → sharper (winner-take-all);
+    # higher → uniform (all factors weighted equally).
+    temperature: 1.0
+
+    # Minimum Jensen-Shannon divergence between any two factor-head attention
+    # distributions. If JSD drops below this during training, a diversity
+    # penalty is added to the loss. Range [0.01, 0.5].
+    collapse_threshold: 0.1
+
+  # ---------------------------------------------------------------------------
+  # ZINB Output Head
+  # ---------------------------------------------------------------------------
+  # Predicts three parameters of the Zero-Inflated Negative Binomial:
+  #   π (zero-inflation probability), μ (mean), r (dispersion / concentration).
+  # Each parameter is produced by an independent 2-layer MLP.
+  zinb:
+    # Hidden dimension of the π MLP. Range [16, 256].
+    # 64 is large enough for a non-linear mapping from 128-d fused features.
+    pi_hidden_dim: 64
+
+    # Hidden dimension of the μ MLP. Same range and rationale.
+    mu_hidden_dim: 64
+
+    # Hidden dimension of the r (dispersion) MLP. Same range and rationale.
+    r_hidden_dim: 64
+
+    # Minimum value for the learned dispersion r. Range [0.01, 1.0].
+    # Prevents r → 0 which causes NaN in the NB log-prob denominator
+    # (Γ(r) diverges as r → 0). 0.1 is conservative but safe.
+    r_floor: 0.1
+
+    # Numerical stability epsilon added inside log() and division.
+    # Standard choice; smaller risks underflow in float32.
+    eps: 1.0e-8

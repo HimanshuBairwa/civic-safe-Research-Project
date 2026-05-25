@@ -1,0 +1,22 @@
+# =============================================================================
+# Split Conformal Prediction Configuration
+# =============================================================================
+# The simplest conformal prediction method: compute nonconformity scores on a
+# held-out calibration set, then take the ⌈(1-α)(1+1/n)⌉-th quantile as the
+# prediction interval radius.
+#
+# Guarantees: P(Y ∈ C(X)) ≥ 1 - α  (marginal, finite-sample, distribution-free)
+# Limitation: only marginal coverage — no per-group guarantees.
+
+calibration:
+  # Method identifier used by the calibration dispatcher.
+  method: split_cp
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  # α = 0.1 → target coverage = 90%.
+  # This is the standard benchmark level in the conformal prediction literature
+  # (Vovk et al., 2005; Romano et al., 2019).
+  alpha: 0.1
+
+  # No additional parameters for standard split CP.
+  # The calibration set is defined by splits.cal_year_half in the data config.

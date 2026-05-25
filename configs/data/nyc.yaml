@@ -1,0 +1,75 @@
+# =============================================================================
+# NYC Crime Dataset Configuration
+# =============================================================================
+# Source: NYC Open Data Portal (Socrata)
+# Dataset: NYPD Complaint Data Historic
+# Granularity: weekly counts per precinct per crime category
+
+# City identifier used for routing data-loader logic
+city: nyc
+
+# --- File paths (relative to project root) ---
+raw_data_dir: data/raw/nyc               # Raw CSV/JSON downloads from Socrata
+processed_data_dir: data/processed/nyc    # Cleaned parquet files
+
+# --- Socrata API access ---
+socrata_endpoint: data.cityofnewyork.us   # Base domain for SODA API
+socrata_dataset_id: qgea-i56i             # "NYPD Complaint Data Historic" 4-char ID
+
+# --- Temporal scope ---
+# Aligned with Chicago for cross-city transfer experiments.
+year_range: [2017, 2023]
+
+# --- Spatial unit ---
+# NYC has 77 police precincts — conveniently matches Chicago's 77 community
+# areas, making cross-city dimension alignment straightforward.
+# Alternatives: census tract (too sparse), borough (only 5, too coarse).
+spatial_unit: precinct  # 77 precincts
+
+# --- Temporal aggregation ---
+# Weekly aggregation, same rationale as Chicago.
+temporal_unit: week
+
+# --- Crime taxonomy ---
+# Maps NYPD PD offense descriptions / KY codes to the unified three-category
+# taxonomy. Mapping follows FBI UCR Part I equivalence as closely as possible.
+#
+# NYC source fields used for mapping:
+#   - LAW_CAT_CD: FELONY / MISDEMEANOR / VIOLATION
+#   - OFNS_DESC: offense description string
+#   - KY_CD: three-digit offense classification code
+#
+# The strings below correspond to OFNS_DESC values in the NYPD dataset.
+taxonomy:
+  violent:
+    - MURDER & NON-NEGL. MANSLAUGHTER          # ≈ HOMICIDE
+    - FELONY ASSAULT                            # ≈ ASSAULT + BATTERY
+    - RAPE                                      # ≈ CRIM SEXUAL ASSAULT
+    - ROBBERY                                   # ≈ ROBBERY
+    - KIDNAPPING & RELATED OFFENSES             # No Chicago equivalent; included for severity
+  property:
+    - GRAND LARCENY                             # ≈ THEFT
+    - PETIT LARCENY                             # ≈ THEFT (lower value)
+    - BURGLARY                                  # ≈ BURGLARY
+    - GRAND LARCENY OF MOTOR VEHICLE            # ≈ MOTOR VEHICLE THEFT
+    - ARSON                                     # ≈ ARSON
+  drug:
+    - DANGEROUS DRUGS                           # ≈ NARCOTICS
+    - CONTROLLED SUBSTANCE, POSSESSION          # ≈ OTHER NARCOTIC VIOLATION
+    - CONTROLLED SUBSTANCE, INTENT TO           # Manufacturing / distribution
+
+# --- KY_CD alternative mapping (numeric) ---
+# Provided for programmatic filtering; takes priority if both are specified.
+taxonomy_ky_cd:
+  violent: [101, 104, 105, 106, 109]   # Murder, Rape, Robbery, Fel. Assault, Kidnapping
+  property: [341, 351, 352, 361, 114]  # Grand Larceny, Petit Larceny, GLA MV, Burglary, Arson
+  drug: [230, 231, 232]                # Dangerous Drugs, CS Possession, CS Intent
+
+# --- Chronological splits ---
+# Mirror Chicago's split structure for comparability.
+splits:
+  train_years: [2017, 2018, 2019, 2020]    # 4 years ≈ 208 weeks × 77 precincts
+  val_year_half: [2021, first]              # Jan–Jun 2021
+  cal_year_half: [2021, second]             # Jul–Dec 2021 (held out for CP)
+  test_year: 2022                           # Full year
+  zero_shot_year: 2023                      # Zero-shot transfer FROM Chicago model

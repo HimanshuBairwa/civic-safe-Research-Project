@@ -1,0 +1,38 @@
+# =============================================================================
+# Equalized Coverage Conformal Prediction Configuration
+# =============================================================================
+# Extends split CP with a regularization penalty that encourages equal
+# coverage across protected groups. This is critical for fairness in crime
+# forecasting: prediction intervals should not be systematically wider
+# (less informative) or narrower (under-covering) for disadvantaged areas.
+#
+# The calibration threshold q is chosen to minimise:
+#   L(q) = |{i : score_i > q}| / n  +  λ_eq × max_g |coverage(g) - (1-α)|
+#
+# Guarantees: approximate equalized coverage, not exact. Strength controlled
+# by λ_eq.
+#
+# Reference: Romano et al. (2020), "Achieving Equalized Coverage."
+
+calibration:
+  # Method identifier used by the calibration dispatcher.
+  method: equalized_coverage
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  # α = 0.1 → target coverage = 90% for every group.
+  alpha: 0.1
+
+  # Attribute used to define equalized-coverage groups.
+  # Options:
+  #   income_quartile  — 4 groups based on area median household income
+  #   race_majority    — majority race/ethnicity per area
+  #   crime_rate_tier  — quartiles of historical crime rate
+  # Default: income_quartile, the primary equity axis in the CIVIC-SAFE plan.
+  group_attribute: income_quartile
+
+  # Weight on the equalized coverage penalty term. Range [0.0, 10.0].
+  #   0.0  → pure split CP (no fairness adjustment)
+  #   1.0  → balanced trade-off (default, validated on val set)
+  #   10.0 → aggressively equalise (may widen intervals substantially)
+  # Tuned on validation set via grid search over [0.1, 0.5, 1.0, 2.0, 5.0].
+  lambda_eq: 1.0
