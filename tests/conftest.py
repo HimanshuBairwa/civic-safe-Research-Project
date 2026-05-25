@@ -4,13 +4,17 @@ Shared pytest fixtures for the CIVIC-SAFE Phase 0 test suite.
 Provides reusable fixtures for device selection, deterministic seeding,
 synthetic spatiotemporal panel data, and temporary checkpoint directories.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import torch
 from torch import Tensor
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

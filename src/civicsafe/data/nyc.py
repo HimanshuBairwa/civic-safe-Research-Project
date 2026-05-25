@@ -5,6 +5,7 @@ Dataset:  "NYPD Complaint Data Historic"
 Verified: 2025-05-25 — field names are lowercase (SODA is case-sensitive).
           KY_CD codes verified against live groupby query.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,11 +14,14 @@ import logging
 import time
 import urllib.parse
 import urllib.request
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from civicsafe.data.taxonomy import NYC_MAPPING, get_unified_category
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +68,7 @@ def fetch_nyc_year(year: int, save_dir: Path) -> Path:
     logger.info(f"Downloading NYC crime data for {year} via SoQL...")
 
     # --- Build SoQL WHERE clause ---
-    ky_cds = ",".join(str(k) for k in NYC_MAPPING.keys())
+    ky_cds = ",".join(str(k) for k in NYC_MAPPING)
     where_clause = (
         f"cmplnt_fr_dt >= '{year}-01-01T00:00:00' AND "
         f"cmplnt_fr_dt <= '{year}-12-31T23:59:59' AND "
@@ -97,9 +101,7 @@ def fetch_nyc_year(year: int, save_dir: Path) -> Path:
     # --- Normalize to DataFrame ---
     df = _normalize_nyc_df(all_records)
 
-    logger.info(
-        f"  NYC {year}: {len(df):,} records after dedup and normalization."
-    )
+    logger.info(f"  NYC {year}: {len(df):,} records after dedup and normalization.")
 
     # --- Write Parquet + SHA-256 ---
     df.to_parquet(out_file, index=False, engine="pyarrow")
@@ -108,9 +110,7 @@ def fetch_nyc_year(year: int, save_dir: Path) -> Path:
     return out_file
 
 
-def process_nyc_crimes(
-    start_year: int, end_year: int, save_dir: Path
-) -> pd.DataFrame:
+def process_nyc_crimes(start_year: int, end_year: int, save_dir: Path) -> pd.DataFrame:
     """Download and combine NYC crimes for a year range.
 
     Args:
@@ -147,11 +147,13 @@ def _normalize_nyc_df(records: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(records)
 
     # Rename API field names to our canonical schema
-    df = df.rename(columns={
-        "cmplnt_num": "id",
-        "cmplnt_fr_dt": "date",
-        "addr_pct_cd": "spatial_unit",
-    })
+    df = df.rename(
+        columns={
+            "cmplnt_num": "id",
+            "cmplnt_fr_dt": "date",
+            "addr_pct_cd": "spatial_unit",
+        }
+    )
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["ky_cd"] = pd.to_numeric(df["ky_cd"], errors="coerce").fillna(-1).astype(int)
@@ -161,9 +163,7 @@ def _normalize_nyc_df(records: list[dict]) -> pd.DataFrame:
     df["latitude"] = pd.to_numeric(df.get("latitude"), errors="coerce")
     df["longitude"] = pd.to_numeric(df.get("longitude"), errors="coerce")
     df["id"] = df["id"].astype(str)
-    df["category"] = df["ky_cd"].apply(
-        lambda x: get_unified_category("nyc", x)
-    )
+    df["category"] = df["ky_cd"].apply(lambda x: get_unified_category("nyc", x))
 
     # Drop records with invalid spatial unit or unmapped category
     df = df[df["spatial_unit"] > 0]
@@ -183,7 +183,7 @@ def _fetch_with_retry(url: str) -> list[dict]:
                 return json.loads(body)
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504):
-                wait = _BACKOFF_BASE ** attempt
+                wait = _BACKOFF_BASE**attempt
                 logger.warning(
                     f"  HTTP {e.code} on attempt {attempt+1}/{_MAX_RETRIES}. "
                     f"Retrying in {wait:.1f}s..."
@@ -192,7 +192,7 @@ def _fetch_with_retry(url: str) -> list[dict]:
             else:
                 raise
         except (urllib.error.URLError, TimeoutError) as e:
-            wait = _BACKOFF_BASE ** attempt
+            wait = _BACKOFF_BASE**attempt
             logger.warning(
                 f"  Network error on attempt {attempt+1}/{_MAX_RETRIES}: {e}. "
                 f"Retrying in {wait:.1f}s..."

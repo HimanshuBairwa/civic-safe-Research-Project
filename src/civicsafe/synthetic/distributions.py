@@ -15,11 +15,11 @@ from torch import Tensor
 # ---------------------------------------------------------------------------
 DEFAULT_SEED: int = 42
 MIN_ZERO_INFLATION: float = 0.0
-MAX_ZERO_INFLATION: float = 1.0       # exclusive upper bound for pi
-MIN_POSITIVE: float = 0.0             # exclusive lower bound for mu and r
+MAX_ZERO_INFLATION: float = 1.0  # exclusive upper bound for pi
+MIN_POSITIVE: float = 0.0  # exclusive lower bound for mu and r
 DEFAULT_DISTANCE_THRESHOLD: float = 0.3  # geometric-graph edge threshold
-FEATURE_SIGNAL_WEIGHT: float = 0.3    # weight of mu-correlated signal in features
-FEATURE_NOISE_WEIGHT: float = 0.7     # weight of random noise in features
+FEATURE_SIGNAL_WEIGHT: float = 0.3  # weight of mu-correlated signal in features
+FEATURE_NOISE_WEIGHT: float = 0.7  # weight of random noise in features
 
 
 # ---------------------------------------------------------------------------
@@ -69,16 +69,14 @@ def generate_zinb_samples(
 
 def _validate_zinb_params(pi: float, mu: float, r: float) -> None:
     """Assert ZINB parameter constraints."""
-    assert MIN_ZERO_INFLATION <= pi < MAX_ZERO_INFLATION, (
-        f"pi must be in [0, 1), got {pi}"
-    )
+    assert (
+        MIN_ZERO_INFLATION <= pi < MAX_ZERO_INFLATION
+    ), f"pi must be in [0, 1), got {pi}"
     assert mu > MIN_POSITIVE, f"mu must be > 0, got {mu}"
     assert r > MIN_POSITIVE, f"r must be > 0, got {r}"
 
 
-def _sample_zero_mask(
-    n: int, pi: float, generator: torch.Generator
-) -> Tensor:
+def _sample_zero_mask(n: int, pi: float, generator: torch.Generator) -> Tensor:
     """Sample a boolean mask for structural zeros.
 
     Returns:
@@ -102,11 +100,11 @@ def _sample_negative_binomial(
         Integer tensor of shape ``(n,)``
     """
     # Gamma parameterised by concentration (shape) and rate
-    gamma_concentration = torch.full((n,), r)        # (n,)
-    gamma_rate = torch.full((n,), r / mu)             # (n,)
+    gamma_concentration = torch.full((n,), r)  # (n,)
+    gamma_rate = torch.full((n,), r / mu)  # (n,)
     # PyTorch Gamma uses (concentration, rate) parameterisation
     gamma_dist = torch.distributions.Gamma(gamma_concentration, gamma_rate)
-    lambdas = gamma_dist.sample()                     # (n,)
+    lambdas = gamma_dist.sample()  # (n,)
 
     # Poisson draws conditioned on the Gamma rates
     counts = torch.poisson(lambdas, generator=generator)  # (n,)
@@ -144,7 +142,9 @@ def generate_poisson_samples(
         generator = torch.Generator().manual_seed(seed)
 
         rate_tensor = torch.full((num_samples,), rate)  # (num_samples,)
-        samples = torch.poisson(rate_tensor, generator=generator).long()  # (num_samples,)
+        samples = torch.poisson(
+            rate_tensor, generator=generator
+        ).long()  # (num_samples,)
 
     true_params = {"rate": rate}
     return samples, true_params
@@ -206,17 +206,15 @@ def generate_spatiotemporal_panel(
             true_mu, num_time_steps, num_features, generator
         )
 
-        adjacency = _build_random_geometric_graph(
-            num_spatial_units, generator
-        )
+        adjacency = _build_random_geometric_graph(num_spatial_units, generator)
 
     return {
-        "counts": counts,        # (spatial, time, category)
-        "features": features,    # (spatial, time, features)
+        "counts": counts,  # (spatial, time, category)
+        "features": features,  # (spatial, time, features)
         "adjacency": adjacency,  # (spatial, spatial)
-        "true_pi": true_pi,      # (spatial, category)
-        "true_mu": true_mu,      # (spatial, category)
-        "true_r": true_r,        # (spatial, category)
+        "true_pi": true_pi,  # (spatial, category)
+        "true_mu": true_mu,  # (spatial, category)
+        "true_r": true_r,  # (spatial, category)
     }
 
 
@@ -227,18 +225,18 @@ def _validate_panel_params(
     num_features: int,
 ) -> None:
     """Assert panel dimension constraints."""
-    assert 2 <= num_spatial_units <= 1000, (
-        f"num_spatial_units must be in [2, 1000], got {num_spatial_units}"
-    )
-    assert 1 <= num_time_steps <= 520, (
-        f"num_time_steps must be in [1, 520], got {num_time_steps}"
-    )
-    assert 1 <= num_categories <= 20, (
-        f"num_categories must be in [1, 20], got {num_categories}"
-    )
-    assert 1 <= num_features <= 100, (
-        f"num_features must be in [1, 100], got {num_features}"
-    )
+    assert (
+        2 <= num_spatial_units <= 1000
+    ), f"num_spatial_units must be in [2, 1000], got {num_spatial_units}"
+    assert (
+        1 <= num_time_steps <= 520
+    ), f"num_time_steps must be in [1, 520], got {num_time_steps}"
+    assert (
+        1 <= num_categories <= 20
+    ), f"num_categories must be in [1, 20], got {num_categories}"
+    assert (
+        1 <= num_features <= 100
+    ), f"num_features must be in [1, 100], got {num_features}"
 
 
 def _sample_ground_truth_params(
@@ -298,16 +296,16 @@ def _generate_panel_counts(
     r_expanded = true_r.unsqueeze(1).expand_as(pi_expanded)
 
     # Flatten for vectorised sampling
-    pi_flat = pi_expanded.reshape(total)     # (total,)
-    mu_flat = mu_expanded.reshape(total)     # (total,)
-    r_flat = r_expanded.reshape(total)       # (total,)
+    pi_flat = pi_expanded.reshape(total)  # (total,)
+    mu_flat = mu_expanded.reshape(total)  # (total,)
+    r_flat = r_expanded.reshape(total)  # (total,)
 
     # Structural zeros
     zero_mask = torch.rand(total, generator=generator) < pi_flat  # (total,)
 
     # Gamma–Poisson mixture for NB component
     gamma_dist = torch.distributions.Gamma(r_flat, r_flat / mu_flat)
-    lambdas = gamma_dist.sample()            # (total,)
+    lambdas = gamma_dist.sample()  # (total,)
     nb_counts = torch.poisson(lambdas, generator=generator)  # (total,)
 
     counts_flat = nb_counts * (~zero_mask).float()  # (total,)
@@ -342,14 +340,14 @@ def _generate_correlated_features(
     num_spatial = true_mu.shape[0]
 
     # Signal: log-mean across categories, normalised to N(0,1) scale
-    log_mu_mean = true_mu.log().mean(dim=1)            # (spatial,)
+    log_mu_mean = true_mu.log().mean(dim=1)  # (spatial,)
     signal = (log_mu_mean - log_mu_mean.mean()) / (
         log_mu_mean.std() + 1e-8
     )  # (spatial,)
 
     # Expand signal to (spatial, time, 1)
-    signal_expanded = signal.unsqueeze(1).unsqueeze(2).expand(
-        num_spatial, num_time_steps, 1
+    signal_expanded = (
+        signal.unsqueeze(1).unsqueeze(2).expand(num_spatial, num_time_steps, 1)
     )  # (spatial, time, 1)
 
     # Random noise for all feature dims
@@ -359,8 +357,7 @@ def _generate_correlated_features(
 
     # Inject signal into the first feature column
     noise[:, :, :1] = (
-        FEATURE_SIGNAL_WEIGHT * signal_expanded
-        + FEATURE_NOISE_WEIGHT * noise[:, :, :1]
+        FEATURE_SIGNAL_WEIGHT * signal_expanded + FEATURE_NOISE_WEIGHT * noise[:, :, :1]
     )  # (spatial, time, 1) blended
 
     return noise  # (spatial, time, features)
@@ -386,14 +383,12 @@ def _build_random_geometric_graph(
     Returns:
         Binary float tensor of shape ``(spatial, spatial)`` with zero diagonal.
     """
-    assert distance_threshold > 0, (
-        f"distance_threshold must be > 0, got {distance_threshold}"
-    )
+    assert (
+        distance_threshold > 0
+    ), f"distance_threshold must be > 0, got {distance_threshold}"
 
     # Random 2D positions in the unit square
-    positions = torch.rand(
-        num_spatial_units, 2, generator=generator
-    )  # (spatial, 2)
+    positions = torch.rand(num_spatial_units, 2, generator=generator)  # (spatial, 2)
 
     # Pairwise Euclidean distances
     diff = positions.unsqueeze(0) - positions.unsqueeze(1)  # (spatial, spatial, 2)

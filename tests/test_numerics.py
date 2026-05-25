@@ -2,6 +2,7 @@
 Tests for civicsafe.utils.numerics — safe_log, safe_divide, log_sum_exp,
 clamp_probabilities, and dtype preservation.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -14,10 +15,10 @@ from civicsafe.utils.numerics import (
     safe_log,
 )
 
-
 # ---------------------------------------------------------------------------
 # safe_log
 # ---------------------------------------------------------------------------
+
 
 def test_safe_log_positive() -> None:
     """safe_log on strictly positive inputs must match natural log."""
@@ -36,9 +37,9 @@ def test_safe_log_zero() -> None:
     zero_input = torch.tensor([0.0])
     log_of_zero = safe_log(zero_input)
 
-    assert torch.isfinite(log_of_zero).all(), (
-        f"safe_log(0) produced non-finite value: {log_of_zero.item()}"
-    )
+    assert torch.isfinite(
+        log_of_zero
+    ).all(), f"safe_log(0) produced non-finite value: {log_of_zero.item()}"
 
 
 def test_safe_log_negative_clamped() -> None:
@@ -46,9 +47,9 @@ def test_safe_log_negative_clamped() -> None:
     negative_input = torch.tensor([-1.0])
     log_of_negative = safe_log(negative_input)
 
-    assert torch.isfinite(log_of_negative).all(), (
-        f"safe_log(-1) produced non-finite value: {log_of_negative.item()}"
-    )
+    assert torch.isfinite(
+        log_of_negative
+    ).all(), f"safe_log(-1) produced non-finite value: {log_of_negative.item()}"
 
 
 @pytest.mark.parametrize(
@@ -61,14 +62,15 @@ def test_safe_log_preserves_dtype(dtype: torch.dtype) -> None:
     typed_input = torch.tensor([1.0, 2.0, 3.0], dtype=dtype)
     log_output = safe_log(typed_input)
 
-    assert log_output.dtype == dtype, (
-        f"Input dtype {dtype} was changed to {log_output.dtype}"
-    )
+    assert (
+        log_output.dtype == dtype
+    ), f"Input dtype {dtype} was changed to {log_output.dtype}"
 
 
 # ---------------------------------------------------------------------------
 # safe_divide
 # ---------------------------------------------------------------------------
+
 
 def test_safe_divide_normal() -> None:
     """safe_divide with a non-zero denominator must return the exact quotient."""
@@ -76,9 +78,9 @@ def test_safe_divide_normal() -> None:
         torch.tensor(6.0),
         torch.tensor(3.0),
     )
-    assert quotient.item() == pytest.approx(2.0), (
-        f"safe_divide(6, 3) = {quotient.item()}, expected 2.0"
-    )
+    assert quotient.item() == pytest.approx(
+        2.0
+    ), f"safe_divide(6, 3) = {quotient.item()}, expected 2.0"
 
 
 def test_safe_divide_by_zero() -> None:
@@ -87,14 +89,15 @@ def test_safe_divide_by_zero() -> None:
         torch.tensor(1.0),
         torch.tensor(0.0),
     )
-    assert torch.isfinite(quotient).all(), (
-        f"safe_divide(1, 0) produced non-finite value: {quotient.item()}"
-    )
+    assert torch.isfinite(
+        quotient
+    ).all(), f"safe_divide(1, 0) produced non-finite value: {quotient.item()}"
 
 
 # ---------------------------------------------------------------------------
 # log_sum_exp
 # ---------------------------------------------------------------------------
+
 
 def test_log_sum_exp_correctness() -> None:
     """log_sum_exp must agree with torch.logsumexp on a random tensor."""
@@ -118,9 +121,9 @@ def test_log_sum_exp_numerical_stability() -> None:
     large_values = torch.tensor([500.0, 501.0, 502.0])
     stable_result = log_sum_exp(large_values, dim=0)
 
-    assert torch.isfinite(stable_result).all(), (
-        f"log_sum_exp overflowed on large inputs: {stable_result.item()}"
-    )
+    assert torch.isfinite(
+        stable_result
+    ).all(), f"log_sum_exp overflowed on large inputs: {stable_result.item()}"
     # Reference: log(exp(500) + exp(501) + exp(502))
     # = 502 + log(exp(-2) + exp(-1) + 1) ≈ 502.408
     reference = torch.logsumexp(large_values, dim=0)
@@ -133,6 +136,7 @@ def test_log_sum_exp_numerical_stability() -> None:
 # ---------------------------------------------------------------------------
 # clamp_probabilities
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "raw_probabilities",
@@ -149,9 +153,9 @@ def test_clamp_probabilities_range(raw_probabilities: torch.Tensor) -> None:
     eps = 1e-6
     clamped = clamp_probabilities(raw_probabilities, eps=eps)
 
-    assert (clamped >= eps).all(), (
-        f"Values below eps found: {clamped[clamped < eps].tolist()}"
-    )
-    assert (clamped <= 1.0 - eps).all(), (
-        f"Values above 1-eps found: {clamped[clamped > 1.0 - eps].tolist()}"
-    )
+    assert (
+        clamped >= eps
+    ).all(), f"Values below eps found: {clamped[clamped < eps].tolist()}"
+    assert (
+        clamped <= 1.0 - eps
+    ).all(), f"Values above 1-eps found: {clamped[clamped > 1.0 - eps].tolist()}"

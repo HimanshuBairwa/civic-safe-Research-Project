@@ -2,6 +2,7 @@
 End-to-end smoke test — generate synthetic panel → tiny model →
 ZINB NLL loss → verify shapes, finiteness, and gradient flow.
 """
+
 from __future__ import annotations
 
 import torch
@@ -10,10 +11,10 @@ from torch import Tensor
 
 from civicsafe.synthetic.distributions import generate_spatiotemporal_panel
 
-
 # ---------------------------------------------------------------------------
 # Tiny model that maps features → (pi, mu, r)
 # ---------------------------------------------------------------------------
+
 
 class _TinyZINBHead(nn.Module):
     """Minimal model: Linear → split into zero-inflation, mean, dispersion."""
@@ -30,9 +31,9 @@ class _TinyZINBHead(nn.Module):
         reshaped = raw_output.view(-1, self.num_categories, 3)
 
         # Apply activations to keep parameters in valid ranges
-        pi_logit = torch.sigmoid(reshaped[..., 0])   # (0, 1)
-        mu_positive = torch.exp(reshaped[..., 1])     # (0, ∞)
-        r_positive = torch.exp(reshaped[..., 2])      # (0, ∞)
+        pi_logit = torch.sigmoid(reshaped[..., 0])  # (0, 1)
+        mu_positive = torch.exp(reshaped[..., 1])  # (0, ∞)
+        r_positive = torch.exp(reshaped[..., 2])  # (0, ∞)
 
         return torch.stack([pi_logit, mu_positive, r_positive], dim=-1)
 
@@ -40,6 +41,7 @@ class _TinyZINBHead(nn.Module):
 # ---------------------------------------------------------------------------
 # ZINB negative log-likelihood (inline, for smoke-test independence)
 # ---------------------------------------------------------------------------
+
 
 def _zinb_nll(
     counts: Tensor,
@@ -111,14 +113,18 @@ def test_smoke_synthetic_pipeline() -> None:
         seed=42,
     )
 
-    observed_counts = panel["counts"]     # (S, T, C)
-    feature_matrix = panel["features"]    # (S, T, F)
+    observed_counts = panel["counts"]  # (S, T, C)
+    feature_matrix = panel["features"]  # (S, T, F)
 
     assert observed_counts.shape == (
-        _SMOKE_SPATIAL, _SMOKE_TIME, _SMOKE_CATEGORIES
+        _SMOKE_SPATIAL,
+        _SMOKE_TIME,
+        _SMOKE_CATEGORIES,
     ), f"Unexpected counts shape: {observed_counts.shape}"
     assert feature_matrix.shape == (
-        _SMOKE_SPATIAL, _SMOKE_TIME, _SMOKE_FEATURES
+        _SMOKE_SPATIAL,
+        _SMOKE_TIME,
+        _SMOKE_FEATURES,
     ), f"Unexpected features shape: {feature_matrix.shape}"
 
     # ── Step 2: Forward pass through tiny model ───────────────────
@@ -131,14 +137,14 @@ def test_smoke_synthetic_pipeline() -> None:
     batch_size = _SMOKE_SPATIAL * _SMOKE_TIME
     flat_features = feature_matrix.reshape(batch_size, _SMOKE_FEATURES)
 
-    model_output = model(flat_features)   # (batch, C, 3)
+    model_output = model(flat_features)  # (batch, C, 3)
 
     assert model_output.shape == (batch_size, _SMOKE_CATEGORIES, 3), (
         f"Model output shape {model_output.shape} != "
         f"expected ({batch_size}, {_SMOKE_CATEGORIES}, 3)"
     )
 
-    predicted_pi = model_output[..., 0]   # (batch, C)
+    predicted_pi = model_output[..., 0]  # (batch, C)
     predicted_mu = model_output[..., 1]
     predicted_r = model_output[..., 2]
 
@@ -147,17 +153,13 @@ def test_smoke_synthetic_pipeline() -> None:
 
     nll_loss = _zinb_nll(flat_counts, predicted_pi, predicted_mu, predicted_r)
 
-    assert torch.isfinite(nll_loss), (
-        f"ZINB NLL loss is non-finite: {nll_loss.item()}"
-    )
+    assert torch.isfinite(nll_loss), f"ZINB NLL loss is non-finite: {nll_loss.item()}"
 
     # ── Step 4: Backward pass — gradient flow ─────────────────────
     nll_loss.backward()
 
     for param_name, param in model.named_parameters():
-        assert param.grad is not None, (
-            f"No gradient for parameter '{param_name}'"
-        )
-        assert torch.isfinite(param.grad).all(), (
-            f"Non-finite gradient for parameter '{param_name}'"
-        )
+        assert param.grad is not None, f"No gradient for parameter '{param_name}'"
+        assert torch.isfinite(
+            param.grad
+        ).all(), f"Non-finite gradient for parameter '{param_name}'"

@@ -2,10 +2,10 @@
 Tests for civicsafe.utils.checkpointing — save/load round-trip, SHA-256
 integrity verification, find_latest_checkpoint, and required-field checks.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 import torch
@@ -20,10 +20,13 @@ from civicsafe.utils.checkpointing import (
 )
 from civicsafe.utils.exceptions import CheckpointCorruptionError
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers — tiny model + optimizer + checkpoint factory
 # ---------------------------------------------------------------------------
+
 
 def _build_tiny_model_and_optimizer() -> tuple[nn.Module, optim.Optimizer]:
     """Create a trivially small Linear model and Adam optimizer."""
@@ -45,7 +48,11 @@ def _make_checkpoint_data(
         optimizer_state_dict=optimizer.state_dict(),
         scheduler_state_dict=None,
         metrics={"loss": loss},
-        seed_state={"python": None, "numpy": None, "torch_cpu": torch.random.get_rng_state()},
+        seed_state={
+            "python": None,
+            "numpy": None,
+            "torch_cpu": torch.random.get_rng_state(),
+        },
         config={"lr": 1e-3},
     )
 
@@ -53,6 +60,7 @@ def _make_checkpoint_data(
 # ---------------------------------------------------------------------------
 # Round-trip: save → load → verify equality
 # ---------------------------------------------------------------------------
+
 
 def test_save_load_roundtrip(tmp_checkpoint_dir: Path) -> None:
     """Saving then loading a checkpoint must reproduce every stored field."""
@@ -64,19 +72,22 @@ def test_save_load_roundtrip(tmp_checkpoint_dir: Path) -> None:
     loaded = load_checkpoint(saved_path)
 
     assert loaded["epoch"] == 5, "Epoch mismatch after round-trip"
-    assert loaded["metrics"]["loss"] == pytest.approx(0.1234), "Loss mismatch after round-trip"
+    assert loaded["metrics"]["loss"] == pytest.approx(
+        0.1234
+    ), "Loss mismatch after round-trip"
 
     # Verify every parameter tensor in the model state dict
     original_state = model.state_dict()
     for param_name, param_tensor in loaded["model_state_dict"].items():
-        assert torch.equal(param_tensor, original_state[param_name]), (
-            f"model_state_dict['{param_name}'] differs after round-trip"
-        )
+        assert torch.equal(
+            param_tensor, original_state[param_name]
+        ), f"model_state_dict['{param_name}'] differs after round-trip"
 
 
 # ---------------------------------------------------------------------------
 # SHA-256 corruption detection
 # ---------------------------------------------------------------------------
+
 
 def test_sha256_verification(tmp_checkpoint_dir: Path) -> None:
     """Corrupting the checkpoint file on disk must raise CheckpointCorruptionError."""
@@ -97,6 +108,7 @@ def test_sha256_verification(tmp_checkpoint_dir: Path) -> None:
 # find_latest_checkpoint — multiple epochs
 # ---------------------------------------------------------------------------
 
+
 def test_find_latest_checkpoint(tmp_checkpoint_dir: Path) -> None:
     """find_latest_checkpoint must return the highest-epoch path."""
     model, optimizer = _build_tiny_model_and_optimizer()
@@ -108,33 +120,35 @@ def test_find_latest_checkpoint(tmp_checkpoint_dir: Path) -> None:
         save_checkpoint(checkpoint_data, tmp_checkpoint_dir, epoch=epoch_number)
 
     latest_path = find_latest_checkpoint(tmp_checkpoint_dir)
-    assert latest_path is not None, "find_latest_checkpoint returned None with 3 checkpoints"
-    assert "0007" in latest_path.name, (
-        f"Expected latest checkpoint to be epoch 7, got {latest_path.name}"
-    )
+    assert (
+        latest_path is not None
+    ), "find_latest_checkpoint returned None with 3 checkpoints"
+    assert (
+        "0007" in latest_path.name
+    ), f"Expected latest checkpoint to be epoch 7, got {latest_path.name}"
 
 
 def test_find_latest_empty_dir(tmp_checkpoint_dir: Path) -> None:
     """An empty directory must make find_latest_checkpoint return None."""
     latest_path = find_latest_checkpoint(tmp_checkpoint_dir)
-    assert latest_path is None, (
-        f"Expected None for empty dir, got {latest_path}"
-    )
+    assert latest_path is None, f"Expected None for empty dir, got {latest_path}"
 
 
 # ---------------------------------------------------------------------------
 # Required fields
 # ---------------------------------------------------------------------------
 
-_REQUIRED_CHECKPOINT_FIELDS = frozenset({
-    "epoch",
-    "model_state_dict",
-    "optimizer_state_dict",
-    "scheduler_state_dict",
-    "metrics",
-    "seed_state",
-    "config",
-})
+_REQUIRED_CHECKPOINT_FIELDS = frozenset(
+    {
+        "epoch",
+        "model_state_dict",
+        "optimizer_state_dict",
+        "scheduler_state_dict",
+        "metrics",
+        "seed_state",
+        "config",
+    }
+)
 
 
 def test_checkpoint_contains_all_fields(tmp_checkpoint_dir: Path) -> None:
@@ -146,6 +160,6 @@ def test_checkpoint_contains_all_fields(tmp_checkpoint_dir: Path) -> None:
     loaded = load_checkpoint(saved_path)
 
     missing_fields = _REQUIRED_CHECKPOINT_FIELDS - set(loaded.keys())
-    assert not missing_fields, (
-        f"Checkpoint is missing required fields: {missing_fields}"
-    )
+    assert (
+        not missing_fields
+    ), f"Checkpoint is missing required fields: {missing_fields}"

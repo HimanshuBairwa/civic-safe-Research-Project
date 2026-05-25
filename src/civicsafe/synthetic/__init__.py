@@ -17,7 +17,7 @@ from civicsafe.synthetic.distributions import (
 )
 
 __all__ = [
-    "generate_zinb_samples",
     "generate_poisson_samples",
     "generate_spatiotemporal_panel",
+    "generate_zinb_samples",
 ]

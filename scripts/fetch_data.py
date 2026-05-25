@@ -15,6 +15,7 @@ Usage (on your A100 Jupyter terminal):
 Expected runtime: ~10–20 minutes (depends on API speed).
 Expected disk usage: ~500MB for raw Parquet, ~200MB for tensor panels.
 """
+
 from __future__ import annotations
 
 import logging
@@ -105,9 +106,7 @@ def main() -> None:
     logger.info(
         f"  ✓ Chicago ACS: {len(chicago_acs)} tracts × {len(ACS_VARIABLES)} vars"
     )
-    logger.info(
-        f"  ✓ NYC ACS: {len(nyc_acs)} tracts × {len(ACS_VARIABLES)} vars"
-    )
+    logger.info(f"  ✓ NYC ACS: {len(nyc_acs)} tracts × {len(ACS_VARIABLES)} vars")
 
     # ------------------------------------------------------------------
     # Step 4: Load crosswalks

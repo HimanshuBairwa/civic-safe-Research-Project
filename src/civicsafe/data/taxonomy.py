@@ -4,6 +4,7 @@ Mappings verified against live SODA API responses on 2025-05-25:
   Chicago: https://data.cityofchicago.org/resource/ijzp-q8t2.json
   NYC:     https://data.cityofnewyork.us/resource/qgea-i56i.json
 """
+
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
@@ -19,26 +20,26 @@ DRUG = "drug"
 # ---------------------------------------------------------------------------
 CHICAGO_MAPPING: dict[str, str] = {
     # Violent
-    "HOMICIDE": VIOLENT,                    # 14,230 records
-    "ASSAULT": VIOLENT,                     # 576,088 records
-    "BATTERY": VIOLENT,                     # 1,558,724 records
-    "CRIM SEXUAL ASSAULT": VIOLENT,         # 27,224 records
-    "CRIMINAL SEXUAL ASSAULT": VIOLENT,     # 12,604 records (variant spelling!)
-    "ROBBERY": VIOLENT,                     # 317,206 records
-    "KIDNAPPING": VIOLENT,                  # 7,551 records
-    "WEAPONS VIOLATION": VIOLENT,           # 127,484 records
-    "HUMAN TRAFFICKING": VIOLENT,           # 150 records
+    "HOMICIDE": VIOLENT,  # 14,230 records
+    "ASSAULT": VIOLENT,  # 576,088 records
+    "BATTERY": VIOLENT,  # 1,558,724 records
+    "CRIM SEXUAL ASSAULT": VIOLENT,  # 27,224 records
+    "CRIMINAL SEXUAL ASSAULT": VIOLENT,  # 12,604 records (variant spelling!)
+    "ROBBERY": VIOLENT,  # 317,206 records
+    "KIDNAPPING": VIOLENT,  # 7,551 records
+    "WEAPONS VIOLATION": VIOLENT,  # 127,484 records
+    "HUMAN TRAFFICKING": VIOLENT,  # 150 records
     # Property
-    "THEFT": PROPERTY,                      # 1,818,025 records
-    "BURGLARY": PROPERTY,                   # 452,537 records
-    "MOTOR VEHICLE THEFT": PROPERTY,        # 441,163 records
-    "ARSON": PROPERTY,                      # 14,623 records
-    "CRIMINAL DAMAGE": PROPERTY,            # 972,502 records
-    "CRIMINAL TRESPASS": PROPERTY,          # 229,853 records
-    "DECEPTIVE PRACTICE": PROPERTY,         # 397,295 records
+    "THEFT": PROPERTY,  # 1,818,025 records
+    "BURGLARY": PROPERTY,  # 452,537 records
+    "MOTOR VEHICLE THEFT": PROPERTY,  # 441,163 records
+    "ARSON": PROPERTY,  # 14,623 records
+    "CRIMINAL DAMAGE": PROPERTY,  # 972,502 records
+    "CRIMINAL TRESPASS": PROPERTY,  # 229,853 records
+    "DECEPTIVE PRACTICE": PROPERTY,  # 397,295 records
     # Drug
-    "NARCOTICS": DRUG,                      # 767,578 records
-    "OTHER NARCOTIC VIOLATION": DRUG,       # 166 records
+    "NARCOTICS": DRUG,  # 767,578 records
+    "OTHER NARCOTIC VIOLATION": DRUG,  # 166 records
 }
 
 # ---------------------------------------------------------------------------
@@ -47,11 +48,11 @@ CHICAGO_MAPPING: dict[str, str] = {
 # ---------------------------------------------------------------------------
 NYC_MAPPING: dict[int, str] = {
     # Violent
-    101: VIOLENT,   # MURDER & NON-NEGL. MANSLAUGHTER (8,284 records)
-    104: VIOLENT,   # RAPE (30,078 records)
-    105: VIOLENT,   # ROBBERY (346,607 records)
-    106: VIOLENT,   # FELONY ASSAULT (423,210 records)
-    124: VIOLENT,   # KIDNAPPING & RELATED OFFENSES (3,560 records)
+    101: VIOLENT,  # MURDER & NON-NEGL. MANSLAUGHTER (8,284 records)
+    104: VIOLENT,  # RAPE (30,078 records)
+    105: VIOLENT,  # ROBBERY (346,607 records)
+    106: VIOLENT,  # FELONY ASSAULT (423,210 records)
+    124: VIOLENT,  # KIDNAPPING & RELATED OFFENSES (3,560 records)
     # Property
     107: PROPERTY,  # BURGLARY (323,118 records)
     109: PROPERTY,  # GRAND LARCENY (880,071 records) — NOT kidnapping!
@@ -62,8 +63,8 @@ NYC_MAPPING: dict[int, str] = {
     352: PROPERTY,  # CRIMINAL TRESPASS (96,468 records)
     353: PROPERTY,  # UNAUTHORIZED USE OF A VEHICLE (29,332 records)
     # Drug
-    117: DRUG,      # DANGEROUS DRUGS — felony (117,626 records)
-    235: DRUG,      # DANGEROUS DRUGS — misdemeanor (373,015 records)
+    117: DRUG,  # DANGEROUS DRUGS — felony (117,626 records)
+    235: DRUG,  # DANGEROUS DRUGS — misdemeanor (373,015 records)
 }
 
 

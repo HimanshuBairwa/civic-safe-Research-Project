@@ -2,6 +2,7 @@
 Tests for civicsafe.synthetic.distributions — ZINB sampling statistics,
 Poisson special case, parameter validation, and panel data properties.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -10,7 +11,6 @@ from torch import Tensor
 
 from civicsafe.synthetic.distributions import (
     generate_poisson_samples,
-    generate_spatiotemporal_panel,
     generate_zinb_samples,
 )
 
@@ -24,6 +24,7 @@ _REL_TOL: float = 0.05
 # ===================================================================
 # ZINB — Zero-Inflated Negative Binomial
 # ===================================================================
+
 
 class TestZINBSampling:
     """Statistical and correctness tests for the ZINB sampler."""
@@ -85,9 +86,9 @@ class TestZINBSampling:
         zinb_draw_first, _ = generate_zinb_samples(**shared_kwargs, seed=42)
         zinb_draw_second, _ = generate_zinb_samples(**shared_kwargs, seed=42)
 
-        assert torch.equal(zinb_draw_first, zinb_draw_second), (
-            "ZINB sampler is not deterministic for the same seed"
-        )
+        assert torch.equal(
+            zinb_draw_first, zinb_draw_second
+        ), "ZINB sampler is not deterministic for the same seed"
 
     @pytest.mark.parametrize(
         "invalid_pi, invalid_mu, invalid_r",
@@ -118,6 +119,7 @@ class TestZINBSampling:
 # ===================================================================
 # Poisson — a special case of ZINB with pi=0, r→∞
 # ===================================================================
+
 
 class TestPoissonSampling:
     """Verify the Poisson sampler recovers known rate statistics."""
@@ -178,13 +180,11 @@ class TestPanelData:
     def test_panel_adjacency_symmetric(self, tiny_panel: dict[str, Tensor]) -> None:
         """The spatial adjacency matrix must be symmetric."""
         adjacency = tiny_panel["adjacency"]
-        assert torch.equal(adjacency, adjacency.T), (
-            "Adjacency matrix is not symmetric"
-        )
+        assert torch.equal(adjacency, adjacency.T), "Adjacency matrix is not symmetric"
 
     def test_panel_counts_nonnegative(self, tiny_panel: dict[str, Tensor]) -> None:
         """All count values must be non-negative (crime counts ≥ 0)."""
         counts = tiny_panel["counts"]
-        assert (counts >= 0).all(), (
-            f"Negative count values found: min = {counts.min().item()}"
-        )
+        assert (
+            counts >= 0
+        ).all(), f"Negative count values found: min = {counts.min().item()}"

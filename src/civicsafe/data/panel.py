@@ -4,6 +4,7 @@ Converts raw crime DataFrames + ACS demographics into dense torch tensors
 suitable for GNN training. Uses vectorized pandas/numpy operations throughout
 to handle millions of records in seconds, not hours.
 """
+
 from __future__ import annotations
 
 import logging
@@ -132,9 +133,7 @@ def build_spatiotemporal_panel(
                     su_rows[acs_cols].values * su_rows["weight"].values[:, None]
                 ).sum(axis=0)
                 f_vec = torch.tensor(weighted_vals, dtype=torch.float32)
-                features_tensor[su_idx, :, :] = f_vec.unsqueeze(0).expand(
-                    num_time, -1
-                )
+                features_tensor[su_idx, :, :] = f_vec.unsqueeze(0).expand(num_time, -1)
 
     logger.info(
         f"  Final panel: counts {tuple(counts_tensor.shape)}, "
