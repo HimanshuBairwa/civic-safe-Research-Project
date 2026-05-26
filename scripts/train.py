@@ -239,10 +239,10 @@ def main() -> None:
             project="civicsafe",
             config=config,
             dir=str(output_dir),
-            mode="online",
+            # Do not force "online" mode; allow WANDB_MODE env var to control it.
         )
-    except (ImportError, wandb.errors.UsageError):
-        logger.info("W&B not available — logging to console only.")
+    except Exception as e:
+        logger.warning(f"W&B initialization skipped or failed ({e}). Logging to console only.")
 
     # --- Multi-seed training ---
     all_results = []
