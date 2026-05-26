@@ -53,8 +53,8 @@ class SinusoidalPositionalEncoding(nn.Module):
         Returns:
             x + PE, same shape.
         """
-        x = x + self.pe[:, : x.size(1), :]
-        return self.dropout(x)
+        x = x + self.pe[:, : x.size(1), :]  # type: ignore[index]
+        return self.dropout(x)  # type: ignore[no-any-return]
 
 
 class TemporalEncoder(nn.Module):

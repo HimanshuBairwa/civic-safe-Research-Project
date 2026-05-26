@@ -20,7 +20,7 @@ from torch.utils.data import Dataset
 logger = logging.getLogger(__name__)
 
 
-class CrimeWindowDataset(Dataset):
+class CrimeWindowDataset(Dataset):  # type: ignore[type-arg]
     """Rolling-window dataset for autoregressive crime forecasting.
 
     Args:

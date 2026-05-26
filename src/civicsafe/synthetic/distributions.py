@@ -398,4 +398,4 @@ def _build_random_geometric_graph(
     adjacency = (distances < distance_threshold).float()  # (spatial, spatial)
     adjacency.fill_diagonal_(0.0)
 
-    return adjacency  # (spatial, spatial)
+    return adjacency  # type: ignore[no-any-return]  # (spatial, spatial)

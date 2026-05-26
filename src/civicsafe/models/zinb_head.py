@@ -72,8 +72,8 @@ class ZINBHead(nn.Module):
         """Small-variance initialization for final projection layers."""
         for mlp in [self.pi_mlp, self.mu_mlp, self.r_mlp]:
             final_layer = mlp[-1]
-            nn.init.normal_(final_layer.weight, mean=0.0, std=0.01)
-            nn.init.zeros_(final_layer.bias)
+            nn.init.normal_(final_layer.weight, mean=0.0, std=0.01)  # type: ignore[arg-type]
+            nn.init.zeros_(final_layer.bias)  # type: ignore[arg-type]
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Project embedding to ZINB parameters.

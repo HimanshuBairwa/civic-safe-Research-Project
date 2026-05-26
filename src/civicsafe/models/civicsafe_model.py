@@ -187,4 +187,4 @@ class CivicSafeModel(nn.Module):
         edge_index_knn: Tensor | None,
     ) -> Tensor:
         """Spatial encoding for a single timestep (checkpointable)."""
-        return self.spatial_encoder(x_t, edge_index_queen, edge_index_knn)
+        return self.spatial_encoder(x_t, edge_index_queen, edge_index_knn)  # type: ignore[no-any-return]
