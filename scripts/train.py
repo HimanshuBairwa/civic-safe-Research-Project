@@ -176,6 +176,9 @@ def run_single_seed(
 def main() -> None:
     """Main entry point for multi-seed training."""
     import yaml
+    
+    # Fix PyTorch CuBLAS determinism warning for A100 GPUs
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
     # --- Setup logging ---
     logging.basicConfig(
