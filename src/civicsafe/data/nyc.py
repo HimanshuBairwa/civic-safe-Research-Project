@@ -158,6 +158,11 @@ def process_nyc_crimes(start_year: int, end_year: int, save_dir: Path) -> pd.Dat
 # ---------------------------------------------------------------------------
 def _normalize_nyc_df(records: list[dict[str, Any]]) -> pd.DataFrame:
     """Convert raw JSON records to a clean, typed DataFrame."""
+    if not records:
+        return pd.DataFrame(
+            columns=["id", "date", "spatial_unit", "category", "latitude", "longitude"]
+        )
+
     df = pd.DataFrame(records)
 
     # Rename API field names to our canonical schema

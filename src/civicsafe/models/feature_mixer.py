@@ -107,8 +107,8 @@ class FeatureMixer(nn.Module):
                     + (q * (torch.log(q + eps) - torch.log(m + eps))).sum()
                 )
 
-                # Penalty activates when JSD is below threshold
-                if jsd < self.collapse_threshold:
-                    penalty = penalty + (self.collapse_threshold - jsd)
+                # Differentiable penalty: activates smoothly when JSD < threshold
+                # Uses F.relu instead of Python `if` for torch.compile compatibility
+                penalty = penalty + F.relu(self.collapse_threshold - jsd)
 
         return penalty

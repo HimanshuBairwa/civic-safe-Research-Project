@@ -5,6 +5,7 @@ ZINB NLL loss → verify shapes, finiteness, and gradient flow.
 
 from __future__ import annotations
 
+import pytest
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -95,6 +96,7 @@ _SMOKE_CATEGORIES: int = 2
 _SMOKE_FEATURES: int = 3
 
 
+@pytest.mark.smoke
 def test_smoke_synthetic_pipeline() -> None:
     """Full pipeline: synthetic data → model → ZINB NLL → backward.
 
