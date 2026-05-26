@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -235,11 +236,13 @@ def main() -> None:
     try:
         import wandb
 
+        # Default to disabled so it never blocks execution with prompts.
+        mode = os.environ.get("WANDB_MODE", "disabled")
         wandb.init(
             project="civicsafe",
             config=config,
             dir=str(output_dir),
-            # Do not force "online" mode; allow WANDB_MODE env var to control it.
+            mode=mode,
         )
     except Exception as e:
         logger.warning(f"W&B initialization skipped or failed ({e}). Logging to console only.")
