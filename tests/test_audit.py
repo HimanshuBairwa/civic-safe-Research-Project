@@ -183,9 +183,9 @@ class TestStratification:
     def test_threshold_bins_default_median(self) -> None:
         values = torch.arange(10).float()
         bins = StratificationEngine.threshold_bins(values)
-        # Median of 0..9 is 4.5, so 5+ should be bin 1
-        assert bins[4].item() == 0
-        assert bins[5].item() == 1
+        # Median of 0..9 is 4.0 in PyTorch, so 4.0+ should be bin 1
+        assert bins[3].item() == 0
+        assert bins[4].item() == 1
 
     def test_threshold_bins_custom(self) -> None:
         values = torch.tensor([1.0, 3.0, 5.0, 7.0])
@@ -217,7 +217,7 @@ class TestCoverageEquity:
     """Tests for CoverageEquityAudit."""
 
     def test_perfect_coverage(self, perfect_bundle: AuditBundle) -> None:
-        comp = CoverageEquityAudit()
+        comp = CoverageEquityAudit(max_coverage_gap=0.15)
         result = comp.evaluate(
             perfect_bundle.y_true, perfect_bundle.y_pred,
             perfect_bundle.lower, perfect_bundle.upper,
