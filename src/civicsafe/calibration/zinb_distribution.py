@@ -118,10 +118,10 @@ def zinb_cdf(
     # Gather at the requested k values
     if isinstance(k, int):
         idx = min(k, k_max)
-        return F_zinb[:, idx]
+        return F_zinb[:, idx]  # type: ignore[no-any-return]
     else:
         k_idx = k.long().clamp(0, k_max)
-        return F_zinb.gather(1, k_idx.unsqueeze(-1)).squeeze(-1)
+        return F_zinb.gather(1, k_idx.unsqueeze(-1)).squeeze(-1)  # type: ignore[no-any-return]
 
 
 def zinb_cdf_full(

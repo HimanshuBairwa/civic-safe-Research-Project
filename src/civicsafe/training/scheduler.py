@@ -98,8 +98,8 @@ class CosineWarmupScheduler:
 
     def state_dict(self) -> dict[str, Any]:
         """Return scheduler state for checkpointing."""
-        return self.scheduler.state_dict()
+        return self.scheduler.state_dict()  # type: ignore[no-untyped-call,no-any-return]
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         """Restore scheduler state from checkpoint."""
-        self.scheduler.load_state_dict(state)
+        self.scheduler.load_state_dict(state)  # type: ignore[no-untyped-call]

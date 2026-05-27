@@ -327,6 +327,7 @@ class TestScheduler:
         model = nn.Linear(10, 5)
         opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
         scheduler = create_cosine_warmup_scheduler(opt, warmup_steps=10, total_steps=100)
+        opt.step()
         scheduler.step()
         lr = opt.param_groups[0]["lr"]
         assert lr < 2e-4  # Should be ~1e-4 at step 1 (1/10 * 1e-3)
@@ -337,6 +338,7 @@ class TestScheduler:
         opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
         scheduler = create_cosine_warmup_scheduler(opt, warmup_steps=10, total_steps=100)
         for _ in range(10):
+            opt.step()
             scheduler.step()
         lr = opt.param_groups[0]["lr"]
         assert abs(lr - 1e-3) < 1e-5
@@ -349,6 +351,7 @@ class TestScheduler:
             opt, warmup_steps=10, total_steps=100, min_lr=1e-6
         )
         for _ in range(50):
+            opt.step()
             scheduler.step()
         lr_mid = opt.param_groups[0]["lr"]
         assert lr_mid < 1e-3  # Should be decayed
@@ -362,6 +365,7 @@ class TestScheduler:
             opt, warmup_epochs=2, total_epochs=10, steps_per_epoch=5
         )
         for _ in range(15):
+            opt.step()
             sched.step()
         state = sched.state_dict()
         assert isinstance(state, dict)
