@@ -1,0 +1,37 @@
+# Default audit configuration for CIVIC-SAFE
+# Used by AuditHarness.from_config()
+
+stratification:
+  poverty_rate:
+    method: quantile
+    n_bins: 5
+  median_income:
+    method: quantile
+    n_bins: 5
+  pct_nonwhite:
+    method: quantile
+    n_bins: 5
+
+components:
+  - coverage_equity
+  - interval_width_equity
+  - point_accuracy_equity
+  - calibration_equity
+  - winkler_equity
+  - abstention_equity
+  - reporting_bias_sensitivity
+
+reporting_bias:
+  rates: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+statistical_testing:
+  bootstrap_samples: 2000
+  permutation_samples: 5000
+  ci_level: 0.95
+  correction_method: benjamini_hochberg
+  alpha: 0.05
+
+thresholds:
+  max_coverage_gap: 0.05
+  max_error_ratio: 2.0
+  max_width_ratio: 2.0
