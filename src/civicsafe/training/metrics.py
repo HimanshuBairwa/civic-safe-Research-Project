@@ -105,7 +105,7 @@ def crps_zinb(
     indicator = (ks_expanded >= y.unsqueeze(-1)).float()  # (B, K)
     crps = ((F_zinb - indicator) ** 2).sum(dim=-1)  # (B,)
 
-    return crps.reshape(orig_shape)
+    return crps.reshape(orig_shape)  # type: ignore[no-any-return]
 
 
 def mae_zinb(y: Tensor, pi: Tensor, mu: Tensor) -> Tensor:
@@ -122,7 +122,7 @@ def mae_zinb(y: Tensor, pi: Tensor, mu: Tensor) -> Tensor:
         Scalar MAE.
     """
     y_hat = (1.0 - pi.clamp(0.0, 1.0)) * mu.clamp(min=0.0)
-    return (y.float() - y_hat).abs().mean()
+    return (y.float() - y_hat).abs().mean()  # type: ignore[no-any-return]
 
 
 def rmse_zinb(y: Tensor, pi: Tensor, mu: Tensor) -> Tensor:
@@ -156,7 +156,7 @@ def brier_zero_inflation(y: Tensor, pi: Tensor) -> Tensor:
         Scalar Brier score.
     """
     is_zero = (y == 0).float()
-    return ((pi.clamp(0.0, 1.0) - is_zero) ** 2).mean()
+    return ((pi.clamp(0.0, 1.0) - is_zero) ** 2).mean()  # type: ignore[no-any-return]
 
 
 def pit_values(
@@ -224,7 +224,7 @@ def pit_values(
     U = torch.rand_like(y)
     pit = F_at_ym1 + U * (F_at_y - F_at_ym1)
 
-    return pit.clamp(0.0, 1.0)
+    return pit.clamp(0.0, 1.0)  # type: ignore[no-any-return]
 
 
 def compute_all_metrics(

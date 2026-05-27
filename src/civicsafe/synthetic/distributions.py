@@ -103,7 +103,7 @@ def _sample_negative_binomial(
     gamma_concentration = torch.full((n,), r)  # (n,)
     gamma_rate = torch.full((n,), r / mu)  # (n,)
     # PyTorch Gamma uses (concentration, rate) parameterisation
-    gamma_dist = torch.distributions.Gamma(gamma_concentration, gamma_rate)
+    gamma_dist = torch.distributions.Gamma(gamma_concentration, gamma_rate)  # type: ignore[no-untyped-call]
     lambdas = gamma_dist.sample()  # (n,)
 
     # Poisson draws conditioned on the Gamma rates
@@ -304,7 +304,7 @@ def _generate_panel_counts(
     zero_mask = torch.rand(total, generator=generator) < pi_flat  # (total,)
 
     # Gamma–Poisson mixture for NB component
-    gamma_dist = torch.distributions.Gamma(r_flat, r_flat / mu_flat)
+    gamma_dist = torch.distributions.Gamma(r_flat, r_flat / mu_flat)  # type: ignore[no-untyped-call]
     lambdas = gamma_dist.sample()  # (total,)
     nb_counts = torch.poisson(lambdas, generator=generator)  # (total,)
 
