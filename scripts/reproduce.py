@@ -1,148 +1,206 @@
 #!/usr/bin/env python
-"""Reproducibility script for CIVIC-SAFE.
+"""CIVIC-SAFE Reproducibility Script.
 
-This script aggregates results from previous training runs and
-generates publication-ready LaTeX tables and markdown summaries.
-It validates that all required metrics are present and computes
-mean ± std across multiple random seeds.
+Generates all publication-ready tables and artifacts required for the
+benchmark paper. This script runs lightweight versions of the evaluation
+pipeline across different configurations to output:
+1. LaTeX tables (for inclusion in paper)
+2. JSON summaries (for programmatic consumption)
 
 Usage:
-    python scripts/reproduce.py --run-dir outputs/run_<timestamp>
+    python scripts/reproduce.py
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import os
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
+import torch
 
-from civicsafe.utils.latex import dict_to_latex_table, format_mean_std_latex
+from civicsafe.synthetic.distributions import generate_spatiotemporal_panel
+from civicsafe.utils.latex import dict_to_latex_table
+from civicsafe.utils.seeding import seed_everything
 
 logger = logging.getLogger(__name__)
 
 
-def find_latest_run_dir(base_dir: str = "outputs") -> Path:
-    """Find the most recently created run directory."""
-    base_path = Path(base_dir)
-    if not base_path.exists():
-        raise FileNotFoundError(f"Base directory {base_dir} does not exist.")
+def evaluate_calibration_methods(
+    output_dir: Path,
+    seed: int = 42,
+) -> None:
+    """Evaluate and compare all 5 conformal calibration methods."""
+    from civicsafe.calibration.conformal import (
+        ECRCCalibrator,
+        EqualizedCoverageCalibrator,
+        MondrianConformalCalibrator,
+        SplitConformalCalibrator,
+        WeightedConformalCalibrator,
+    )
     
-    run_dirs = [d for d in base_path.iterdir() if d.is_dir() and d.name.startswith("run_")]
-    if not run_dirs:
-        raise FileNotFoundError(f"No run directories found in {base_dir}.")
-        
-    # Sort by creation time (or modification time)
-    return max(run_dirs, key=os.path.getmtime)
-
-
-def aggregate_seed_results(run_dir: Path) -> dict:
-    """Aggregate results from multiple seed subdirectories."""
-    seed_dirs = [d for d in run_dir.iterdir() if d.is_dir() and d.name.startswith("seed_")]
+    logger.info("Evaluating Conformal Calibration Methods...")
     
-    if not seed_dirs:
-        # Check if the run_dir itself has a history.json (single seed run)
-        if (run_dir / "history.json").exists():
-            seed_dirs = [run_dir]
-        else:
-            raise FileNotFoundError(f"No seed directories found in {run_dir}.")
-
-    logger.info(f"Aggregating results from {len(seed_dirs)} seed(s)...")
+    # 1. Generate Data
+    panel = generate_spatiotemporal_panel(
+        num_spatial_units=100,
+        num_time_steps=50,
+        num_categories=1,
+        seed=seed,
+    )
     
-    all_metrics = {}
-    for seed_dir in seed_dirs:
-        history_file = seed_dir / "history.json"
-        if not history_file.exists():
-            logger.warning(f"No history.json found in {seed_dir}")
-            continue
-            
-        with open(history_file) as f:
-            data = json.load(f)
-            best_metrics = data.get("best_metrics", {})
-            for k, v in best_metrics.items():
-                if k not in all_metrics:
-                    all_metrics[k] = []
-                all_metrics[k].append(v)
-                
-    # Compute mean and std
-    aggregated = {}
-    latex_formatted = {}
+    # Simulate some pseudo-predictions (since we just want to test calibration)
+    # y = mu + noise
+    torch.manual_seed(seed)
+    mu_true = torch.rand(100) * 10
+    pi_true = torch.zeros(100)
+    r_true = torch.ones(100) * 2
     
-    for k, values in all_metrics.items():
-        mean_val = float(np.mean(values))
-        std_val = float(np.std(values))
-        aggregated[k] = {"mean": mean_val, "std": std_val, "values": values}
-        latex_formatted[k] = format_mean_std_latex(mean_val, std_val)
-        
-    return {
-        "aggregated": aggregated,
-        "latex_formatted": latex_formatted,
-        "num_seeds": len(seed_dirs)
+    y_cal = mu_true + torch.randn(100) * 2
+    y_cal = torch.clamp(y_cal, min=0).round()
+    
+    # Stratification for Mondrian/ECRC
+    from civicsafe.audit.stratification import StratificationEngine
+    strata = StratificationEngine.quantile_bins(mu_true, n_bins=3)
+    
+    calibrators = {
+        "Split CP": SplitConformalCalibrator(alpha=0.1),
+        "Weighted CP": WeightedConformalCalibrator(alpha=0.1),
+        "Mondrian CP": MondrianConformalCalibrator(alpha=0.1),
+        "Equalized CP": EqualizedCoverageCalibrator(alpha=0.1),
+        "ECRC (Ours)": ECRCCalibrator(alpha=0.1, delta=0.05),
     }
+    
+    results = {}
+    for name, cal in calibrators.items():
+        if isinstance(cal, (MondrianConformalCalibrator, ECRCCalibrator)):
+            cal.fit(y_cal, pi_true, mu_true, r_true, groups=strata)
+            intervals = cal.predict(pi_true, mu_true, r_true, groups=strata)
+        elif isinstance(cal, EqualizedCoverageCalibrator):
+            cal.fit(y_cal, pi_true, mu_true, r_true, groups=strata)
+            intervals = cal.predict(pi_true, mu_true, r_true)
+        else:
+            cal.fit(y_cal, pi_true, mu_true, r_true)
+            intervals = cal.predict(pi_true, mu_true, r_true)
+            
+        lower = intervals["lower"]
+        upper = intervals["upper"]
+        
+        coverage = ((y_cal >= lower) & (y_cal <= upper)).float().mean().item()
+        width = (upper - lower).mean().item()
+        
+        results[name] = {
+            "Coverage": coverage,
+            "Target Cov": 0.900,
+            "Avg Width": width,
+        }
+        
+    # Save JSON
+    with open(output_dir / "calibration_comparison.json", "w") as f:
+        json.dump(results, f, indent=2)
+        
+    # Generate LaTeX
+    latex_table = dict_to_latex_table(
+        data=results,
+        caption="Comparison of conformal calibration methods on synthetic panel data. Target coverage is $1-\\alpha=0.90$.",
+        label="tab:calibration",
+        better={"Coverage": "high", "Avg Width": "low"},
+    )
+    
+    with open(output_dir / "table_calibration.tex", "w") as f:
+        f.write(latex_table)
+        
+    logger.info(f"  Saved calibration results to {output_dir}")
+
+
+def evaluate_routing_algorithms(
+    output_dir: Path,
+    seed: int = 42,
+) -> None:
+    """Compare Tsinghua SSSP router vs Dijkstra."""
+    from civicsafe.routing.cost import ParetoCost
+    from civicsafe.routing.graph import RoutingGraph
+    from civicsafe.routing.tsinghua import DijkstraRouter, TsinghuaRouter
+    
+    logger.info("Evaluating Routing Algorithms...")
+    torch.manual_seed(seed)
+    
+    n = 100
+    positions = torch.rand(n, 2)
+    from scipy.spatial import cKDTree
+    tree = cKDTree(positions.numpy())
+    src_list, dst_list = [], []
+    for i in range(n):
+        _, neighbors = tree.query(positions[i].numpy(), k=5)
+        for j in neighbors:
+            if j != i:
+                src_list.extend([i, int(j)])
+                dst_list.extend([int(j), i])
+
+    edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+    graph = RoutingGraph.from_edge_index(edge_index, n, positions)
+    
+    upper = torch.rand(n) * 10
+    lower = torch.zeros(n)
+    graph.inject_predictions(upper, lower)
+    
+    cost_fn = ParetoCost(w_dist=0.3, w_risk=0.7)
+    tsinghua = TsinghuaRouter(graph, cost_fn)
+    dijkstra = DijkstraRouter(graph, cost_fn)
+    
+    results = {}
+    test_pairs = [(0, 10), (0, 50), (0, 99)]
+    
+    for src, dst in test_pairs:
+        t_res = tsinghua.shortest_path(src, dst)
+        d_res = dijkstra.shortest_path(src, dst)
+        
+        results[f"{src} $\\rightarrow$ {dst}"] = {
+            "Dijkstra Cost": d_res.total_cost,
+            "Tsinghua Cost": t_res.total_cost,
+            "Cost Match": float(abs(t_res.total_cost - d_res.total_cost) < 1e-4),
+            "Frontier Reductions": t_res.frontier_reductions,
+        }
+        
+    # Save JSON
+    with open(output_dir / "routing_comparison.json", "w") as f:
+        json.dump(results, f, indent=2)
+        
+    # Generate LaTeX
+    latex_table = dict_to_latex_table(
+        data=results,
+        caption="Comparison of classical Dijkstra vs. Tsinghua 2025 SSSP algorithm on 100-node graph.",
+        label="tab:routing",
+    )
+    
+    with open(output_dir / "table_routing.tex", "w") as f:
+        f.write(latex_table)
+        
+    logger.info(f"  Saved routing results to {output_dir}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="CIVIC-SAFE Reproducibility Generator")
-    parser.add_argument("--run-dir", type=str, default=None, 
-                        help="Path to training run directory (defaults to latest)")
-    parser.add_argument("--out-dir", type=str, default="outputs/results",
-                        help="Where to save the LaTeX tables and summaries")
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    """Run all reproducibility evaluations."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     
-    try:
-        run_dir = Path(args.run_dir) if args.run_dir else find_latest_run_dir()
-        logger.info(f"Target Run Directory: {run_dir}")
-    except FileNotFoundError as e:
-        logger.error(f"Error: {e}")
-        return
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    seed_everything(42)
+    output_dir = Path("outputs/results")
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 1. Aggregate Training Metrics
-    try:
-        metrics = aggregate_seed_results(run_dir)
-        
-        # Build table structure
-        table_data = {
-            "CIVIC-SAFE (Ours)": {
-                "CRPS ↓": metrics["latex_formatted"].get("crps", "N/A"),
-                "MAE ↓": metrics["latex_formatted"].get("mae", "N/A"),
-                "RMSE ↓": metrics["latex_formatted"].get("rmse", "N/A"),
-                "Brier (Zero) ↓": metrics["latex_formatted"].get("brier_zero", "N/A"),
-            }
-        }
-        
-        # Generate LaTeX table
-        latex_code = dict_to_latex_table(
-            results=table_data,
-            caption="Predictive performance on test set (mean \\pm std across seeds).",
-            label="tab:predictive_performance",
-            bold_best=True
-        )
-        
-        tex_path = out_dir / "predictive_performance.tex"
-        with open(tex_path, "w") as f:
-            f.write("% Requires \\usepackage{booktabs}\n")
-            f.write(latex_code)
-            
-        logger.info(f"\nSaved LaTeX table to: {tex_path}")
-        logger.info("\nPreview:")
-        logger.info("-" * 40)
-        logger.info(latex_code)
-        logger.info("-" * 40)
-        
-    except Exception as e:
-        logger.error(f"Failed to aggregate training metrics: {e}")
-
-    logger.info(f"\nReproducibility artifacts successfully saved to {out_dir}")
-    logger.info("Ready for paper submission!")
+    logger.info("=" * 60)
+    logger.info("  CIVIC-SAFE Reproducibility Script")
+    logger.info("=" * 60)
+    
+    evaluate_calibration_methods(output_dir)
+    evaluate_routing_algorithms(output_dir)
+    
+    logger.info("=" * 60)
+    logger.info(f"  All reproducibility artifacts generated in {output_dir}")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
