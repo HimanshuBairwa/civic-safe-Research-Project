@@ -66,7 +66,13 @@ def run_single_seed(
     zinb_cfg = model_cfg.get("zinb", {})
 
     # --- Data loading: real data first, fallback to synthetic ---
-    data_name = data_cfg.get("city", "chicago")
+    data_name = "chicago"
+    if isinstance(config.get("data"), str):
+        data_name = config["data"]
+    elif isinstance(config.get("data"), dict):
+        data_name = config["data"].get("city", config.get("city", "chicago"))
+    else:
+        data_name = config.get("city", "chicago")
     project_root = Path(__file__).resolve().parent.parent
     panel_path = project_root / "data" / "processed" / f"{data_name}_panel.pt"
     graph_path = project_root / "data" / "processed" / f"{data_name}_graph.pt"
@@ -232,7 +238,7 @@ def main() -> None:
         config_dir / "training" / "default.yaml",
     ]:
         if cfg_file.exists():
-            with open(cfg_file) as f:
+            with open(cfg_file, encoding="utf-8") as f:
                 loaded = yaml.safe_load(f)
                 if loaded:
                     config.update(loaded)

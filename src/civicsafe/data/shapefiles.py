@@ -25,8 +25,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _CHICAGO_COMMUNITY_AREAS_URL = (
-    "https://data.cityofchicago.org/api/geospatial/cauq-8yn6"
-    "?method=export&format=GeoJSON"
+    "https://data.cityofchicago.org/resource/igwz-8jzy.geojson"
 )
 _NYC_PRECINCTS_URL = (
     "https://data.cityofnewyork.us/resource/kmub-pusk.geojson?$limit=200"
@@ -53,11 +52,17 @@ def fetch_chicago_boundaries(save_dir: Path) -> gpd.GeoDataFrame:
     save_dir.mkdir(parents=True, exist_ok=True)
     geojson_path = save_dir / "chicago_community_areas.geojson"
 
-    if not geojson_path.exists():
-        logger.info("Downloading Chicago Community Area boundaries...")
-        _download_with_retry(_CHICAGO_COMMUNITY_AREAS_URL, geojson_path)
-    else:
-        logger.info("Using cached Chicago Community Area boundaries.")
+    if geojson_path.exists():
+        if geojson_path.stat().st_size > 10000:
+            logger.info("  Using cached Chicago community area boundaries")
+            gdf = gpd.read_file(geojson_path)
+            return gdf
+        else:
+            logger.warning(f"  Cached file {geojson_path} is too small (corrupted). Redownloading...")
+            geojson_path.unlink()
+
+    logger.info("  Downloading Chicago Community Area boundaries...")
+    _download_with_retry(_CHICAGO_COMMUNITY_AREAS_URL, geojson_path)
 
     gdf = gpd.read_file(geojson_path)
 
@@ -108,11 +113,17 @@ def fetch_nyc_boundaries(save_dir: Path) -> gpd.GeoDataFrame:
     save_dir.mkdir(parents=True, exist_ok=True)
     geojson_path = save_dir / "nyc_precincts.geojson"
 
-    if not geojson_path.exists():
-        logger.info("Downloading NYC Police Precinct boundaries...")
-        _download_with_retry(_NYC_PRECINCTS_URL, geojson_path)
-    else:
-        logger.info("Using cached NYC Police Precinct boundaries.")
+    if geojson_path.exists():
+        if geojson_path.stat().st_size > 10000:
+            logger.info("  Using cached NYC precinct boundaries")
+            gdf = gpd.read_file(geojson_path)
+            return gdf
+        else:
+            logger.warning(f"  Cached file {geojson_path} is too small (corrupted). Redownloading...")
+            geojson_path.unlink()
+
+    logger.info("  Downloading NYC Precinct boundaries...")
+    _download_with_retry(_NYC_PRECINCTS_URL, geojson_path)
 
     gdf = gpd.read_file(geojson_path)
 
