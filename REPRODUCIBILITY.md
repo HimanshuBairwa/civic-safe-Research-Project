@@ -1,35 +1,56 @@
-# NeurIPS Reproducibility Checklist
+# CIVIC-SAFE Reproducibility Checklist
 
-This document details how CIVIC-SAFE adheres to the machine learning reproducibility standards required by top-tier conferences (NeurIPS, ICLR, ICML).
+As part of our commitment to rigorous, transparent research, this project adheres to the [NeurIPS Machine Learning Reproducibility Checklist](https://neurips.cc/Conferences/2023/PaperInformation/MachineLearningReproducibilityChecklist).
+
+This document details exactly how each reproducibility requirement is met in the CIVIC-SAFE benchmark.
+
+---
 
 ## 1. Code and Environment
-- [x] **Dependencies:** Full dependencies are pinned in `pyproject.toml` and lock files. Use `pip install -e ".[dev]"` for identical reproduction.
-- [x] **Hardware:** Tested extensively on NVIDIA A100 (40GB) and consumer CPUs. Training logs report device types and precision modes (`amp=bf16`).
-- [x] **Code structure:** `src/civicsafe/` strictly isolates Data, Models, Calibration, Audit, and Routing.
 
-## 2. Experimental Rigor and Randomness
-- [x] **Random Seeds:** All results are aggregated across 5 distinct seeds (`[42, 137, 256, 512, 1024]`).
-- [x] **Framework Sync:** `civicsafe.utils.seeding` strictly synchronizes seeds across `torch`, `numpy`, `random`, and CUDNN.
-- [x] **Determinism:** PyTorch deterministic algorithms are enabled by default for A100/CuBLAS consistency.
-- [x] **Reporting:** Predictive metrics (CRPS, MAE, RMSE) and audit thresholds are reported as `mean ± std` across seeds.
+- [x] **Dependencies:** All dependencies are pinned in `pyproject.toml` (e.g., `torch>=2.2.0,<3.0`). Use `pip install -e ".[dev]"` for an exact replica of the development environment.
+- [x] **Hardware Specifications:** Documented in the [README](README.md#reproducibility). The project requires ≥16GB RAM and recommends an NVIDIA A100 GPU for full training.
+- [x] **Random Seed Control:** We explicitly set random seeds across Python, NumPy, and PyTorch (including CUDA deterministic flags). The `civicsafe.utils.seeding` module enforces this. All tests are run under strict determinism.
+- [x] **Multi-Seed Aggregation:** The training script (`scripts/train.py`) runs 5 seeds by default (`[42, 137, 256, 512, 1024]`) and reports the mean and standard deviation for all core metrics.
+- [x] **One-Command Reproduction:** The `scripts/reproduce.py` script automatically generates the LaTeX tables and JSON summaries found in the paper.
 
-## 3. Data Provenance and Splits
-- [x] **Sourcing:** Real data pipelines use the official Socrata API for Chicago Data Portal and NYC OpenData.
-- [x] **Splits:** A strict chronological split prevents temporal leakage:
-  - Train: 2018–2021
-  - Val: 2022
-  - Test: 2023
-- [x] **Protected Attributes:** Demographics are sourced from the US Census (ACS 5-Year) and are **strictly shielded** from the model during training.
+## 2. Datasets
 
-## 4. Hyperparameters and Training
-- [x] **Configuration:** Managed via Hydra (`configs/`). Default configuration represents the exact settings used for the paper.
-- [x] **Optimization:** We document the use of BFloat16, EMA (decay=0.999), Cosine Warmup, and gradient clipping explicitly in the Trainer.
-- [x] **Early Stopping:** Triggered objectively via validation CRPS with a patience of 50 epochs.
+- [x] **Data Provenance:** The `scripts/fetch_data.py` script downloads raw data directly from official municipal open data portals (Chicago Data Portal API, NYC OpenData API).
+- [x] **Data Harmonization:** The `civicsafe.data` module contains explicit taxonomies and crosswalks used to harmonize raw point data into regular spatiotemporal panels.
+- [x] **Synthetic Data:** For unit testing and rapid prototyping, `civicsafe.synthetic` provides exactly-solvable generative models (ZINB, Poisson) with known ground-truth parameters.
+- [x] **Reporting Bias Transparency:** The project acknowledges that administrative crime data is subject to reporting bias. The `ReportingBiasSensitivityAudit` enforces evaluation under simulated under-reporting (binomial thinning).
 
-## 5. Automated Table Generation
-- [x] **LaTeX Exporter:** The `scripts/reproduce.py` script automatically parses W&B logs and outputs publication-ready LaTeX tables (`outputs/results/*.tex`).
-- [x] **No Manual Edits:** The pipeline ensures that the numbers in the paper exactly match the raw model outputs.
+## 3. Training and Evaluation
 
-## 6. Ethics Commitments
-- [x] Explicitly documented in `README.md`.
-- [x] Enforced programmatically (e.g., `ReportingBiasSensitivityAudit` fails if reporting rate decay drops coverage; `AbstentionMonitor` raises `AbstentionError`).
+- [x] **Metrics:** We report Continuous Ranked Probability Score (CRPS), MAE, RMSE, and Zero-Inflation Brier Score. Conformal prediction is evaluated via Coverage and Average Interval Width (AIW).
+- [x] **Hyperparameters:** All hyperparameters are documented in the `configs/` YAML files (Hydra). Any CLI overrides are logged explicitly by Weights & Biases.
+- [x] **Training Details:** The native PyTorch trainer (`civicsafe.training.trainer`) uses BFloat16 mixed precision, Exponential Moving Average (EMA) model weights, and cosine learning rate scheduling.
+- [x] **Experiment Tracking:** Integrated with Weights & Biases (`wandb`). By default, it runs in `disabled` mode to avoid prompt-blocking, but can be switched to `online` or `offline` mode for full experiment tracking.
+
+## 4. Ethics and Safeguards
+
+- [x] **Advisory Only:** The routing engine (`civicsafe.routing`) outputs textual advisories, not autonomous decisions.
+- [x] **No Person-Level Tracking:** The spatiotemporal panel builder aggregates all data to the community area / precinct level before the model sees it.
+- [x] **Audited Abstention:** The routing engine implements ethical guardrails by refusing to route (`AbstentionError`) if conformal interval widths exceed safety thresholds.
+
+---
+
+## How to Verify Results
+
+1. Setup the environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+   ```
+
+2. Run the test suite (100% coverage):
+   ```bash
+   pytest -v
+   ```
+
+3. Generate paper tables:
+   ```bash
+   python scripts/reproduce.py
+   ```
