@@ -136,18 +136,48 @@ def main() -> None:
     _log_panel_summary("NYC", nyc_panel)
 
     # ------------------------------------------------------------------
-    # Save panels
+    # Step 7: Download boundary shapefiles
+    # ------------------------------------------------------------------
+    logger.info("\n[7/8] Downloading boundary shapefiles...")
+    from civicsafe.data.shapefiles import load_boundaries
+
+    chicago_gdf = load_boundaries("chicago", RAW_DIR / "shapefiles")
+    nyc_gdf = load_boundaries("nyc", RAW_DIR / "shapefiles")
+    logger.info(f"  ✓ Chicago: {len(chicago_gdf)} community area polygons")
+    logger.info(f"  ✓ NYC: {len(nyc_gdf)} precinct polygons")
+
+    # ------------------------------------------------------------------
+    # Step 8: Build geospatial adjacency graphs
+    # ------------------------------------------------------------------
+    logger.info("\n[8/8] Building geospatial adjacency graphs...")
+    from civicsafe.models.graph import build_adjacency_from_geodataframe
+
+    chicago_graph = build_adjacency_from_geodataframe(
+        chicago_gdf, knn_k=8, meter_crs="EPSG:26971"
+    )
+    nyc_graph = build_adjacency_from_geodataframe(
+        nyc_gdf, knn_k=8, meter_crs="EPSG:32118"
+    )
+
+    # ------------------------------------------------------------------
+    # Save everything
     # ------------------------------------------------------------------
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     chicago_path = PROCESSED_DIR / "chicago_panel.pt"
     nyc_path = PROCESSED_DIR / "nyc_panel.pt"
+    chicago_graph_path = PROCESSED_DIR / "chicago_graph.pt"
+    nyc_graph_path = PROCESSED_DIR / "nyc_graph.pt"
 
     torch.save(chicago_panel, chicago_path)
     torch.save(nyc_panel, nyc_path)
+    torch.save(chicago_graph, chicago_graph_path)
+    torch.save(nyc_graph, nyc_graph_path)
 
     logger.info(f"\n  ✓ Saved: {chicago_path}")
     logger.info(f"  ✓ Saved: {nyc_path}")
+    logger.info(f"  ✓ Saved: {chicago_graph_path}")
+    logger.info(f"  ✓ Saved: {nyc_graph_path}")
 
     elapsed = time.perf_counter() - t0
     logger.info(f"\n{'=' * 60}")

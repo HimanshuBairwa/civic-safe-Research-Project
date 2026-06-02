@@ -80,14 +80,105 @@ def build_adjacency_from_synthetic(
     }
 
 
+def build_adjacency_from_geodataframe(
+    gdf: "geopandas.GeoDataFrame",
+    knn_k: int = 8,
+    meter_crs: str | None = None,
+) -> dict[str, Tensor]:
+    """Build dual adjacency from real polygon boundaries.
+
+    Uses geopandas spatial joins for mathematically exact adjacency:
+      - Queen contiguity: polygons sharing any boundary point (via touches)
+      - K-NN: nearest centroids in a projected meter-based CRS
+
+    Args:
+        gdf: GeoDataFrame with polygon geometries. Must be in EPSG:4326.
+        knn_k: Number of nearest neighbors for KNN graph.
+        meter_crs: CRS for meter-based distance computations.
+            Default: auto-detect based on centroid longitude.
+
+    Returns:
+        Dictionary with 'queen' and 'knn' edge_index tensors.
+    """
+    import geopandas as gpd
+    from scipy.spatial import cKDTree
+
+    n = len(gdf)
+    gdf = gdf.reset_index(drop=True)
+
+    # --- Auto-detect meter CRS based on location ---
+    if meter_crs is None:
+        centroid = gdf.geometry.unary_union.centroid
+        if centroid.x < -80:  # Chicago area (~-87.6)
+            meter_crs = "EPSG:26971"  # NAD83 / Illinois East (meters)
+        else:  # NYC area (~-74.0)
+            meter_crs = "EPSG:32118"  # NAD83 / New York (meters)
+
+    # --- Queen contiguity via spatial join ---
+    # Fix floating-point precision issues in boundary comparisons
+    gdf_clean = gdf.copy()
+    try:
+        gdf_clean["geometry"] = gdf.geometry.set_precision(grid_size=0.0001)
+    except AttributeError:
+        # Older shapely versions may not have set_precision
+        pass
+
+    adj = gpd.sjoin(gdf_clean, gdf_clean, how="inner", predicate="touches")
+    adj = adj[adj.index != adj["index_right"]]
+
+    queen_src = adj.index.tolist()
+    queen_dst = adj["index_right"].tolist()
+
+    # Fallback: if touches finds too few edges, use intersects
+    if len(queen_src) < n:
+        logger.warning(
+            f"  Only {len(queen_src)} queen edges from touches. "
+            f"Trying intersects fallback..."
+        )
+        adj2 = gpd.sjoin(gdf, gdf, how="inner", predicate="intersects")
+        adj2 = adj2[adj2.index != adj2["index_right"]]
+        if len(adj2) > len(adj):
+            queen_src = adj2.index.tolist()
+            queen_dst = adj2["index_right"].tolist()
+
+    edge_index_queen = torch.tensor([queen_src, queen_dst], dtype=torch.long)
+
+    # --- K-NN via projected centroids ---
+    gdf_proj = gdf.to_crs(meter_crs)
+    centroids = gdf_proj.geometry.centroid
+    coords = np.column_stack([centroids.x.values, centroids.y.values])
+
+    tree = cKDTree(coords)
+    _, indices = tree.query(coords, k=min(knn_k + 1, n))
+
+    knn_src, knn_dst = [], []
+    for i in range(n):
+        for j_idx in range(1, indices.shape[1]):
+            knn_src.append(i)
+            knn_dst.append(int(indices[i, j_idx]))
+
+    edge_index_knn = torch.tensor([knn_src, knn_dst], dtype=torch.long)
+
+    logger.info(
+        f"  Graph (geospatial): {n} nodes, "
+        f"{edge_index_queen.shape[1]} queen edges, "
+        f"{edge_index_knn.shape[1]} knn edges"
+    )
+
+    return {
+        "queen": edge_index_queen,
+        "knn": edge_index_knn,
+    }
+
+
 def build_adjacency_from_panel(
     spatial_units: list[int],
     knn_k: int = 8,
 ) -> dict[str, Tensor]:
-    """Build dual adjacency from spatial unit IDs.
+    """Build dual adjacency from spatial unit IDs (sequential proxy).
 
-    For real deployment, this would use shapefiles. For now, uses
-    sequential ID proximity as a proxy for spatial adjacency.
+    This is a fallback for when real shapefiles are not available.
+    For production use, prefer build_adjacency_from_geodataframe().
 
     Args:
         spatial_units: Sorted list of spatial unit IDs.
@@ -97,7 +188,6 @@ def build_adjacency_from_panel(
         Dictionary with 'queen' and 'knn' edge_index tensors.
     """
     n = len(spatial_units)
-    # Spatial unit IDs → index mapping (used for shapefile integration)
 
     # Queen contiguity proxy: connect sequential IDs
     queen_src, queen_dst = [], []
@@ -122,7 +212,7 @@ def build_adjacency_from_panel(
     edge_index_knn = torch.tensor([knn_src, knn_dst], dtype=torch.long)
 
     logger.info(
-        f"  Graph: {n} nodes, "
+        f"  Graph (proxy): {n} nodes, "
         f"{edge_index_queen.shape[1]} queen edges, "
         f"{edge_index_knn.shape[1]} knn edges"
     )
@@ -131,3 +221,4 @@ def build_adjacency_from_panel(
         "queen": edge_index_queen,
         "knn": edge_index_knn,
     }
+

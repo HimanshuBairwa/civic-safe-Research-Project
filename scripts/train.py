@@ -47,8 +47,6 @@ def run_single_seed(
     """
     from civicsafe.models.civicsafe_model import CivicSafeModel
     from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
-    from civicsafe.models.graph import build_adjacency_from_synthetic
-    from civicsafe.synthetic.distributions import generate_spatiotemporal_panel
     from civicsafe.training.trainer import Trainer
     from civicsafe.utils.seeding import seed_everything
 
@@ -61,28 +59,56 @@ def run_single_seed(
     # --- Configuration extraction ---
     model_cfg = config.get("model", {})
     train_cfg = config.get("training", {})
+    data_cfg = config.get("data", {})
     spatial_cfg = model_cfg.get("spatial", {})
     temporal_cfg = model_cfg.get("temporal", {})
     mixture_cfg = model_cfg.get("feature_mixture", {})
     zinb_cfg = model_cfg.get("zinb", {})
 
-    # --- Data loading ---
-    # TODO: Replace with real data pipeline once data download completes
-    # For now, use synthetic data for development/testing
-    logger.info("  Generating synthetic spatiotemporal panel...")
-    panel = generate_spatiotemporal_panel(
-        num_spatial_units=77,
-        num_time_steps=52 * 6,  # 6 years of weekly data
-        num_categories=9,
-        seed=seed,
-    )
-    counts = panel["counts"]
-    features = panel["features"]
-    S, T, C = counts.shape
-    F = features.shape[-1]
+    # --- Data loading: real data first, fallback to synthetic ---
+    data_name = data_cfg.get("city", "chicago")
+    project_root = Path(__file__).resolve().parent.parent
+    panel_path = project_root / "data" / "processed" / f"{data_name}_panel.pt"
+    graph_path = project_root / "data" / "processed" / f"{data_name}_graph.pt"
 
-    # --- Graph construction ---
-    graph = build_adjacency_from_synthetic(num_nodes=S, seed=seed, knn_k=8)
+    if panel_path.exists():
+        logger.info(f"  Loading REAL {data_name} panel from {panel_path}...")
+        panel = torch.load(panel_path, weights_only=False)
+        counts = panel["counts"]
+        features = panel["features"]
+        S, T, C = counts.shape
+        F = features.shape[-1]
+
+        # Normalize features (z-score) for stable training
+        feat_mean = features.mean(dim=(0, 1), keepdim=True)
+        feat_std = features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+        features = (features - feat_mean) / feat_std
+        # Update the panel with normalized features
+        panel["features"] = features
+
+        logger.info(f"  REAL data: {S} spatial × {T} time × {C} categories, {F} features")
+    else:
+        logger.info("  Real data not found. Using synthetic data for development...")
+        from civicsafe.synthetic.distributions import generate_spatiotemporal_panel
+
+        panel = generate_spatiotemporal_panel(
+            num_spatial_units=77,
+            num_time_steps=52 * 6,  # 6 years of weekly data
+            num_categories=3,
+            seed=seed,
+        )
+        counts = panel["counts"]
+        features = panel["features"]
+        S, T, C = counts.shape
+        F = features.shape[-1]
+
+    # --- Graph construction: real shapefile graph or synthetic ---
+    if graph_path.exists():
+        logger.info(f"  Loading REAL geospatial graph from {graph_path}...")
+        graph = torch.load(graph_path, weights_only=False)
+    else:
+        from civicsafe.models.graph import build_adjacency_from_synthetic
+        graph = build_adjacency_from_synthetic(num_nodes=S, seed=seed, knn_k=8)
 
     # --- Chronological splits ---
     splits = create_chronological_splits(
@@ -193,7 +219,15 @@ def main() -> None:
 
     # Load and merge configs
     config: dict = {}
+
+    # Determine which data config to use (default: chicago)
+    data_name = "chicago"
+    for arg in sys.argv[1:]:
+        if arg.startswith("data="):
+            data_name = arg.split("=", 1)[1]
+
     for cfg_file in [
+        config_dir / "data" / f"{data_name}.yaml",
         config_dir / "model" / "spatiotemporal_zinb.yaml",
         config_dir / "training" / "default.yaml",
     ]:
