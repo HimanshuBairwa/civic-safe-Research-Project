@@ -1,103 +1,84 @@
-"""LaTeX table generation utilities for publication-ready results.
+"""LaTeX table generation utilities for publication-ready outputs.
 
-Converts evaluation metrics and audit results into perfectly formatted
-LaTeX tables suitable for NeurIPS, ICML, or ICLR submissions.
-Includes support for bolding best results, adding confidence intervals,
-and proper multi-row formatting.
+This module provides utilities to convert Python dictionaries and evaluation
+results directly into well-formatted LaTeX tables, ready to be copy-pasted
+into a NeurIPS/ICLR/ICML paper template.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import pandas as pd
 
 
-def format_metric(mean: float, std: float | None = None, is_best: bool = False, decimals: int = 3) -> str:
-    """Format a metric with optional std and bolding for LaTeX."""
-    if std is not None:
-        text = f"{mean:.{decimals}f} \\pm {std:.{decimals}f}"
-    else:
-        text = f"{mean:.{decimals}f}"
-    
-    if is_best:
-        return f"\\mathbf{{{text}}}"
-    return text
+def dict_to_latex_table(
+    results: dict[str, dict[str, float | str]],
+    caption: str,
+    label: str,
+    bold_best: bool = True,
+    metric_directions: dict[str, str] | None = None,
+) -> str:
+    """Convert a nested dictionary of results into a LaTeX table.
 
-
-def generate_calibration_table(results: list[dict[str, Any]], caption: str = "Conformal Calibration Results", label: str = "tab:calibration") -> str:
-    """Generate a LaTeX table comparing calibration methods.
-    
     Args:
-        results: List of dictionaries with keys: method, coverage, target_coverage, avg_width
+        results: Format ``{"Row Name": {"Metric 1": value, ...}}``.
+        caption: Table caption for LaTeX.
+        label: Table reference label for LaTeX.
+        bold_best: If True, bold the best value in each column.
+        metric_directions: Dict mapping metric names to "min" or "max"
+            to determine which value to bold.
+
+    Returns:
+        A string containing the LaTeX table code (using booktabs).
     """
-    lines = [
-        "\\begin{table}[h]",
-        "\\centering",
-        "\\caption{" + caption + "}",
-        "\\label{" + label + "}",
-        "\\begin{tabular}{l c c c}",
-        "\\toprule",
-        "\\textbf{Calibration Method} & \\textbf{Target Coverage} & \\textbf{Empirical Coverage} & \\textbf{Avg. Interval Width} \\\\",
-        "\\midrule"
-    ]
+    df = pd.DataFrame.from_dict(results, orient="index")
     
-    # Find best width among those that meet target coverage
-    valid_widths = [r["avg_width"] for r in results if r["coverage"] >= r["target_coverage"] - 0.05]
-    best_width = min(valid_widths) if valid_widths else None
+    if metric_directions is None:
+        metric_directions = {}
+
+    # Format dataframe to strings with bolding
+    formatted_df = pd.DataFrame(index=df.index, columns=df.columns)
     
-    method_names = {
-        "split_cp": "Split Conformal",
-        "weighted_cp": "Weighted Conformal",
-        "mondrian_cp": "Mondrian Conformal",
-        "equalized_coverage": "Equalized Coverage",
-        "ecrc": "ECRC (Ours)"
-    }
-    
-    for r in results:
-        method = method_names.get(r["method"], r["method"])
-        target = f"{r['target_coverage']:.2f}"
-        cov = f"{r['coverage']:.3f}"
+    for col in df.columns:
+        direction = metric_directions.get(col, "min")  # default assume lower is better
         
-        # Highlight coverage if it meets target
-        if r["coverage"] >= r["target_coverage"]:
-            cov = f"\\mathbf{{{cov}}}"
+        try:
+            # Check if column is numeric
+            numeric_col = pd.to_numeric(df[col])
+            best_val = numeric_col.min() if direction == "min" else numeric_col.max()
             
-        width = f"{r['avg_width']:.2f}"
-        if best_width is not None and abs(r["avg_width"] - best_width) < 1e-5:
-            width = f"\\mathbf{{{width}}}"
-            
-        lines.append(f"{method} & {target} & {cov} & {width} \\\\")
-        
-    lines.extend([
-        "\\bottomrule",
-        "\\end{tabular}",
-        "\\end{table}"
-    ])
-    
-    return "\n".join(lines)
+            for idx in df.index:
+                val = numeric_col[idx]
+                # Format to 4 decimal places if float
+                val_str = f"{val:.4f}" if isinstance(val, float) else str(val)
+                
+                if bold_best and val == best_val:
+                    formatted_df.loc[idx, col] = f"\\textbf{{{val_str}}}"
+                else:
+                    formatted_df.loc[idx, col] = val_str
+        except ValueError:
+            # Not numeric, just copy as string
+            formatted_df[col] = df[col].astype(str)
+
+    # Generate LaTeX using pandas built-in, but customize for booktabs
+    latex_code = formatted_df.to_latex(
+        escape=False,
+        column_format="l" + "c" * len(df.columns),
+        caption=caption,
+        label=label,
+    )
+
+    # Clean up pandas LaTeX output for better publication quality
+    # Requires \usepackage{booktabs} in the LaTeX document
+    latex_code = latex_code.replace("\\toprule", "\\toprule")
+    latex_code = latex_code.replace("\\midrule", "\\midrule")
+    latex_code = latex_code.replace("\\bottomrule", "\\bottomrule")
+
+    return latex_code
 
 
-def generate_routing_table(comparison: dict[str, Any], caption: str = "Routing Algorithm Comparison", label: str = "tab:routing") -> str:
-    """Generate a LaTeX table comparing routing algorithms."""
-    lines = [
-        "\\begin{table}[h]",
-        "\\centering",
-        "\\caption{" + caption + "}",
-        "\\label{" + label + "}",
-        "\\begin{tabular}{l c c}",
-        "\\toprule",
-        "\\textbf{Metric} & \\textbf{Dijkstra (Baseline)} & \\textbf{Tsinghua SSSP (Ours)} \\\\",
-        "\\midrule"
-    ]
+def format_mean_std_latex(mean: float, std: float, decimals: int = 4) -> str:
+    """Format mean and standard deviation into a LaTeX string.
     
-    lines.append(f"Total Cost & {comparison['dijkstra_cost']:.4f} & {comparison['tsinghua_cost']:.4f} \\\\")
-    lines.append(f"Nodes Settled & {comparison['dijkstra_settled']} & {comparison['tsinghua_settled']} \\\\")
-    lines.append(f"Frontier Reductions & N/A & {comparison['tsinghua_frontier_reductions']} \\\\")
-    lines.append(f"Optimal Path Match & \\multicolumn{{2}}{{c}}{{{'Yes' if comparison['cost_match'] else 'No'}}} \\\\")
-    
-    lines.extend([
-        "\\bottomrule",
-        "\\end{tabular}",
-        "\\end{table}"
-    ])
-    
-    return "\n".join(lines)
+    Example: 15.67 ± 0.02 -> $15.67 \\pm 0.02$
+    """
+    return f"${mean:.{decimals}f} \\pm {std:.{decimals}f}$"
