@@ -1,0 +1,34 @@
+# Advisory Safe-Route Configuration
+# ===================================
+# Controls the Tsinghua SSSP routing engine, Pareto cost functions,
+# and audited abstention thresholds.
+
+routing:
+  # Algorithm selection
+  algorithm: "tsinghua"  # "tsinghua" (default) or "dijkstra" (baseline)
+
+  # Pareto cost function weights
+  # Cost(e) = w_dist × distance + w_risk × upper_bound + w_unc × interval_width
+  cost:
+    type: "pareto"  # "pareto", "distance_only", "risk_only", "uncertainty_penalised"
+    w_dist: 0.3     # Physical distance weight
+    w_risk: 0.7     # Risk (conformal upper bound) weight
+    w_unc: 0.0      # Uncertainty (interval width) penalty (used only with "uncertainty_penalised")
+
+  # Audited abstention thresholds
+  abstention:
+    # Peak: max allowable interval width for any single edge
+    peak_threshold: 20.0
+    # Budget: max cumulative uncertainty (sum of interval widths) along path
+    budget_threshold: 50.0
+    # Minimum path length before budget rule applies
+    min_edges_for_budget: 2
+    # Whether to raise AbstentionError or return a flagged result
+    raise_on_abstention: true
+
+  # Graph construction
+  graph:
+    # Source of adjacency: "queen" (contiguity) or "knn" (nearest neighbors)
+    adjacency_source: "queen"
+    # Whether to inject conformal prediction upper bounds as risk weights
+    inject_predictions: true
