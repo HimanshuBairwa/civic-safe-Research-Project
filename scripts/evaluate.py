@@ -94,23 +94,20 @@ def run_evaluation(
     model.eval()
     graph = build_adjacency_from_synthetic(num_nodes=S, seed=seed, knn_k=4)
 
-    # Simulate a single batch
+    # Simulate a single forward pass with features
     window = min(T, 12)
     x_feat = panel["features"][:, :window, :]  # (S, W, F)
-    x_count = counts[:, :window, :]             # (S, W, C)
-    x_feat_b = x_feat.unsqueeze(0)   # (1, S, W, F)
-    x_count_b = x_count.unsqueeze(0) # (1, S, W, C)
 
     with torch.no_grad():
         out = model(
-            x_feat_b, x_count_b,
+            x_feat,
             edge_index_queen=graph["queen"],
             edge_index_knn=graph.get("knn"),
         )
 
-    pi = out["pi"].squeeze(0)  # (S, C)
-    mu = out["mu"].squeeze(0)
-    r = out["r"].squeeze(0)
+    pi = out["pi"]  # (S, C)
+    mu = out["mu"]
+    r = out["r"]
     logger.info(f"  π range: [{pi.min():.3f}, {pi.max():.3f}]")
     logger.info(f"  μ range: [{mu.min():.3f}, {mu.max():.3f}]")
     logger.info(f"  r range: [{r.min():.3f}, {r.max():.3f}]")
