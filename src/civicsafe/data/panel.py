@@ -29,7 +29,6 @@ _DEFAULT_CATEGORIES = ("violent", "property", "drug")
 def build_spatiotemporal_panel(
     crime_df: pd.DataFrame,
     acs_df: pd.DataFrame,
-    crosswalk_df: pd.DataFrame,
     start_year: int,
     end_year: int,
     taxonomy_categories: list[str] | None = None,
@@ -43,11 +42,11 @@ def build_spatiotemporal_panel(
     Args:
         crime_df: DataFrame with columns [id, date, spatial_unit, category,
                   latitude, longitude]. NOT mutated.
-        acs_df: DataFrame with columns [tract_id, var1, var2, ...].
-        crosswalk_df: DataFrame with columns [spatial_unit, tract_id, weight].
-        start_year: First year (inclusive).
-        end_year: Last year (inclusive).
-        taxonomy_categories: Ordered category names. Default: violent/property/drug.
+        acs_df: DataFrame with rigorously processed demographics per spatial_unit.
+        start_year: First year of the panel (e.g., 2017).
+        end_year: Last year of the panel (inclusive).
+        taxonomy_categories: List of categories to track. Defaults to violent, property, drug.
+        temporal_covariates: Optional dictionary mapping weeks to values.
 
     Returns:
         Dictionary with keys:
@@ -64,7 +63,9 @@ def build_spatiotemporal_panel(
     df = crime_df.copy() if not crime_df.empty else crime_df
 
     # --- Spatial axis ---
-    spatial_units = sorted(crosswalk_df["spatial_unit"].unique())
+    # Extract canonical spatial unit ordering from the comprehensive demographics dataframe
+    # This prevents dropping units that happen to have 0 crimes in the entire window.
+    spatial_units = sorted(acs_df["spatial_unit"].unique())
     num_spatial = len(spatial_units)
     su_to_idx = {su: i for i, su in enumerate(spatial_units)}
 
@@ -115,27 +116,23 @@ def build_spatiotemporal_panel(
 
         logger.info(f"  Populated {valid.sum():,} crime records into tensor.")
 
-    # --- Build features tensor via population-weighted crosswalk ---
-    acs_cols = [c for c in acs_df.columns if c != "tract_id"]
+    # --- Build features tensor ---
+    acs_cols = [c for c in acs_df.columns if c != "spatial_unit"]
     num_features = len(acs_cols)
 
     features_tensor = torch.zeros(
         (num_spatial, num_time, num_features), dtype=torch.float32
     )
 
-    if acs_cols:
-        merged = pd.merge(crosswalk_df, acs_df, on="tract_id", how="inner")
-        if not merged.empty:
-            for su in spatial_units:
-                su_rows = merged[merged["spatial_unit"] == su]
-                if su_rows.empty:
-                    continue
-                su_idx = su_to_idx[su]
-                weighted_vals = (
-                    su_rows[acs_cols].values * su_rows["weight"].values[:, None]
-                ).sum(axis=0)
-                f_vec = torch.tensor(weighted_vals, dtype=torch.float32)
-                features_tensor[su_idx, :, :] = f_vec.unsqueeze(0).expand(num_time, -1)
+    if acs_cols and not acs_df.empty:
+        for su in spatial_units:
+            su_rows = acs_df[acs_df["spatial_unit"] == su]
+            if su_rows.empty:
+                continue
+            su_idx = su_to_idx[su]
+            # Since the rigorous demographic builder outputs 1 row per spatial_unit, we just take it
+            f_vec = torch.tensor(su_rows[acs_cols].iloc[0].values, dtype=torch.float32)
+            features_tensor[su_idx, :, :] = f_vec.unsqueeze(0).expand(num_time, -1)
 
     logger.info(
         f"  Final panel: counts {tuple(counts_tensor.shape)}, "
