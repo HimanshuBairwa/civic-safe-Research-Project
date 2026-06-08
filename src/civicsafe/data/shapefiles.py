@@ -28,7 +28,7 @@ _CHICAGO_COMMUNITY_AREAS_URL = (
     "https://data.cityofchicago.org/resource/igwz-8jzy.geojson"
 )
 _NYC_PRECINCTS_URL = (
-    "https://data.cityofnewyork.us/api/geospatial/78dh-3ptz"
+    "https://data.cityofnewyork.us/api/geospatial/y76i-bdw7"
     "?method=export&format=GeoJSON"
 )
 

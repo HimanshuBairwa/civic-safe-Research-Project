@@ -8,6 +8,14 @@ model:
   name: spatiotemporal_zinb
 
   # ---------------------------------------------------------------------------
+  # Ablations — Toggles for Architectural Components
+  # ---------------------------------------------------------------------------
+  ablations:
+    zero_inflation: true  # Set to false to disable pi head (NB only)
+    use_gnn: true         # Set to false to replace GATv2 with MLP
+    use_transformer: true # Set to false to replace Transformer with MLP
+
+  # ---------------------------------------------------------------------------
   # Spatial Encoder — Graph Attention Network (GAT)
   # ---------------------------------------------------------------------------
   # Learns spatial dependencies across community areas / precincts.

@@ -47,9 +47,9 @@ training:
     name: cosine_with_warmup
 
     # Number of warmup epochs where LR linearly ramps from 0 to peak.
-    # Range [1, 20]. 5 epochs ≈ 5% of training, enough to stabilise
+    # Range [1, 20]. 10 epochs ≈ 5% of training, enough to stabilise
     # initial gradients before the cosine decay begins.
-    warmup_epochs: 5
+    warmup_epochs: 10
 
     # Minimum learning rate at end of cosine schedule. Range [1e-7, 1e-4].
     # Non-zero floor prevents complete stalling in late epochs.
@@ -59,7 +59,7 @@ training:
   # Maximum number of epochs. Range [50, 300].
   # 100 is typically sufficient with early stopping; most runs converge
   # in 40–60 epochs on the Chicago dataset.
-  epochs: 100
+  epochs: 200
 
   # --- Early stopping ---
   early_stopping:

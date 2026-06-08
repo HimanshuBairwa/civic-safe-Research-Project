@@ -39,10 +39,12 @@ class ZINBHead(nn.Module):
         r_hidden: int = 64,
         num_categories: int = 3,
         r_floor: float = 0.1,
+        zero_inflation: bool = True,
     ) -> None:
         super().__init__()
         self.r_floor = r_floor
         self.num_categories = num_categories
+        self.zero_inflation = zero_inflation
 
         # Pi MLP: → Sigmoid → [0, 1]
         self.pi_mlp = nn.Sequential(
@@ -87,7 +89,11 @@ class ZINBHead(nn.Module):
               mu: NB mean in (0, inf)
               r:  NB dispersion in [r_floor, inf)
         """
-        pi = torch.sigmoid(self.pi_mlp(x))  # (B, C)
+        if self.zero_inflation:
+            pi = torch.sigmoid(self.pi_mlp(x))  # (B, C)
+        else:
+            pi = torch.zeros(x.shape[0], self.num_categories, device=x.device)
+            
         mu = F.softplus(self.mu_mlp(x))  # (B, C)
         r = F.softplus(self.r_mlp(x)) + self.r_floor  # (B, C)
 
