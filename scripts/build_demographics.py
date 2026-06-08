@@ -84,16 +84,17 @@ def fetch_acs_data(state_fips: str, counties: list[str], api_key: str) -> pd.Dat
     for var in ACS_VARS.keys():
         df[var] = pd.to_numeric(df[var], errors="coerce").fillna(0)
         
+    # Rename columns to human-readable names
+    df = df.rename(columns=ACS_VARS)
+        
     # Calculate derived percentages
-    df["median_household_income"] = df["B19013_001E"]
-    df["poverty_rate"] = (df["B17001_002E"] / df["B17001_001E"].replace(0, 1)) * 100
-    df["unemployment_rate"] = (df["B23025_005E"] / df["B23025_003E"].replace(0, 1)) * 100
-    df["pct_black"] = (df["B02001_003E"] / df["B01003_001E"].replace(0, 1)) * 100
-    df["pct_hispanic"] = (df["B03002_012E"] / df["B01003_001E"].replace(0, 1)) * 100
-    df["pct_renter_occupied"] = (df["B25003_003E"] / df["B25003_001E"].replace(0, 1)) * 100
+    df["poverty_rate"] = (df["pop_below_poverty"] / df["poverty_universe"].replace(0, 1)) * 100
+    df["unemployment_rate"] = (df["unemployed"] / df["labor_force"].replace(0, 1)) * 100
+    df["pct_black"] = (df["black_pop"] / df["total_population"].replace(0, 1)) * 100
+    df["pct_hispanic"] = (df["hispanic_pop"] / df["total_population"].replace(0, 1)) * 100
+    df["pct_renter_occupied"] = (df["renter_occupied"] / df["total_housing_units"].replace(0, 1)) * 100
     
-    # Calculate tract area for density (approximate)
-    return df[["GEOID"] + list(ACS_VARS.values())[1:] + ["total_population", "median_household_income", "poverty_rate", "unemployment_rate", "pct_black", "pct_hispanic", "pct_renter_occupied"]]
+    return df[["GEOID", "total_population", "median_household_income", "poverty_rate", "unemployment_rate", "pct_black", "pct_hispanic", "pct_renter_occupied"]]
 
 def perform_areal_interpolation(tract_gdf: gpd.GeoDataFrame, target_gdf: gpd.GeoDataFrame, target_id_col: str) -> pd.DataFrame:
     """Exact spatial areal interpolation of demographics from tracts to target polygons."""
