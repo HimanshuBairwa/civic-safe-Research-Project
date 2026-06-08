@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -53,22 +54,18 @@ def fetch_chicago_boundaries(save_dir: Path) -> gpd.GeoDataFrame:
     save_dir.mkdir(parents=True, exist_ok=True)
     geojson_path = save_dir / "chicago_community_areas.geojson"
 
-    if geojson_path.exists():
-        if geojson_path.stat().st_size > 10000:
-            logger.info("  Using cached Chicago community area boundaries")
-        else:
-            logger.warning(f"  Cached file {geojson_path} is too small (corrupted). Redownloading...")
-            geojson_path.unlink()
-            logger.info("  Downloading Chicago Community Area boundaries...")
-            _download_with_retry(_CHICAGO_COMMUNITY_AREAS_URL, geojson_path)
+    if geojson_path.exists() and geojson_path.stat().st_size > 10000:
+        logger.info("  Using cached Chicago community area boundaries")
     else:
+        if geojson_path.exists():
+            logger.warning(f"  Cached file {geojson_path} is too small. Redownloading...")
+            geojson_path.unlink()
         logger.info("  Downloading Chicago Community Area boundaries...")
         _download_with_retry(_CHICAGO_COMMUNITY_AREAS_URL, geojson_path)
 
     gdf = gpd.read_file(geojson_path)
 
-    # Normalize column names — the portal uses truncated shapefile field names
-    # area_numbe or area_num_1 → area_number
+    # Normalize column names
     area_col = None
     for candidate in ["area_numbe", "area_num_1", "area_number"]:
         if candidate in gdf.columns:
@@ -76,28 +73,20 @@ def fetch_chicago_boundaries(save_dir: Path) -> gpd.GeoDataFrame:
             break
 
     if area_col is None:
-        raise ValueError(
-            f"Could not find area number column. Available: {list(gdf.columns)}"
-        )
+        raise ValueError(f"Could not find area number column. Available: {list(gdf.columns)}")
 
-    gdf["area_number"] = gdf[area_col].astype(int)
+    gdf["area_number"] = pd.to_numeric(gdf[area_col], errors="coerce").fillna(-1).astype(int)
 
-    # Normalize community name
     if "community" in gdf.columns:
         gdf["community"] = gdf["community"].str.strip().str.upper()
 
-    # Sort by area number for deterministic ordering
+    gdf = gdf[gdf["area_number"] > 0]
     gdf = gdf.sort_values("area_number").reset_index(drop=True)
 
-    # Keep only necessary columns
     keep_cols = ["area_number", "community", "geometry"]
     keep_cols = [c for c in keep_cols if c in gdf.columns]
     gdf = gdf[keep_cols]
 
-    logger.info(
-        f"  Chicago boundaries: {len(gdf)} community areas, "
-        f"CRS={gdf.crs}"
-    )
     return gdf
 
 
@@ -112,40 +101,33 @@ def fetch_nyc_boundaries(save_dir: Path) -> gpd.GeoDataFrame:
         CRS: EPSG:4326.
     """
     save_dir.mkdir(parents=True, exist_ok=True)
-    geojson_path = save_dir / "nyc_precincts.geojson"
+    geojson_path = save_dir / "nyc_police_precincts.geojson"
 
-    if geojson_path.exists():
-        if geojson_path.stat().st_size > 10000:
-            logger.info("  Using cached NYC precinct boundaries")
-        else:
-            logger.warning(f"  Cached file {geojson_path} is too small (corrupted). Redownloading...")
-            geojson_path.unlink()
-            logger.info("  Downloading NYC Precinct boundaries...")
-            _download_with_retry(_NYC_PRECINCTS_URL, geojson_path)
+    if geojson_path.exists() and geojson_path.stat().st_size > 10000:
+        logger.info("  Using cached NYC precinct boundaries")
     else:
-        logger.info("  Downloading NYC Precinct boundaries...")
+        if geojson_path.exists():
+            logger.warning(f"  Cached file {geojson_path} is too small. Redownloading...")
+            geojson_path.unlink()
+        logger.info("  Downloading NYC Police Precinct boundaries...")
         _download_with_retry(_NYC_PRECINCTS_URL, geojson_path)
 
     gdf = gpd.read_file(geojson_path)
 
-    # Normalize precinct column
     precinct_col = None
-    for candidate in ["precinct", "Precinct", "PRECINCT"]:
+    for candidate in ["precinct", "precinct_number"]:
         if candidate in gdf.columns:
             precinct_col = candidate
             break
 
     if precinct_col is None:
-        raise ValueError(
-            f"Could not find precinct column. Available: {list(gdf.columns)}"
-        )
+        raise ValueError(f"Could not find precinct column. Available: {list(gdf.columns)}")
 
-    gdf["precinct"] = gdf[precinct_col].astype(int)
+    gdf["precinct"] = pd.to_numeric(gdf[precinct_col], errors="coerce").fillna(-1).astype(int)
 
-    # Sort by precinct number for deterministic ordering
+    gdf = gdf[gdf["precinct"] > 0]
     gdf = gdf.sort_values("precinct").reset_index(drop=True)
 
-    # Keep only necessary columns
     keep_cols = ["precinct", "geometry"]
     keep_cols = [c for c in keep_cols if c in gdf.columns]
     gdf = gdf[keep_cols]
