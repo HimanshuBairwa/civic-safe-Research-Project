@@ -152,6 +152,13 @@ def main() -> None:
     logger.info("\n[8/8] Building geospatial adjacency graphs...")
     from civicsafe.models.graph import build_adjacency_from_geodataframe
 
+    # Align GeoDataFrames to Panel Spatial Units to prevent PyTorch index out-of-bounds
+    chicago_su = chicago_panel["metadata"]["spatial_units"]
+    chicago_gdf = chicago_gdf.set_index("area_number").reindex(chicago_su).reset_index()
+
+    nyc_su = nyc_panel["metadata"]["spatial_units"]
+    nyc_gdf = nyc_gdf.set_index("precinct").reindex(nyc_su).reset_index()
+
     chicago_graph = build_adjacency_from_geodataframe(
         chicago_gdf, knn_k=8, meter_crs="EPSG:26971"
     )
