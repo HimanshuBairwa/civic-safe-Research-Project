@@ -152,12 +152,36 @@ def main() -> None:
     logger.info("\n[8/8] Building geospatial adjacency graphs...")
     from civicsafe.models.graph import build_adjacency_from_geodataframe
 
-    # Align GeoDataFrames to Panel Spatial Units to prevent PyTorch index out-of-bounds
-    chicago_su = chicago_panel["metadata"]["spatial_units"]
-    chicago_gdf = chicago_gdf.set_index("area_number").reindex(chicago_su).reset_index()
+    # --- CRITICAL: Align GeoDataFrames to Panel Spatial Units ---
+    # The panel is built from the crosswalk (77 units for both cities).
+    # The GeoJSON may have MORE rows (e.g., NYC has 78 precincts but
+    # only 77 are in the crosswalk). We filter to ONLY keep rows that
+    # are in the panel, and assert the counts match exactly.
 
-    nyc_su = nyc_panel["metadata"]["spatial_units"]
-    nyc_gdf = nyc_gdf.set_index("precinct").reindex(nyc_su).reset_index()
+    chi_su = set(chicago_panel["metadata"]["spatial_units"])
+    chicago_gdf = (
+        chicago_gdf[chicago_gdf["area_number"].isin(chi_su)]
+        .sort_values("area_number")
+        .reset_index(drop=True)
+    )
+    assert len(chicago_gdf) == len(chi_su), (
+        f"Chicago GDF has {len(chicago_gdf)} rows but panel has {len(chi_su)} spatial units. "
+        f"Missing: {chi_su - set(chicago_gdf['area_number'])}"
+    )
+
+    nyc_su = set(nyc_panel["metadata"]["spatial_units"])
+    nyc_gdf = (
+        nyc_gdf[nyc_gdf["precinct"].isin(nyc_su)]
+        .sort_values("precinct")
+        .reset_index(drop=True)
+    )
+    assert len(nyc_gdf) == len(nyc_su), (
+        f"NYC GDF has {len(nyc_gdf)} rows but panel has {len(nyc_su)} spatial units. "
+        f"Missing: {nyc_su - set(nyc_gdf['precinct'])}"
+    )
+
+    logger.info(f"  Aligned Chicago GDF: {len(chicago_gdf)} rows (matches panel)")
+    logger.info(f"  Aligned NYC GDF: {len(nyc_gdf)} rows (matches panel)")
 
     chicago_graph = build_adjacency_from_geodataframe(
         chicago_gdf, knn_k=8, meter_crs="EPSG:26971"

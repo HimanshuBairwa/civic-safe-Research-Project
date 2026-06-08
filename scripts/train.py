@@ -112,6 +112,19 @@ def run_single_seed(
     if graph_path.exists():
         logger.info(f"  Loading REAL geospatial graph from {graph_path}...")
         graph = torch.load(graph_path, weights_only=False)
+        # Validate graph-panel alignment (catch mismatches before CUDA crash)
+        max_node_queen = graph["queen"].max().item()
+        max_node_knn = graph.get("knn", graph["queen"]).max().item()
+        max_node = max(max_node_queen, max_node_knn)
+        if max_node >= S:
+            logger.error(
+                f"  FATAL: Graph has node index {max_node} but panel only has {S} nodes (0..{S-1}). "
+                f"Re-run 'python scripts/fetch_data.py' to regenerate aligned graphs."
+            )
+            raise ValueError(
+                f"Graph-panel node mismatch: max graph node {max_node} >= panel spatial dim {S}. "
+                f"Run 'python scripts/fetch_data.py' to fix."
+            )
     else:
         from civicsafe.models.graph import build_adjacency_from_synthetic
         graph = build_adjacency_from_synthetic(num_nodes=S, seed=seed, knn_k=8)
