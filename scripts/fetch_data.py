@@ -30,7 +30,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from civicsafe.data.acs import load_acs_features
 from civicsafe.data.chicago import process_chicago_crimes
-from civicsafe.data.crosswalks import get_census_crosswalk
 from civicsafe.data.nyc import process_nyc_crimes
 from civicsafe.data.panel import build_spatiotemporal_panel
 
@@ -109,20 +108,17 @@ def main() -> None:
     logger.info(f"  ✓ NYC ACS: {len(nyc_acs)} tracts × {len(ACS_VARIABLES)} vars")
 
     # ------------------------------------------------------------------
-    # Step 4: Load crosswalks
+    # Step 4: Loading spatial crosswalks is obsolete
     # ------------------------------------------------------------------
-    logger.info("\n[4/6] Loading spatial crosswalks...")
-    chicago_cw = get_census_crosswalk("chicago")
-    nyc_cw = get_census_crosswalk("nyc")
-    logger.info(f"  ✓ Chicago: {len(chicago_cw)} tract-to-area mappings")
-    logger.info(f"  ✓ NYC: {len(nyc_cw)} tract-to-precinct mappings")
+    # Rigorous demographic data is now mapped directly to spatial units
+    # by build_demographics.py. No fake crosswalks are needed.
 
     # ------------------------------------------------------------------
     # Step 5: Build Chicago panel
     # ------------------------------------------------------------------
     logger.info("\n[5/6] Building Chicago spatiotemporal panel...")
     chicago_panel = build_spatiotemporal_panel(
-        chicago_df, chicago_acs, chicago_cw, START_YEAR, END_YEAR
+        chicago_df, chicago_acs, START_YEAR, END_YEAR
     )
     _log_panel_summary("Chicago", chicago_panel)
 
@@ -131,7 +127,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     logger.info("\n[6/6] Building NYC spatiotemporal panel...")
     nyc_panel = build_spatiotemporal_panel(
-        nyc_df, nyc_acs, nyc_cw, START_YEAR, END_YEAR
+        nyc_df, nyc_acs, START_YEAR, END_YEAR
     )
     _log_panel_summary("NYC", nyc_panel)
 
