@@ -48,23 +48,38 @@ FIPS = {
 
 def download_tiger_tracts(state_fips: str, year: int = 2022) -> gpd.GeoDataFrame:
     """Download official TIGER/Line Census Tract boundaries."""
+    import tempfile
+    
     url = f"https://www2.census.gov/geo/tiger/TIGER{year}/TRACT/tl_{year}_{state_fips}_tract.zip"
     logger.info(f"Downloading TIGER/Line shapefiles from {url}...")
+    
+    tmp_dir = Path(tempfile.gettempdir()) / f"tiger_{state_fips}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as response:
         with zipfile.ZipFile(BytesIO(response.read())) as z:
-            z.extractall(f"/tmp/tiger_{state_fips}")
+            z.extractall(tmp_dir)
             
-    gdf = gpd.read_file(f"/tmp/tiger_{state_fips}/tl_{year}_{state_fips}_tract.shp")
+    gdf = gpd.read_file(tmp_dir / f"tl_{year}_{state_fips}_tract.shp")
     gdf["GEOID"] = gdf["GEOID"].astype(str)
     return gdf
 
 def fetch_acs_data(state_fips: str, counties: list[str], api_key: str) -> pd.DataFrame:
-    """Fetch demographic data from US Census API."""
+    """Fetch demographic data from US Census API.
+    
+    The Census API returns -666666666 for suppressed/missing values
+    (e.g., median household income in tracts with too few households).
+    We replace these sentinels with NaN BEFORE any computation.
+    """
     variables = ",".join(ACS_VARS.keys())
     county_list = ",".join(counties)
-    url = f"https://api.census.gov/data/2022/acs/acs5?get=NAME,{variables}&for=tract:*&in=state:{state_fips}&in=county:{county_list}&key={api_key}"
+    url = (
+        f"https://api.census.gov/data/2022/acs/acs5"
+        f"?get=NAME,{variables}"
+        f"&for=tract:*&in=state:{state_fips}"
+        f"&in=county:{county_list}&key={api_key}"
+    )
     
     logger.info(f"Querying Census API for state {state_fips}...")
     resp = requests.get(url)
@@ -80,66 +95,127 @@ def fetch_acs_data(state_fips: str, counties: list[str], api_key: str) -> pd.Dat
     df = pd.DataFrame(rows, columns=header)
     df["GEOID"] = df["state"] + df["county"] + df["tract"]
     
-    # Convert vars to numeric
+    # Convert to numeric, coerce errors to NaN
     for var in ACS_VARS.keys():
-        df[var] = pd.to_numeric(df[var], errors="coerce").fillna(0)
-        
+        df[var] = pd.to_numeric(df[var], errors="coerce")
+    
+    # CRITICAL: Replace Census API sentinel values (-666666666) with NaN
+    # These indicate suppressed data due to insufficient sample size
+    CENSUS_SENTINEL = -666666666
+    for var in ACS_VARS.keys():
+        sentinel_mask = df[var] <= CENSUS_SENTINEL + 1  # catch -666666666 and similar
+        n_sentinels = sentinel_mask.sum()
+        if n_sentinels > 0:
+            logger.warning(
+                f"  Replaced {n_sentinels} Census sentinel values in {var} with NaN"
+            )
+        df.loc[sentinel_mask, var] = float("nan")
+    
+    # Also replace any remaining negative values in variables that must be non-negative
+    non_negative_vars = ["B01003_001E", "B17001_002E", "B17001_001E", 
+                         "B23025_005E", "B23025_003E", "B02001_003E",
+                         "B03002_012E", "B25003_003E", "B25003_001E"]
+    for var in non_negative_vars:
+        if var in df.columns:
+            neg_mask = df[var] < 0
+            if neg_mask.sum() > 0:
+                logger.warning(f"  Replaced {neg_mask.sum()} negative values in {var}")
+                df.loc[neg_mask, var] = float("nan")
+    
+    # Fill NaN with 0 for count variables (not income)
+    count_vars = [v for v in ACS_VARS.keys() if v != "B19013_001E"]
+    df[count_vars] = df[count_vars].fillna(0)
+    
     # Rename columns to human-readable names
     df = df.rename(columns=ACS_VARS)
         
-    # Calculate derived percentages
+    # Calculate derived percentages (safe division)
     df["poverty_rate"] = (df["pop_below_poverty"] / df["poverty_universe"].replace(0, 1)) * 100
     df["unemployment_rate"] = (df["unemployed"] / df["labor_force"].replace(0, 1)) * 100
     df["pct_black"] = (df["black_pop"] / df["total_population"].replace(0, 1)) * 100
     df["pct_hispanic"] = (df["hispanic_pop"] / df["total_population"].replace(0, 1)) * 100
     df["pct_renter_occupied"] = (df["renter_occupied"] / df["total_housing_units"].replace(0, 1)) * 100
     
-    return df[["GEOID", "total_population", "median_household_income", "poverty_rate", "unemployment_rate", "pct_black", "pct_hispanic", "pct_renter_occupied"]]
+    return df[["GEOID", "total_population", "median_household_income", "poverty_rate", 
+               "unemployment_rate", "pct_black", "pct_hispanic", "pct_renter_occupied"]]
 
 def perform_areal_interpolation(tract_gdf: gpd.GeoDataFrame, target_gdf: gpd.GeoDataFrame, target_id_col: str) -> pd.DataFrame:
-    """Exact spatial areal interpolation of demographics from tracts to target polygons."""
+    """Exact spatial areal interpolation of demographics from tracts to target polygons.
+    
+    Handles NaN values (from Census sentinel removal) by computing population-
+    weighted averages only over tracts with valid data for each variable.
+    """
     logger.info("Performing Geospatial Areal Interpolation...")
     
-    # Ensure matching CRS (Albers Equal Area is good for accurate area calculations)
+    # Project to Albers Equal Area for accurate area calculations (metres)
     tract_gdf = tract_gdf.to_crs("EPSG:5070")
     target_gdf = target_gdf.to_crs("EPSG:5070")
     
     tract_gdf["tract_area"] = tract_gdf.geometry.area
     target_gdf["target_area"] = target_gdf.geometry.area
     
-    # Intersect
+    # Geometric intersection
     intersection = gpd.overlay(tract_gdf, target_gdf, how="intersection")
     intersection["intersect_area"] = intersection.geometry.area
     
-    # Weight is proportion of the tract that falls into the target polygon
+    # Weight = proportion of each tract that overlaps the target polygon
     intersection["weight"] = intersection["intersect_area"] / intersection["tract_area"]
     
-    # Apportion extensive variables (population)
+    # Apportion extensive variable (population)
     intersection["apportioned_pop"] = intersection["total_population"] * intersection["weight"]
     
-    # Group by target unit
+    # Intensive variables to aggregate via population-weighted mean
+    intensive_vars = [
+        "median_household_income", "poverty_rate", "unemployment_rate",
+        "pct_black", "pct_hispanic", "pct_renter_occupied",
+    ]
+    
     results = []
     for target_id, group in intersection.groupby(target_id_col):
         total_pop = group["apportioned_pop"].sum()
         if total_pop == 0:
             continue
             
-        # For intensive variables (rates, medians), we compute a population-weighted average
-        pop_weights = group["apportioned_pop"] / total_pop
-        
-        results.append({
+        row = {
             "spatial_unit": target_id,
             "total_population": total_pop,
-            "median_household_income": (group["median_household_income"] * pop_weights).sum(),
-            "poverty_rate": (group["poverty_rate"] * pop_weights).sum(),
-            "unemployment_rate": (group["unemployment_rate"] * pop_weights).sum(),
-            "pct_black": (group["pct_black"] * pop_weights).sum(),
-            "pct_hispanic": (group["pct_hispanic"] * pop_weights).sum(),
-            "pct_renter_occupied": (group["pct_renter_occupied"] * pop_weights).sum(),
-            "population_density": total_pop / (group["target_area"].iloc[0] / 1e6)  # pop per sq km
-        })
+        }
         
-    return pd.DataFrame(results)
+        # For each intensive variable, compute population-weighted mean
+        # ONLY over tracts that have valid (non-NaN) data for that variable
+        for var in intensive_vars:
+            valid_mask = group[var].notna()
+            valid_group = group[valid_mask]
+            valid_pop = valid_group["apportioned_pop"].sum()
+            
+            if valid_pop > 0:
+                pop_weights = valid_group["apportioned_pop"] / valid_pop
+                row[var] = (valid_group[var] * pop_weights).sum()
+            else:
+                # All tracts have missing data for this variable in this target
+                # Use the citywide median as fallback
+                row[var] = float("nan")
+        
+        # Population density: pop per sq km
+        target_area_km2 = group["target_area"].iloc[0] / 1e6
+        row["population_density"] = total_pop / max(target_area_km2, 0.01)
+        
+        results.append(row)
+    
+    result_df = pd.DataFrame(results)
+    
+    # Fill any remaining NaN with column median (robust fallback)
+    for var in intensive_vars:
+        if var in result_df.columns:
+            n_nan = result_df[var].isna().sum()
+            if n_nan > 0:
+                median_val = result_df[var].median()
+                result_df[var] = result_df[var].fillna(median_val)
+                logger.warning(
+                    f"  Filled {n_nan} NaN values in {var} with median={median_val:.2f}"
+                )
+    
+    return result_df
 
 def main():
     api_key = os.environ.get("CENSUS_API_KEY")
