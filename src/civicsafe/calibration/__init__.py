@@ -1,6 +1,6 @@
 """Conformal calibration procedures for prediction intervals.
 
-Implements five conformal prediction strategies for ZINB crime-count
+Implements six conformal prediction strategies for ZINB crime-count
 forecasting, with rigorous coverage guarantees.
 
 Public API:
@@ -10,10 +10,12 @@ Public API:
     - ``MondrianConformalCalibrator``: Group-conditional per-group coverage.
     - ``EqualizedCoverageCalibrator``: Regularised equalized coverage.
     - ``ECRCCalibrator``: PAC-style per-group guarantees via Hoeffding bounds.
+    - ``AdaptiveTemporalECRCCalibrator``: ACI + ECRC for temporal non-exchangeability.
     - ``compute_all_calibration_metrics``: One-call evaluation of PICP, AIW, Winkler.
 """
 
 from civicsafe.calibration.conformal import (
+    AdaptiveTemporalECRCCalibrator,
     ECRCCalibrator,
     EqualizedCoverageCalibrator,
     MondrianConformalCalibrator,
@@ -44,6 +46,7 @@ __all__ = [
     "MondrianConformalCalibrator",
     "EqualizedCoverageCalibrator",
     "ECRCCalibrator",
+    "AdaptiveTemporalECRCCalibrator",
     "create_calibrator",
     "compute_cqr_scores",
     # Distribution
