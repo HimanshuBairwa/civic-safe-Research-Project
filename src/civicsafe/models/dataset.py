@@ -94,9 +94,11 @@ def create_chronological_splits(
     weeks_per_year: int = 52,
     window_size: int = 52,
 ) -> dict[str, CrimeWindowDataset]:
-    """Create train/val/test splits with strict chronological separation.
+    """Create train/val/cal/test splits with strict chronological separation.
 
-    Ensures NO temporal leakage: train data never overlaps with val/test.
+    Ensures NO temporal leakage: train data never overlaps with val/cal/test.
+    The validation year is split in half: first 26 weeks for validation (early
+    stopping), second 26 weeks for conformal calibration.
 
     Args:
         counts: (S, T, C) crime counts tensor.
@@ -109,18 +111,20 @@ def create_chronological_splits(
         window_size: History window size.
 
     Returns:
-        Dictionary with 'train', 'val', 'test' CrimeWindowDataset instances.
+        Dictionary with 'train', 'val', 'cal', 'test' CrimeWindowDataset instances.
     """
     _total_years = end_year - start_year + 1
     total_weeks = counts.shape[1]
 
     # Calculate week indices for each split
     val_start_week = (val_year - start_year) * weeks_per_year
+    cal_start_week = val_start_week + (weeks_per_year // 2)  # Mid-year split
     test_start_week = (test_year - start_year) * weeks_per_year
 
     logger.info("  Chronological split:")
     logger.info(f"    Train: weeks [0, {val_start_week}) = {start_year}–{val_year - 1}")
-    logger.info(f"    Val:   weeks [{val_start_week}, {test_start_week}) = {val_year}")
+    logger.info(f"    Val:   weeks [{val_start_week}, {cal_start_week}) = {val_year} H1")
+    logger.info(f"    Cal:   weeks [{cal_start_week}, {test_start_week}) = {val_year} H2")
     logger.info(f"    Test:  weeks [{test_start_week}, {total_weeks}) = {test_year}")
 
     train_ds = CrimeWindowDataset(
@@ -135,6 +139,13 @@ def create_chronological_splits(
         features,
         window_size=window_size,
         start_idx=val_start_week,
+        end_idx=cal_start_week,
+    )
+    cal_ds = CrimeWindowDataset(
+        counts,
+        features,
+        window_size=window_size,
+        start_idx=cal_start_week,
         end_idx=test_start_week,
     )
     test_ds = CrimeWindowDataset(
@@ -145,4 +156,4 @@ def create_chronological_splits(
         end_idx=total_weeks,
     )
 
-    return {"train": train_ds, "val": val_ds, "test": test_ds}
+    return {"train": train_ds, "val": val_ds, "cal": cal_ds, "test": test_ds}

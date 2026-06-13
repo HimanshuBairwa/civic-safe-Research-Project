@@ -30,6 +30,24 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+class GraphCollateFn:
+    """Callable class for collating batches with graph edges (picklable on Windows)."""
+    def __init__(self, edge_queen: torch.Tensor, edge_knn: torch.Tensor | None = None):
+        self.edge_queen = edge_queen
+        self.edge_knn = edge_knn
+
+    def __call__(self, batch: list[dict]) -> dict:
+        collated = {
+            "input_features": torch.stack([b["input_features"] for b in batch]),
+            "input_counts": torch.stack([b["input_counts"] for b in batch]),
+            "target_counts": torch.stack([b["target_counts"] for b in batch]),
+            "edge_queen": self.edge_queen,
+        }
+        if self.edge_knn is not None:
+            collated["edge_knn"] = self.edge_knn
+        return collated
+
+
 def run_single_seed(
     seed: int,
     config: dict,
@@ -144,17 +162,7 @@ def run_single_seed(
     edge_queen = graph["queen"]
     edge_knn = graph.get("knn")
 
-    def collate_with_graph(batch: list[dict]) -> dict:
-        """Collate function that adds graph edges to each batch."""
-        collated = {
-            "input_features": torch.stack([b["input_features"] for b in batch]),
-            "input_counts": torch.stack([b["input_counts"] for b in batch]),
-            "target_counts": torch.stack([b["target_counts"] for b in batch]),
-            "edge_queen": edge_queen,
-        }
-        if edge_knn is not None:
-            collated["edge_knn"] = edge_knn
-        return collated
+    collate_fn = GraphCollateFn(edge_queen, edge_knn)
 
     dl_cfg = train_cfg.get("dataloader", {})
     num_workers = dl_cfg.get("num_workers", 4)
@@ -166,7 +174,7 @@ def run_single_seed(
         num_workers=num_workers,
         pin_memory=dl_cfg.get("pin_memory", True),
         persistent_workers=num_workers > 0 and dl_cfg.get("persistent_workers", True),
-        collate_fn=collate_with_graph,
+        collate_fn=collate_fn,
         drop_last=True,
     )
     val_loader = torch.utils.data.DataLoader(
@@ -176,7 +184,7 @@ def run_single_seed(
         num_workers=num_workers,
         pin_memory=dl_cfg.get("pin_memory", True),
         persistent_workers=num_workers > 0 and dl_cfg.get("persistent_workers", True),
-        collate_fn=collate_with_graph,
+        collate_fn=collate_fn,
     )
 
     # --- Model ---
