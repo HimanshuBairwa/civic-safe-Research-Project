@@ -687,6 +687,186 @@ class ECRCCalibrator:
 
 
 # ===================================================================
+# 6. Adaptive Temporal ECRC (Phase 5)
+# ===================================================================
+
+class AdaptiveTemporalECRCCalibrator:
+    """Adaptive Temporal Conformal Calibration with Demographic Stratification.
+    
+    Combines Adaptive Conformal Inference (ACI, Gibbs & Candes 2021) with 
+    Equalized Conditional Risk Control (ECRC, Feldman et al. 2021).
+    Corrects for temporal non-exchangeability by dynamically adjusting the 
+    target alpha level per demographic group based on recent empirical coverage.
+    
+    For each group g at time t, the effective alpha is updated:
+        alpha_{t,g} = alpha_{t-1,g} + gamma * (err_{t-1,g} - alpha)
+        
+    Where err_{t-1,g} is the empirical miscoverage for group g at time t-1.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        gamma: float = 0.05,
+        delta: float = 0.05,
+        group_type: str = "geographic",
+    ) -> None:
+        if not 0.01 <= alpha <= 0.5:
+            raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
+        self.nominal_alpha = alpha
+        self.gamma = gamma
+        self.delta = delta
+        self.group_type = group_type
+        
+        # State tracking per group
+        self._alpha_t: dict[int, float] = {}
+        self._calibration_scores: dict[int, torch.Tensor] = {}
+        self._epsilon: float = 0.0
+        self._fitted = False
+
+    def fit(
+        self,
+        y: Tensor,
+        pi: Tensor,
+        mu: Tensor,
+        r: Tensor,
+        *,
+        groups: Tensor,
+        **kwargs: Any,
+    ) -> None:
+        y = y.reshape(-1).float()
+        pi = pi.reshape(-1).float().clamp(0.0, 1.0)
+        mu = mu.reshape(-1).float().clamp(min=1e-6)
+        r = r.reshape(-1).float().clamp(min=0.1)
+        groups = groups.reshape(-1)
+
+        scores = compute_cqr_scores(y, pi, mu, r, alpha=self.nominal_alpha)
+
+        unique_groups = groups.unique()
+        G = len(unique_groups)
+        n_cal = scores.shape[0]
+
+        # Initial Hoeffding epsilon (ECRC base)
+        self._epsilon = math.sqrt(
+            math.log(2.0 * G / self.delta) / (2.0 * max(n_cal / G, 1.0))
+        )
+        base_alpha = max(self.nominal_alpha - self._epsilon, 0.01)
+
+        for g in unique_groups:
+            g_idx = int(g.item())
+            mask = groups == g
+            self._calibration_scores[g_idx] = scores[mask].clone()
+            self._alpha_t[g_idx] = base_alpha
+
+        self._fitted = True
+        logger.info(
+            f"  AdaptiveTemporalECRC fitted: base_alpha = {base_alpha:.4f}, "
+            f"gamma = {self.gamma:.3f}, G = {G} groups"
+        )
+
+    def predict(
+        self,
+        pi: Tensor,
+        mu: Tensor,
+        r: Tensor,
+        *,
+        groups: Tensor,
+    ) -> dict[str, Tensor]:
+        if not self._fitted:
+            raise RuntimeError("Call fit() first.")
+
+        orig_shape = pi.shape
+        pi_f = pi.reshape(-1).float().clamp(0.0, 1.0)
+        mu_f = mu.reshape(-1).float().clamp(min=1e-6)
+        r_f = r.reshape(-1).float().clamp(min=0.1)
+        groups_f = groups.reshape(-1)
+
+        q_low, q_high = zinb_ppf_pair(self.nominal_alpha, pi_f, mu_f, r_f)
+
+        thresholds = torch.zeros_like(pi_f)
+        for g, alpha_t in self._alpha_t.items():
+            mask = groups_f == g
+            if mask.sum() == 0:
+                continue
+                
+            cal_scores = self._calibration_scores.get(g)
+            if cal_scores is None or len(cal_scores) == 0:
+                t_val = 0.0
+            else:
+                n_g = len(cal_scores)
+                q_level = min((1.0 - alpha_t) * (1.0 + 1.0 / n_g), 1.0)
+                t_val = torch.quantile(cal_scores, q_level).item()
+                
+            thresholds[mask] = t_val
+
+        lower = (q_low - thresholds).clamp(min=0.0).floor()
+        upper = (q_high + thresholds).ceil()
+        upper = torch.max(upper, lower)
+        point = (1.0 - pi_f) * mu_f
+
+        return {
+            "lower": lower.reshape(orig_shape),
+            "upper": upper.reshape(orig_shape),
+            "point": point.reshape(orig_shape),
+        }
+
+    def update(
+        self,
+        y_true: Tensor,
+        pi: Tensor,
+        mu: Tensor,
+        r: Tensor,
+        *,
+        groups: Tensor,
+    ) -> None:
+        """Update the adaptive alpha_t based on observed coverage at time t."""
+        if not self._fitted:
+            raise RuntimeError("Call fit() first.")
+            
+        y_f = y_true.reshape(-1).float()
+        pi_f = pi.reshape(-1).float().clamp(0.0, 1.0)
+        mu_f = mu.reshape(-1).float().clamp(min=1e-6)
+        r_f = r.reshape(-1).float().clamp(min=0.1)
+        groups_f = groups.reshape(-1)
+        
+        # We need the intervals we *would have* predicted
+        intervals = self.predict(pi_f, mu_f, r_f, groups=groups_f)
+        lower = intervals["lower"].reshape(-1)
+        upper = intervals["upper"].reshape(-1)
+        
+        covered = ((y_f >= lower) & (y_f <= upper)).float()
+        
+        # Also compute scores to add to the calibration set (sliding window / growing)
+        scores = compute_cqr_scores(y_f, pi_f, mu_f, r_f, alpha=self.nominal_alpha)
+        
+        unique_groups = groups_f.unique()
+        for g in unique_groups:
+            g_idx = int(g.item())
+            mask = groups_f == g
+            
+            if mask.sum() > 0:
+                # 1. Update alpha_t using ACI
+                empirical_cov = covered[mask].mean().item()
+                err_t = 1.0 - empirical_cov
+                
+                if g_idx not in self._alpha_t:
+                    self._alpha_t[g_idx] = max(self.nominal_alpha - self._epsilon, 0.01)
+                    
+                # ACI update rule
+                new_alpha = self._alpha_t[g_idx] + self.gamma * (err_t - self.nominal_alpha)
+                self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
+                
+                # 2. Add to calibration set (EnbPI style)
+                # For memory bounds, keep only last N scores (e.g. 500)
+                if g_idx not in self._calibration_scores:
+                    self._calibration_scores[g_idx] = scores[mask]
+                else:
+                    self._calibration_scores[g_idx] = torch.cat([
+                        self._calibration_scores[g_idx], scores[mask]
+                    ])[-500:] # Keep last 500 elements per group to maintain adaptation speed
+
+
+# ===================================================================
 # Factory: config → calibrator
 # ===================================================================
 
@@ -739,6 +919,14 @@ def create_calibrator(config: dict[str, Any]) -> (
     elif method == "ecrc":
         return ECRCCalibrator(
             alpha=alpha,
+            delta=cal_cfg.get("delta", 0.05),
+            group_type=cal_cfg.get("group_type", "geographic"),
+        )
+
+    elif method == "adaptive_ecrc":
+        return AdaptiveTemporalECRCCalibrator(
+            alpha=alpha,
+            gamma=cal_cfg.get("gamma", 0.05),
             delta=cal_cfg.get("delta", 0.05),
             group_type=cal_cfg.get("group_type", "geographic"),
         )

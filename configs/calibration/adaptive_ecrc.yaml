@@ -1,0 +1,40 @@
+# =============================================================================
+# Adaptive Temporal ECRC Configuration
+# =============================================================================
+# Combines Adaptive Conformal Inference (ACI, Gibbs & Candes 2021) with
+# Equalized Conditional Risk Control (ECRC, Feldman et al. 2021).
+#
+# Corrects for temporal non-exchangeability by dynamically adjusting the
+# target alpha level per demographic group based on recent empirical coverage.
+#
+# For each group g at time t, the effective alpha is updated:
+#   alpha_{t,g} = alpha_{t-1,g} + gamma * (err_{t-1,g} - alpha)
+#
+# This is the recommended method for CIVIC-SAFE because it:
+#   1. Provides per-group coverage guarantees (ECRC foundation)
+#   2. Adapts to temporal distribution shift (ACI component)
+#   3. Maintains a sliding window of calibration scores (EnbPI style)
+#
+# References:
+#   - Gibbs & Candes (2021): Adaptive Conformal Inference Under Distribution Shift
+#   - Feldman et al. (2021): Achieving Risk Control via Online Learning
+#   - Xu & Xie (2021): Conformal prediction interval for dynamic time-series
+
+calibration:
+  method: adaptive_ecrc
+
+  # Nominal miscoverage level. Range [0.01, 0.5].
+  alpha: 0.1
+
+  # ACI learning rate (gamma). Controls adaptation speed.
+  # Range [0.001, 0.2].
+  # Higher gamma → faster adaptation to distribution shift
+  # Lower gamma → more stable but slower to react
+  # TODO(ablation): Evaluate gamma in {0.01, 0.05, 0.1, adaptive-PI}
+  gamma: 0.05
+
+  # Confidence level for Hoeffding bound on per-group coverage.
+  delta: 0.05
+
+  # Group type for demographic stratification.
+  group_type: demographic
