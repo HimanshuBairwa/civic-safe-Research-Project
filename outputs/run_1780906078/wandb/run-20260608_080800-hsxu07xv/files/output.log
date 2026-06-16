@@ -1,0 +1,73 @@
+08:08:03 [INFO] __main__: ============================================================
+08:08:03 [INFO] __main__:   SEED 42
+08:08:03 [INFO] __main__: ============================================================
+08:08:03 [INFO] __main__:   Loading REAL nyc panel from /workspace/civic-safe-Research-Project/data/processed/nyc_panel.pt...
+08:08:03 [INFO] __main__:   REAL data: 77 spatial × 313 time × 3 categories, 7 features
+08:08:03 [INFO] __main__:   Loading REAL geospatial graph from /workspace/civic-safe-Research-Project/data/processed/nyc_graph.pt...
+08:08:03 [INFO] civicsafe.models.dataset:   Chronological split:
+08:08:03 [INFO] civicsafe.models.dataset:     Train: weeks [0, 208) = 2018–2021
+08:08:03 [INFO] civicsafe.models.dataset:     Val:   weeks [208, 260) = 2022
+08:08:03 [INFO] civicsafe.models.dataset:     Test:  weeks [260, 313) = 2023
+08:08:03 [INFO] civicsafe.models.dataset:   Dataset: 156 windows, window_size=52, target range [52, 208)
+08:08:03 [INFO] civicsafe.models.dataset:   Dataset: 52 windows, window_size=52, target range [208, 260)
+08:08:03 [INFO] civicsafe.models.dataset:   Dataset: 53 windows, window_size=52, target range [260, 313)
+08:08:03 [INFO] __main__:   Model parameters: 688,521
+08:08:04 [INFO] civicsafe.training.trainer: Starting training: 200 epochs, device=cuda, amp=bf16
+Traceback (most recent call last):
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 329, in <module>
+    main()
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 296, in main
+    result = run_single_seed(seed, config, output_dir)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 197, in run_single_seed
+    results = trainer.fit()
+              ^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/training/trainer.py", line 169, in fit
+    train_loss = self._train_epoch(epoch)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/training/trainer.py", line 252, in _train_epoch
+    loss = self._train_step(batch)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/training/trainer.py", line 297, in _train_step
+    output = self.model(feat_i, edge_queen, edge_knn)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/models/civicsafe_model.py", line 159, in forward
+    h_t = self._spatial_forward(x_t, edge_index_queen, edge_index_knn)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/models/civicsafe_model.py", line 190, in _spatial_forward
+    return self.spatial_encoder(x_t, edge_index_queen, edge_index_knn)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/src/civicsafe/models/spatial.py", line 94, in forward
+    h_queen = self.convs[i](x, edge_index_queen)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch_geometric/nn/conv/gatv2_conv.py", line 325, in forward
+    alpha = self.edge_updater(edge_index, x=(x_l, x_r),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/torch_geometric.nn.conv.gatv2_conv_GATv2Conv_edge_updater_r98cowaz.py", line 176, in edge_updater
+    out = self.edge_update(
+          ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch_geometric/nn/conv/gatv2_conv.py", line 358, in edge_update
+    x = x_i + x_j
+        ~~~~^~~~~
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.

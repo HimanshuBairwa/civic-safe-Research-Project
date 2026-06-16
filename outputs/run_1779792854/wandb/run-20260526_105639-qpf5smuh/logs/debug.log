@@ -1,0 +1,13 @@
+2026-05-26 10:56:39,269 INFO    MainThread:1462 [wandb_setup.py:_flush():81] Current SDK version is 0.27.0
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_setup.py:_flush():81] Configure stats pid to 1462
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_init.py:setup_run_log_directory():723] Logging user logs to outputs/run_1779792854/wandb/run-20260526_105639-qpf5smuh/logs/debug.log
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_init.py:setup_run_log_directory():724] Logging internal logs to outputs/run_1779792854/wandb/run-20260526_105639-qpf5smuh/logs/debug-internal.log
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_init.py:init():851] calling init triggers
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_init.py:init():856] wandb.init called with sweep_config: {}
+config: {'model': {'name': 'spatiotemporal_zinb', 'spatial': {'num_layers': 2, 'hidden_dim': 128, 'num_heads': 4, 'dropout': 0.1, 'adjacency': ['queen_contiguity', 'knn_8']}, 'temporal': {'num_layers': 2, 'd_model': 128, 'num_heads': 4, 'dim_feedforward': 512, 'dropout': 0.1, 'max_seq_len': 52}, 'feature_mixture': {'num_heads': 3, 'temperature': 1.0, 'collapse_threshold': 0.1}, 'zinb': {'pi_hidden_dim': 64, 'mu_hidden_dim': 64, 'r_hidden_dim': 64, 'r_floor': 0.1, 'eps': 1e-08}}, 'training': {'seed': 42, 'num_seeds': 1, 'seeds': [42, 137, 256, 512, 1024], 'optimizer': {'name': 'adamw', 'lr': 0.001, 'weight_decay': 0.01, 'betas': [0.9, 0.999]}, 'scheduler': {'name': 'cosine_with_warmup', 'warmup_epochs': 5, 'min_lr': 1e-06}, 'epochs': 2, 'early_stopping': {'metric': 'val_crps', 'patience': 10, 'mode': 'min'}, 'batch_size': 16, 'gradient_clip_norm': 1.0, 'mixed_precision': True, 'gradient_checkpointing': True, 'dataloader': {'num_workers': 4, 'pin_memory': True, 'persistent_workers': True}, 'checkpoint': {'save_every_epoch': True, 'directory': 'checkpoints/'}}, '_wandb': {}}
+2026-05-26 10:56:39,270 INFO    MainThread:1462 [wandb_init.py:init():899] starting backend
+2026-05-26 10:56:39,805 INFO    MainThread:1462 [wandb_init.py:init():914] sending inform_init request
+2026-05-26 10:56:40,479 INFO    MainThread:1462 [wandb_init.py:init():919] backend started and connected
+2026-05-26 10:56:40,482 INFO    MainThread:1462 [wandb_init.py:init():989] updated telemetry
+2026-05-26 10:56:40,507 INFO    MainThread:1462 [wandb_init.py:init():1012] communicating run to backend with 90.0 second timeout

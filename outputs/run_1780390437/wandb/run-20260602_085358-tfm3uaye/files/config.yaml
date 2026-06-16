@@ -1,0 +1,168 @@
+_wandb:
+    value:
+        cli_version: 0.27.0
+        e:
+            0lw1cktqbcy9bco7i0mfnidb6gnd8d0x:
+                args:
+                    - data=chicago
+                codePath: scripts/train.py
+                codePathLocal: scripts/train.py
+                cpu_count: 128
+                cpu_count_logical: 256
+                cudaVersion: "12.6"
+                disk:
+                    /:
+                        total: "1888425144320"
+                        used: "278841925632"
+                email: bairwahimanshu29@gmail.com
+                executable: /usr/bin/python
+                git:
+                    commit: dd99472b116c6afd5294c28aa103738df4860d21
+                    remote: https://github.com/HimanshuBairwa/civic-safe-Research-Project.git
+                gpu: NVIDIA A100-SXM4-40GB
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-e9a9f253-a032-d699-4676-673234e03e7c
+                host: f451679cd68b
+                memory:
+                    total: "1081962704896"
+                os: Linux-5.15.0-1053-nvidia-x86_64-with-glibc2.39
+                program: /workspace/civic-safe-Research-Project/scripts/train.py
+                python: CPython 3.12.3
+                root: outputs/run_1780390437
+                startedAt: "2026-06-02T08:53:58.575196Z"
+                writerId: 0lw1cktqbcy9bco7i0mfnidb6gnd8d0x
+        m: []
+        python_version: 3.12.3
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+                - 77
+            "3":
+                - 16
+            "4": 3.12.3
+            "5": 0.27.0
+            "12": 0.27.0
+            "13": linux-x86_64
+city:
+    value: chicago
+data:
+    value: chicago
+model:
+    value:
+        feature_mixture:
+            collapse_threshold: 0.1
+            num_heads: 3
+            temperature: 1
+        name: spatiotemporal_zinb
+        spatial:
+            adjacency:
+                - queen_contiguity
+                - knn_8
+            dropout: 0.1
+            hidden_dim: 128
+            num_heads: 4
+            num_layers: 2
+        temporal:
+            d_model: 128
+            dim_feedforward: 512
+            dropout: 0.1
+            max_seq_len: 52
+            num_heads: 4
+            num_layers: 2
+        zinb:
+            eps: 1e-08
+            mu_hidden_dim: 64
+            pi_hidden_dim: 64
+            r_floor: 0.1
+            r_hidden_dim: 64
+processed_data_dir:
+    value: data/processed/chicago
+raw_data_dir:
+    value: data/raw/chicago
+socrata_dataset_id:
+    value: ijzp-q8t2
+socrata_endpoint:
+    value: data.cityofchicago.org
+spatial_unit:
+    value: community_area
+splits:
+    value:
+        cal_year_half:
+            - 2021
+            - second
+        test_year: 2022
+        train_years:
+            - 2017
+            - 2018
+            - 2019
+            - 2020
+        val_year_half:
+            - 2021
+            - first
+        zero_shot_year: 2023
+taxonomy:
+    value:
+        drug:
+            - NARCOTICS
+            - OTHER NARCOTIC VIOLATION
+        property:
+            - THEFT
+            - BURGLARY
+            - MOTOR VEHICLE THEFT
+            - ARSON
+        violent:
+            - HOMICIDE
+            - ASSAULT
+            - BATTERY
+            - CRIM SEXUAL ASSAULT
+            - ROBBERY
+temporal_unit:
+    value: week
+training:
+    value:
+        batch_size: 16
+        checkpoint:
+            directory: checkpoints/
+            save_every_epoch: true
+        dataloader:
+            num_workers: 4
+            persistent_workers: true
+            pin_memory: true
+        early_stopping:
+            metric: val_crps
+            mode: min
+            patience: 10
+        epochs: 100
+        gradient_checkpointing: true
+        gradient_clip_norm: 1
+        mixed_precision: true
+        num_seeds: 5
+        optimizer:
+            betas:
+                - 0.9
+                - 0.999
+            lr: 0.001
+            name: adamw
+            weight_decay: 0.01
+        scheduler:
+            min_lr: 1e-06
+            name: cosine_with_warmup
+            warmup_epochs: 5
+        seed: 42
+        seeds:
+            - 42
+            - 137
+            - 256
+            - 512
+            - 1024
+year_range:
+    value:
+        - 2017
+        - 2023

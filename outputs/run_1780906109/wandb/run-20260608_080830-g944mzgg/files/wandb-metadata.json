@@ -1,0 +1,43 @@
+{
+  "os": "Linux-5.15.0-1053-nvidia-x86_64-with-glibc2.39",
+  "python": "CPython 3.12.3",
+  "startedAt": "2026-06-08T08:08:30.356828Z",
+  "args": [
+    "data=chicago"
+  ],
+  "program": "/workspace/civic-safe-Research-Project/scripts/train.py",
+  "codePath": "scripts/train.py",
+  "codePathLocal": "scripts/train.py",
+  "git": {
+    "remote": "https://github.com/HimanshuBairwa/civic-safe-Research-Project.git",
+    "commit": "6fa4fbeeea3f3631febb42b44dcf5db8605d7c33"
+  },
+  "email": "bairwahimanshu29@gmail.com",
+  "root": "outputs/run_1780906109",
+  "host": "f451679cd68b",
+  "executable": "/usr/bin/python",
+  "cpu_count": 128,
+  "cpu_count_logical": 256,
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1888425144320",
+      "used": "284383010816"
+    }
+  },
+  "memory": {
+    "total": "1081962704896"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere",
+      "uuid": "GPU-e9a9f253-a032-d699-4676-673234e03e7c"
+    }
+  ],
+  "cudaVersion": "12.6",
+  "writerId": "39c5qo2otq0mwuvtk4rrsfy1ihzeb957"
+}

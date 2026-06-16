@@ -1,0 +1,30 @@
+07:48:30 [INFO] __main__: ============================================================
+07:48:30 [INFO] __main__:   SEED 42
+07:48:30 [INFO] __main__: ============================================================
+07:48:30 [INFO] __main__:   Generating synthetic spatiotemporal panel...
+07:48:30 [INFO] civicsafe.models.graph:   Graph: 77 nodes, 430 queen edges, 616 knn edges
+07:48:30 [INFO] civicsafe.models.dataset:   Chronological split:
+07:48:30 [INFO] civicsafe.models.dataset:     Train: weeks [0, 208) = 2018–2021
+07:48:30 [INFO] civicsafe.models.dataset:     Val:   weeks [208, 260) = 2022
+07:48:30 [INFO] civicsafe.models.dataset:     Test:  weeks [260, 312) = 2023
+07:48:30 [INFO] civicsafe.models.dataset:   Dataset: 156 windows, window_size=52, target range [52, 208)
+07:48:30 [INFO] civicsafe.models.dataset:   Dataset: 52 windows, window_size=52, target range [208, 260)
+07:48:30 [INFO] civicsafe.models.dataset:   Dataset: 52 windows, window_size=52, target range [260, 312)
+07:48:30 [INFO] __main__:   Model parameters: 689,435
+07:48:30 [INFO] civicsafe.training.trainer: Starting training: 2 epochs, device=cuda, amp=bf16
+/usr/local/lib/python3.12/dist-packages/torch/autograd/graph.py:825: UserWarning: Flash Attention defaults to a non-deterministic algorithm. To explicitly enable determinism call torch.use_deterministic_algorithms(True, warn_only=False). (Triggered internally at /opt/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/attention_backward.cu:102.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+07:50:41 [INFO] civicsafe.training.trainer: Epoch   0/2 | loss=14.5444 | CRPS=15.6777 | MAE=17.4464 | RMSE=27.5484 | Brier=0.2504 | LR=2.00e-04 | 131.1s
+07:50:42 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.677722 at epoch 0
+07:52:44 [INFO] civicsafe.training.trainer: Epoch   1/2 | loss=13.3952 | CRPS=15.6773 | MAE=17.4463 | RMSE=27.5481 | Brier=0.2503 | LR=4.00e-04 | 122.5s
+07:52:44 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.677322 at epoch 1
+07:52:44 [INFO] civicsafe.training.early_stopping:   Restored best weights from epoch 1 (metric = 15.677322)
+07:53:01 [INFO] __main__:   Seed 42 complete: best CRPS = 15.6773, MAE = 17.4463, RMSE = 27.5481
+07:53:01 [INFO] __main__:
+============================================================
+07:53:01 [INFO] __main__:   AGGREGATE RESULTS (mean ± std across seeds)
+07:53:01 [INFO] __main__: ============================================================
+07:53:01 [INFO] __main__:           crps: 15.6773 ± 0.0000
+07:53:01 [INFO] __main__:            mae: 17.4463 ± 0.0000
+07:53:01 [INFO] __main__:           rmse: 27.5481 ± 0.0000
+07:53:01 [INFO] __main__:     brier_zero: 0.2503 ± 0.0000

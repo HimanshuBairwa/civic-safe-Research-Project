@@ -1,0 +1,21 @@
+2026-06-08 07:53:24,437 INFO    MainThread:9135 [wandb_setup.py:_flush():81] Current SDK version is 0.27.0
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_setup.py:_flush():81] Configure stats pid to 9135
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_init.py:setup_run_log_directory():723] Logging user logs to outputs/run_1780905202/wandb/run-20260608_075324-zaase6od/logs/debug.log
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_init.py:setup_run_log_directory():724] Logging internal logs to outputs/run_1780905202/wandb/run-20260608_075324-zaase6od/logs/debug-internal.log
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_init.py:init():851] calling init triggers
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_init.py:init():856] wandb.init called with sweep_config: {}
+config: {'city': 'nyc', 'raw_data_dir': 'data/raw/nyc', 'processed_data_dir': 'data/processed/nyc', 'socrata_endpoint': 'data.cityofnewyork.us', 'socrata_dataset_id': 'qgea-i56i', 'year_range': [2017, 2023], 'spatial_unit': 'precinct', 'temporal_unit': 'week', 'taxonomy': {'violent': ['MURDER & NON-NEGL. MANSLAUGHTER', 'FELONY ASSAULT', 'RAPE', 'ROBBERY', 'KIDNAPPING & RELATED OFFENSES'], 'property': ['GRAND LARCENY', 'PETIT LARCENY', 'BURGLARY', 'GRAND LARCENY OF MOTOR VEHICLE', 'ARSON'], 'drug': ['DANGEROUS DRUGS', 'CONTROLLED SUBSTANCE, POSSESSION', 'CONTROLLED SUBSTANCE, INTENT TO']}, 'taxonomy_ky_cd': {'violent': [101, 104, 105, 106, 109], 'property': [341, 351, 352, 361, 114], 'drug': [230, 231, 232]}, 'splits': {'train_years': [2017, 2018, 2019, 2020], 'val_year_half': [2021, 'first'], 'cal_year_half': [2021, 'second'], 'test_year': 2022, 'zero_shot_year': 2023}, 'model': {'name': 'spatiotemporal_zinb', 'spatial': {'num_layers': 2, 'hidden_dim': 128, 'num_heads': 4, 'dropout': 0.1, 'adjacency': ['queen_contiguity', 'knn_8']}, 'temporal': {'num_layers': 2, 'd_model': 128, 'num_heads': 4, 'dim_feedforward': 512, 'dropout': 0.1, 'max_seq_len': 52}, 'feature_mixture': {'num_heads': 3, 'temperature': 1.0, 'collapse_threshold': 0.1}, 'zinb': {'pi_hidden_dim': 64, 'mu_hidden_dim': 64, 'r_hidden_dim': 64, 'r_floor': 0.1, 'eps': 1e-08}}, 'training': {'seed': 42, 'num_seeds': 5, 'seeds': [42, 137, 256, 512, 1024], 'optimizer': {'name': 'adamw', 'lr': 0.001, 'weight_decay': 0.01, 'betas': [0.9, 0.999]}, 'scheduler': {'name': 'cosine_with_warmup', 'warmup_epochs': 5, 'min_lr': 1e-06}, 'epochs': 100, 'early_stopping': {'metric': 'val_crps', 'patience': 10, 'mode': 'min'}, 'batch_size': 16, 'gradient_clip_norm': 1.0, 'mixed_precision': True, 'gradient_checkpointing': True, 'dataloader': {'num_workers': 4, 'pin_memory': True, 'persistent_workers': True}, 'checkpoint': {'save_every_epoch': True, 'directory': 'checkpoints/'}}, 'data': 'nyc', '_wandb': {}}
+2026-06-08 07:53:24,438 INFO    MainThread:9135 [wandb_init.py:init():899] starting backend
+2026-06-08 07:53:24,948 INFO    MainThread:9135 [wandb_init.py:init():914] sending inform_init request
+2026-06-08 07:53:25,502 INFO    MainThread:9135 [wandb_init.py:init():919] backend started and connected
+2026-06-08 07:53:25,504 INFO    MainThread:9135 [wandb_init.py:init():989] updated telemetry
+2026-06-08 07:53:25,526 INFO    MainThread:9135 [wandb_init.py:init():1012] communicating run to backend with 90.0 second timeout
+2026-06-08 07:53:26,407 INFO    MainThread:9135 [wandb_init.py:init():1057] starting run threads in backend
+2026-06-08 07:53:26,624 INFO    MainThread:9135 [wandb_run.py:_console_start():2509] atexit reg
+2026-06-08 07:53:26,624 INFO    MainThread:9135 [wandb_run.py:_redirect():2359] redirect: wrap_raw
+2026-06-08 07:53:26,624 INFO    MainThread:9135 [wandb_run.py:_redirect():2428] Wrapping output streams.
+2026-06-08 07:53:26,624 INFO    MainThread:9135 [wandb_run.py:_redirect():2451] Redirects installed.
+2026-06-08 07:53:26,627 INFO    MainThread:9135 [wandb_init.py:init():1095] run started, returning control to user process
+2026-06-08 07:53:52,050 INFO    wandb-AsyncioManager-main:9135 [service_client.py:_forward_responses():122] Reached EOF.
+2026-06-08 07:53:52,051 INFO    wandb-AsyncioManager-main:9135 [mailbox.py:close():154] Closing mailbox, abandoning 1 handles.

@@ -1,0 +1,24 @@
+2026-06-02 09:11:43,921 INFO    MainThread:7750 [wandb_setup.py:_flush():81] Current SDK version is 0.27.0
+2026-06-02 09:11:43,922 INFO    MainThread:7750 [wandb_setup.py:_flush():81] Configure stats pid to 7750
+2026-06-02 09:11:43,922 INFO    MainThread:7750 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-06-02 09:11:43,922 INFO    MainThread:7750 [wandb_init.py:setup_run_log_directory():723] Logging user logs to outputs/run_1780391502/wandb/run-20260602_091143-530sec0f/logs/debug.log
+2026-06-02 09:11:43,922 INFO    MainThread:7750 [wandb_init.py:setup_run_log_directory():724] Logging internal logs to outputs/run_1780391502/wandb/run-20260602_091143-530sec0f/logs/debug-internal.log
+2026-06-02 09:11:43,923 INFO    MainThread:7750 [wandb_init.py:init():851] calling init triggers
+2026-06-02 09:11:43,923 INFO    MainThread:7750 [wandb_init.py:init():856] wandb.init called with sweep_config: {}
+config: {'city': 'chicago', 'raw_data_dir': 'data/raw/chicago', 'processed_data_dir': 'data/processed/chicago', 'socrata_endpoint': 'data.cityofchicago.org', 'socrata_dataset_id': 'ijzp-q8t2', 'year_range': [2017, 2023], 'spatial_unit': 'community_area', 'temporal_unit': 'week', 'taxonomy': {'violent': ['HOMICIDE', 'ASSAULT', 'BATTERY', 'CRIM SEXUAL ASSAULT', 'ROBBERY'], 'property': ['THEFT', 'BURGLARY', 'MOTOR VEHICLE THEFT', 'ARSON'], 'drug': ['NARCOTICS', 'OTHER NARCOTIC VIOLATION']}, 'splits': {'train_years': [2017, 2018, 2019, 2020], 'val_year_half': [2021, 'first'], 'cal_year_half': [2021, 'second'], 'test_year': 2022, 'zero_shot_year': 2023}, 'model': {'name': 'spatiotemporal_zinb', 'spatial': {'num_layers': 2, 'hidden_dim': 128, 'num_heads': 4, 'dropout': 0.1, 'adjacency': ['queen_contiguity', 'knn_8']}, 'temporal': {'num_layers': 2, 'd_model': 128, 'num_heads': 4, 'dim_feedforward': 512, 'dropout': 0.1, 'max_seq_len': 52}, 'feature_mixture': {'num_heads': 3, 'temperature': 1.0, 'collapse_threshold': 0.1}, 'zinb': {'pi_hidden_dim': 64, 'mu_hidden_dim': 64, 'r_hidden_dim': 64, 'r_floor': 0.1, 'eps': 1e-08}}, 'training': {'seed': 42, 'num_seeds': 5, 'seeds': [42, 137, 256, 512, 1024], 'optimizer': {'name': 'adamw', 'lr': 0.001, 'weight_decay': 0.01, 'betas': [0.9, 0.999]}, 'scheduler': {'name': 'cosine_with_warmup', 'warmup_epochs': 5, 'min_lr': 1e-06}, 'epochs': 100, 'early_stopping': {'metric': 'val_crps', 'patience': 10, 'mode': 'min'}, 'batch_size': 16, 'gradient_clip_norm': 1.0, 'mixed_precision': True, 'gradient_checkpointing': True, 'dataloader': {'num_workers': 4, 'pin_memory': True, 'persistent_workers': True}, 'checkpoint': {'save_every_epoch': True, 'directory': 'checkpoints/'}}, 'data': 'chicago', '_wandb': {}}
+2026-06-02 09:11:43,923 INFO    MainThread:7750 [wandb_init.py:init():899] starting backend
+2026-06-02 09:11:44,391 INFO    MainThread:7750 [wandb_init.py:init():914] sending inform_init request
+2026-06-02 09:11:44,970 INFO    MainThread:7750 [wandb_init.py:init():919] backend started and connected
+2026-06-02 09:11:44,972 INFO    MainThread:7750 [wandb_init.py:init():989] updated telemetry
+2026-06-02 09:11:44,989 INFO    MainThread:7750 [wandb_init.py:init():1012] communicating run to backend with 90.0 second timeout
+2026-06-02 09:11:45,563 INFO    MainThread:7750 [wandb_init.py:init():1057] starting run threads in backend
+2026-06-02 09:11:45,779 INFO    MainThread:7750 [wandb_run.py:_console_start():2509] atexit reg
+2026-06-02 09:11:45,779 INFO    MainThread:7750 [wandb_run.py:_redirect():2359] redirect: wrap_raw
+2026-06-02 09:11:45,780 INFO    MainThread:7750 [wandb_run.py:_redirect():2428] Wrapping output streams.
+2026-06-02 09:11:45,780 INFO    MainThread:7750 [wandb_run.py:_redirect():2451] Redirects installed.
+2026-06-02 09:11:45,783 INFO    MainThread:7750 [wandb_init.py:init():1095] run started, returning control to user process
+2026-06-03 04:05:53,414 INFO    MainThread:7750 [wandb_run.py:_finish():2271] finishing run bairwahimanshu29-netaji-subhas-university-of-technology/civicsafe/530sec0f
+2026-06-03 04:05:53,419 INFO    MainThread:7750 [wandb_run.py:_atexit_cleanup():2476] got exitcode: 0
+2026-06-03 04:05:53,420 INFO    MainThread:7750 [wandb_run.py:_restore():2458] restore
+2026-06-03 04:05:53,420 INFO    MainThread:7750 [wandb_run.py:_restore():2464] restore done
+2026-06-03 04:05:57,638 INFO    MainThread:7750 [wandb_run.py:_footer_sync_info():3877] logging synced files
