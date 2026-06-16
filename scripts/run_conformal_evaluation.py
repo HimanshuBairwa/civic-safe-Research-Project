@@ -295,18 +295,20 @@ def load_demographic_groups(
 
 
 # ───────────────────────────────────────────────────────────────────
-# Historical Baseline CRPS
+# Baseline CRPS Computation (HA + Seasonal-Naive)
 # ───────────────────────────────────────────────────────────────────
 def compute_baseline_crps(
     counts: Tensor,
     test_start: int = 260,
     train_end: int = 208,
-) -> float:
-    """Compute CRPS for a naive historical-mean Poisson baseline.
+) -> dict[str, float]:
+    """Compute CRPS for two naive baselines: Historical Average and Seasonal Naive.
 
-    The baseline predicts Y ~ Poisson(lambda) where lambda is the
-    per-unit, per-category mean count from the training period.
-    CRPS for Poisson is computed via the exact CDF formula.
+    Historical Average: predict E[Y] = mean of training period per unit per category.
+    Seasonal Naive: predict Y(t-52) = same week last year (strongest naive baseline).
+
+    Both baselines model predictions as Poisson(lambda) for CRPS computation:
+    CRPS is computed via the ZINB CDF formula with pi=0, r=1000 (Poisson limit).
 
     Args:
         counts: Full crime count tensor. Shape: (S, T, C)
@@ -314,28 +316,34 @@ def compute_baseline_crps(
         train_end: Last week of training set (exclusive).
 
     Returns:
-        Mean CRPS across all test observations.
+        Dictionary with 'ha_crps' and 'seasonal_naive_crps'.
     """
     train_counts = counts[:, :train_end, :].float()  # (S, train_T, C)
     test_counts = counts[:, test_start:, :].float()   # (S, test_T, C)
 
-    # Historical mean per unit per category
-    hist_mean = train_counts.mean(dim=1, keepdim=True)  # (S, 1, C)
-
-    # CRPS for Poisson = |y - lambda| is the simplest proxy
-    # For proper CRPS: use the closed-form for NB with r→∞ (Poisson limit)
-    # CRPS_Poisson ≈ E|Y1 - Y2|/2 where Y1, Y2 ~ Poisson(lambda) independently
-    # For computation, we use the ZINB CRPS with pi=0, large r (Poisson approx)
     S, test_T, C = test_counts.shape
     y_flat = test_counts.reshape(-1)
 
-    # Poisson as ZINB: pi=0, mu=lambda, r=1000 (large r → Poisson)
-    pi_baseline = torch.zeros_like(y_flat)
-    mu_baseline = hist_mean.expand_as(test_counts).reshape(-1).clamp(min=0.01)
-    r_baseline = torch.full_like(y_flat, 1000.0)
+    # Shared ZINB-CRPS parameters for point-prediction baselines
+    pi_zero = torch.zeros_like(y_flat)
+    r_large = torch.full_like(y_flat, 1000.0)  # r→∞ gives Poisson
 
-    baseline_crps = crps_zinb(y_flat, pi_baseline, mu_baseline, r_baseline)
-    return baseline_crps.mean().item()
+    # --- Baseline 1: Historical Average ---
+    hist_mean = train_counts.mean(dim=1, keepdim=True)  # (S, 1, C)
+    mu_ha = hist_mean.expand_as(test_counts).reshape(-1).clamp(min=0.01)
+    ha_crps = crps_zinb(y_flat, pi_zero, mu_ha, r_large).mean().item()
+
+    # --- Baseline 2: Seasonal Naive (Y(t-52) = same week last year) ---
+    # For test week t (starting at test_start=260), seasonal prediction = Y(t-52)
+    seasonal_start = test_start - 52  # = 208 (start of val year)
+    seasonal_counts = counts[:, seasonal_start:seasonal_start + test_T, :].float()  # (S, test_T, C)
+    mu_sn = seasonal_counts.reshape(-1).clamp(min=0.01)
+    sn_crps = crps_zinb(y_flat, pi_zero, mu_sn, r_large).mean().item()
+
+    return {
+        "ha_crps": ha_crps,
+        "seasonal_naive_crps": sn_crps,
+    }
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -606,13 +614,21 @@ def run_conformal_evaluation(
 
     # ─── Compute baseline CRPS and CRPSS ───
     logger.info("\n  ─── CRPS SKILL SCORE ───")
-    baseline_crps = compute_baseline_crps(counts)
+    baselines = compute_baseline_crps(counts)
+    ha_crps = baselines["ha_crps"]
+    sn_crps = baselines["seasonal_naive_crps"]
     model_crps = crps_zinb(y_test, pi_test, mu_test, r_test).mean().item()
-    crpss = 1.0 - (model_crps / baseline_crps) if baseline_crps > 0 else 0.0
 
-    logger.info(f"  Baseline CRPS (historical-mean Poisson): {baseline_crps:.4f}")
-    logger.info(f"  Model CRPS: {model_crps:.4f}")
-    logger.info(f"  CRPSS: {crpss:.4f} (threshold: ≥{CRPSS_SKILL_THRESHOLD})")
+    # CRPSS against Historical Average (weaker baseline)
+    crpss_ha = 1.0 - (model_crps / ha_crps) if ha_crps > 0 else 0.0
+    # CRPSS against Seasonal Naive (the harder baseline — the one reviewers check)
+    crpss_sn = 1.0 - (model_crps / sn_crps) if sn_crps > 0 else 0.0
+
+    logger.info(f"  Baseline CRPS (historical average): {ha_crps:.4f}")
+    logger.info(f"  Baseline CRPS (seasonal naive):     {sn_crps:.4f}")
+    logger.info(f"  Model CRPS:                          {model_crps:.4f}")
+    logger.info(f"  CRPSS vs HA:                         {crpss_ha:.4f}")
+    logger.info(f"  CRPSS vs Seasonal Naive:             {crpss_sn:.4f} (threshold: ≥{CRPSS_SKILL_THRESHOLD})")
 
     # ─── Compute point forecast metrics on test set ───
     test_metrics = compute_all_metrics(y_test, pi_test, mu_test, r_test)
@@ -645,10 +661,13 @@ def run_conformal_evaluation(
         },
         "point_forecast_metrics": test_metrics,
         "skill_scores": {
-            "baseline_crps": baseline_crps,
+            "baseline_crps_ha": ha_crps,
+            "baseline_crps_seasonal_naive": sn_crps,
             "model_crps": model_crps,
-            "crpss": crpss,
-            "crpss_passes_threshold": crpss >= CRPSS_SKILL_THRESHOLD,
+            "crpss_vs_ha": crpss_ha,
+            "crpss_vs_seasonal_naive": crpss_sn,
+            "crpss": crpss_sn,  # Primary skill score is vs seasonal-naive
+            "crpss_passes_threshold": crpss_sn >= CRPSS_SKILL_THRESHOLD,
         },
         "coverage_results": all_coverage_results,
     }
@@ -698,7 +717,8 @@ def run_conformal_evaluation(
         logger.info(f"  Marginal coverage: {best_results['marginal_coverage']:.4f}")
         disparity = best_results.get("coverage_disparity", 0)
         logger.info(f"  Coverage disparity: {disparity:.4f}")
-        logger.info(f"  CRPSS: {crpss:.4f}")
+        logger.info(f"  CRPSS vs HA: {crpss_ha:.4f}")
+        logger.info(f"  CRPSS vs Seasonal Naive: {crpss_sn:.4f}")
 
         # Check kill criteria
         passed_all = True
@@ -764,10 +784,12 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
         f"",
         f"| Component | Value |",
         f"|-----------|-------|",
-        f"| Baseline CRPS (hist-mean Poisson) | {skill['baseline_crps']:.4f} |",
+        f"| Baseline CRPS (Historical Average) | {skill.get('baseline_crps_ha', skill.get('baseline_crps', 'N/A')):.4f} |",
+        f"| Baseline CRPS (Seasonal Naive) | {skill.get('baseline_crps_seasonal_naive', 'N/A')} |",
         f"| Model CRPS | {skill['model_crps']:.4f} |",
-        f"| **CRPSS** | **{skill['crpss']:.4f}** |",
-        f"| Threshold (≥0.10) | {'✓ PASS' if skill['crpss_passes_threshold'] else '✗ FAIL'} |",
+        f"| CRPSS vs HA | {skill.get('crpss_vs_ha', skill.get('crpss', 0)):.4f} |",
+        f"| **CRPSS vs Seasonal Naive** | **{skill.get('crpss_vs_seasonal_naive', skill.get('crpss', 0)):.4f}** |",
+        f"| Threshold (≥0.10 vs SN) | {'✓ PASS' if skill['crpss_passes_threshold'] else '✗ FAIL'} |",
         f"",
         f"## Coverage Results by Calibration Method",
         f"",
@@ -910,7 +932,8 @@ def main() -> None:
     logger.info("\n" + "=" * 70)
     logger.info("  FINAL SUMMARY")
     logger.info("=" * 70)
-    logger.info(f"  CRPSS: {skill['crpss']:.4f}")
+    logger.info(f"  CRPSS vs HA: {skill.get('crpss_vs_ha', skill['crpss']):.4f}")
+    logger.info(f"  CRPSS vs Seasonal Naive: {skill.get('crpss_vs_seasonal_naive', skill['crpss']):.4f}")
     for method, cov in results["coverage_results"].items():
         if isinstance(cov, dict) and "marginal_coverage" in cov:
             logger.info(

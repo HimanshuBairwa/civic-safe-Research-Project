@@ -114,6 +114,51 @@ def run_historical_average(test_ds) -> dict[str, float]:
     return compute_metrics(targets, preds)
 
 
+def run_seasonal_naive(test_ds) -> dict[str, float]:
+    """Seasonal Naive: predict same week from last year (lag=52).
+    
+    This is the strongest naive baseline for weekly crime counts because
+    ~80% of the signal is seasonal + persistence (Opus analysis).
+    Y_hat(t) = Y(t-52) — the crime count from exactly 52 weeks ago.
+    Requires window_size >= 52.
+    
+    A model that cannot beat seasonal-naive is an instant desk-reject.
+    """
+    preds = []
+    targets = []
+    for idx in range(len(test_ds)):
+        item = test_ds[idx]
+        # input_counts has shape (S, W, C) where W is the window size
+        # The first timestep in the window is exactly W weeks ago
+        # For W=52, input_counts[:, 0, :] is the same week last year
+        pred = item["input_counts"][:, 0, :].numpy()  # (S, C) = lag-52
+        preds.append(pred)
+        targets.append(item["target_counts"].numpy())
+
+    preds = np.stack(preds)
+    targets = np.stack(targets)
+    return compute_metrics(targets, preds)
+
+
+def run_lag1_persistence(test_ds) -> dict[str, float]:
+    """Lag-1 Persistence: predict last week's count.
+    
+    Y_hat(t) = Y(t-1) — the simplest autoregressive baseline.
+    """
+    preds = []
+    targets = []
+    for idx in range(len(test_ds)):
+        item = test_ds[idx]
+        # Last timestep in the window = lag-1
+        pred = item["input_counts"][:, -1, :].numpy()  # (S, C)
+        preds.append(pred)
+        targets.append(item["target_counts"].numpy())
+
+    preds = np.stack(preds)
+    targets = np.stack(targets)
+    return compute_metrics(targets, preds)
+
+
 def run_starima(train_ds, test_ds, adj) -> dict[str, float]:
     """2. STARIMA baseline.
     
@@ -270,21 +315,33 @@ def main():
     res_ha = run_historical_average(splits["test"])
     results["HA"] = res_ha
     logger.info(f"  HA Results: {res_ha}")
+
+    # 2. Seasonal Naive (same week last year — the strongest naive baseline)
+    logger.info("Running Seasonal Naive (lag-52)...")
+    res_sn = run_seasonal_naive(splits["test"])
+    results["Seasonal_Naive"] = res_sn
+    logger.info(f"  Seasonal Naive Results: {res_sn}")
+
+    # 3. Lag-1 Persistence
+    logger.info("Running Lag-1 Persistence...")
+    res_l1 = run_lag1_persistence(splits["test"])
+    results["Lag1_Persistence"] = res_l1
+    logger.info(f"  Lag-1 Results: {res_l1}")
     
-    # 2. STARIMA
+    # 4. STARIMA
     logger.info("Running STARIMA...")
     res_starima = run_starima(splits["train"], splits["test"], adj)
     results["STARIMA"] = res_starima
     logger.info(f"  STARIMA Results: {res_starima}")
     
-    # 3. ZINB
+    # 5. ZINB
     logger.info("Running ZINB Regression...")
     res_zinb = run_zinb(splits["train"], splits["test"], adj)
     if res_zinb:
         results["ZINB"] = res_zinb
         logger.info(f"  ZINB Results: {res_zinb}")
         
-    # 4. XGBoost
+    # 6. XGBoost
     logger.info("Running Spatiotemporal XGBoost...")
     res_xgb = run_xgboost(splits["train"], splits["test"], adj)
     results["XGBoost"] = res_xgb
