@@ -1,0 +1,13 @@
+08:54:02 [INFO] __main__: ============================================================
+08:54:02 [INFO] __main__:   SEED 42
+08:54:02 [INFO] __main__: ============================================================
+Traceback (most recent call last):
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 323, in <module>
+    main()
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 290, in main
+    result = run_single_seed(seed, config, output_dir)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/civic-safe-Research-Project/scripts/train.py", line 69, in run_single_seed
+    data_name = data_cfg.get("city", "chicago")
+                ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'

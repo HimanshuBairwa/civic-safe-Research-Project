@@ -1,0 +1,143 @@
+08:08:33 [INFO] __main__: ============================================================
+08:08:33 [INFO] __main__:   SEED 42
+08:08:33 [INFO] __main__: ============================================================
+08:08:33 [INFO] __main__:   Loading REAL chicago panel from /workspace/civic-safe-Research-Project/data/processed/chicago_panel.pt...
+08:08:33 [INFO] __main__:   REAL data: 77 spatial × 313 time × 3 categories, 7 features
+08:08:33 [INFO] __main__:   Loading REAL geospatial graph from /workspace/civic-safe-Research-Project/data/processed/chicago_graph.pt...
+08:08:33 [INFO] civicsafe.models.dataset:   Chronological split:
+08:08:33 [INFO] civicsafe.models.dataset:     Train: weeks [0, 208) = 2018–2021
+08:08:33 [INFO] civicsafe.models.dataset:     Val:   weeks [208, 260) = 2022
+08:08:33 [INFO] civicsafe.models.dataset:     Test:  weeks [260, 313) = 2023
+08:08:33 [INFO] civicsafe.models.dataset:   Dataset: 156 windows, window_size=52, target range [52, 208)
+08:08:33 [INFO] civicsafe.models.dataset:   Dataset: 52 windows, window_size=52, target range [208, 260)
+08:08:33 [INFO] civicsafe.models.dataset:   Dataset: 53 windows, window_size=52, target range [260, 313)
+08:08:33 [INFO] __main__:   Model parameters: 688,521
+08:08:34 [INFO] civicsafe.training.trainer: Starting training: 200 epochs, device=cuda, amp=bf16
+/usr/local/lib/python3.12/dist-packages/torch/autograd/graph.py:825: UserWarning: Flash Attention defaults to a non-deterministic algorithm. To explicitly enable determinism call torch.use_deterministic_algorithms(True, warn_only=False). (Triggered internally at /opt/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/attention_backward.cu:102.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+08:10:35 [INFO] civicsafe.training.trainer: Epoch   0/200 | loss=14.5287 | CRPS=15.4024 | MAE=18.0202 | RMSE=30.1891 | Brier=0.2444 | LR=1.00e-04 | 121.9s
+08:10:36 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.402380 at epoch 0
+08:12:31 [INFO] civicsafe.training.trainer: Epoch   1/200 | loss=13.7124 | CRPS=15.4020 | MAE=18.0200 | RMSE=30.1889 | Brier=0.2443 | LR=2.00e-04 | 116.0s
+08:12:31 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.401958 at epoch 1
+08:14:27 [INFO] civicsafe.training.trainer: Epoch   2/200 | loss=12.5437 | CRPS=15.4010 | MAE=18.0195 | RMSE=30.1884 | Brier=0.2442 | LR=3.00e-04 | 115.7s
+08:14:27 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.401038 at epoch 2
+08:16:23 [INFO] civicsafe.training.trainer: Epoch   3/200 | loss=10.8705 | CRPS=15.3997 | MAE=18.0187 | RMSE=30.1877 | Brier=0.2440 | LR=4.00e-04 | 115.8s
+08:16:23 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.399672 at epoch 3
+08:18:19 [INFO] civicsafe.training.trainer: Epoch   4/200 | loss=8.5179 | CRPS=15.3978 | MAE=18.0177 | RMSE=30.1868 | Brier=0.2437 | LR=5.00e-04 | 115.8s
+08:18:19 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.397827 at epoch 4
+08:20:15 [INFO] civicsafe.training.trainer: Epoch   5/200 | loss=6.0904 | CRPS=15.3954 | MAE=18.0163 | RMSE=30.1855 | Brier=0.2433 | LR=6.00e-04 | 115.8s
+08:20:15 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.395440 at epoch 5
+08:22:10 [INFO] civicsafe.training.trainer: Epoch   6/200 | loss=4.6065 | CRPS=15.3924 | MAE=18.0146 | RMSE=30.1840 | Brier=0.2428 | LR=7.00e-04 | 115.6s
+08:22:10 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.392358 at epoch 6
+08:24:06 [INFO] civicsafe.training.trainer: Epoch   7/200 | loss=4.1986 | CRPS=15.3884 | MAE=18.0125 | RMSE=30.1820 | Brier=0.2420 | LR=8.00e-04 | 115.8s
+08:24:06 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.388402 at epoch 7
+08:26:01 [INFO] civicsafe.training.trainer: Epoch   8/200 | loss=3.9003 | CRPS=15.3835 | MAE=18.0097 | RMSE=30.1795 | Brier=0.2411 | LR=9.00e-04 | 115.1s
+08:26:01 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.383489 at epoch 8
+08:27:57 [INFO] civicsafe.training.trainer: Epoch   9/200 | loss=3.5976 | CRPS=15.3775 | MAE=18.0064 | RMSE=30.1765 | Brier=0.2400 | LR=1.00e-03 | 115.4s
+08:27:57 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.377499 at epoch 9
+08:29:52 [INFO] civicsafe.training.trainer: Epoch  10/200 | loss=3.3941 | CRPS=15.3703 | MAE=18.0023 | RMSE=30.1729 | Brier=0.2387 | LR=1.00e-03 | 115.2s
+08:29:52 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.370301 at epoch 10
+08:31:47 [INFO] civicsafe.training.trainer: Epoch  11/200 | loss=3.2403 | CRPS=15.3616 | MAE=17.9974 | RMSE=30.1685 | Brier=0.2373 | LR=1.00e-03 | 115.5s
+08:31:47 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.361631 at epoch 11
+08:33:43 [INFO] civicsafe.training.trainer: Epoch  12/200 | loss=3.1248 | CRPS=15.3513 | MAE=17.9915 | RMSE=30.1632 | Brier=0.2356 | LR=9.99e-04 | 115.2s
+08:33:43 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.351258 at epoch 12
+08:35:38 [INFO] civicsafe.training.trainer: Epoch  13/200 | loss=3.0424 | CRPS=15.3390 | MAE=17.9847 | RMSE=30.1569 | Brier=0.2338 | LR=9.99e-04 | 115.6s
+08:35:38 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.339047 at epoch 13
+08:37:33 [INFO] civicsafe.training.trainer: Epoch  14/200 | loss=3.0771 | CRPS=15.3250 | MAE=17.9767 | RMSE=30.1497 | Brier=0.2318 | LR=9.98e-04 | 115.2s
+08:37:33 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.324977 at epoch 14
+08:39:29 [INFO] civicsafe.training.trainer: Epoch  15/200 | loss=2.9700 | CRPS=15.3086 | MAE=17.9675 | RMSE=30.1413 | Brier=0.2296 | LR=9.98e-04 | 115.4s
+08:39:29 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.308640 at epoch 15
+08:41:24 [INFO] civicsafe.training.trainer: Epoch  16/200 | loss=2.8946 | CRPS=15.2898 | MAE=17.9568 | RMSE=30.1316 | Brier=0.2271 | LR=9.97e-04 | 115.2s
+08:41:24 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.289778 at epoch 16
+08:43:19 [INFO] civicsafe.training.trainer: Epoch  17/200 | loss=2.8459 | CRPS=15.2680 | MAE=17.9444 | RMSE=30.1204 | Brier=0.2244 | LR=9.96e-04 | 115.3s
+08:43:19 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.268037 at epoch 17
+08:45:15 [INFO] civicsafe.training.trainer: Epoch  18/200 | loss=2.8420 | CRPS=15.2431 | MAE=17.9300 | RMSE=30.1075 | Brier=0.2215 | LR=9.94e-04 | 115.4s
+08:45:15 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.243064 at epoch 18
+08:47:10 [INFO] civicsafe.training.trainer: Epoch  19/200 | loss=2.8044 | CRPS=15.2145 | MAE=17.9135 | RMSE=30.0926 | Brier=0.2184 | LR=9.93e-04 | 115.2s
+08:47:10 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.214543 at epoch 19
+08:49:05 [INFO] civicsafe.training.trainer: Epoch  20/200 | loss=2.7857 | CRPS=15.1820 | MAE=17.8946 | RMSE=30.0754 | Brier=0.2149 | LR=9.92e-04 | 115.4s
+08:49:05 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.182003 at epoch 20
+08:51:01 [INFO] civicsafe.training.trainer: Epoch  21/200 | loss=2.7856 | CRPS=15.1452 | MAE=17.8731 | RMSE=30.0559 | Brier=0.2111 | LR=9.90e-04 | 115.8s
+08:51:01 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.145197 at epoch 21
+08:52:56 [INFO] civicsafe.training.trainer: Epoch  22/200 | loss=2.7629 | CRPS=15.1039 | MAE=17.8487 | RMSE=30.0338 | Brier=0.2071 | LR=9.88e-04 | 115.2s
+08:52:56 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.103921 at epoch 22
+08:54:52 [INFO] civicsafe.training.trainer: Epoch  23/200 | loss=2.7746 | CRPS=15.0581 | MAE=17.8215 | RMSE=30.0090 | Brier=0.2029 | LR=9.87e-04 | 115.8s
+08:54:52 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.058114 at epoch 23
+08:56:48 [INFO] civicsafe.training.trainer: Epoch  24/200 | loss=2.7618 | CRPS=15.0075 | MAE=17.7912 | RMSE=29.9813 | Brier=0.1986 | LR=9.85e-04 | 116.2s
+08:56:48 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 15.007516 at epoch 24
+08:58:45 [INFO] civicsafe.training.trainer: Epoch  25/200 | loss=2.7506 | CRPS=14.9519 | MAE=17.7576 | RMSE=29.9506 | Brier=0.1941 | LR=9.83e-04 | 116.7s
+08:58:45 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.951905 at epoch 25
+09:00:40 [INFO] civicsafe.training.trainer: Epoch  26/200 | loss=2.7480 | CRPS=14.8910 | MAE=17.7205 | RMSE=29.9166 | Brier=0.1895 | LR=9.80e-04 | 115.4s
+09:00:40 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.891011 at epoch 26
+09:02:37 [INFO] civicsafe.training.trainer: Epoch  27/200 | loss=2.7530 | CRPS=14.8249 | MAE=17.6798 | RMSE=29.8793 | Brier=0.1849 | LR=9.78e-04 | 116.2s
+09:02:37 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.824858 at epoch 27
+09:04:33 [INFO] civicsafe.training.trainer: Epoch  28/200 | loss=2.7425 | CRPS=14.7535 | MAE=17.6355 | RMSE=29.8385 | Brier=0.1803 | LR=9.76e-04 | 115.8s
+09:04:33 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.753495 at epoch 28
+09:06:29 [INFO] civicsafe.training.trainer: Epoch  29/200 | loss=2.7390 | CRPS=14.6768 | MAE=17.5875 | RMSE=29.7941 | Brier=0.1758 | LR=9.73e-04 | 116.5s
+09:06:29 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.676847 at epoch 29
+09:08:25 [INFO] civicsafe.training.trainer: Epoch  30/200 | loss=2.7326 | CRPS=14.5950 | MAE=17.5361 | RMSE=29.7461 | Brier=0.1713 | LR=9.70e-04 | 115.8s
+09:08:25 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.595048 at epoch 30
+09:10:21 [INFO] civicsafe.training.trainer: Epoch  31/200 | loss=2.7280 | CRPS=14.5082 | MAE=17.4811 | RMSE=29.6944 | Brier=0.1670 | LR=9.67e-04 | 116.2s
+09:10:21 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.508224 at epoch 31
+09:12:17 [INFO] civicsafe.training.trainer: Epoch  32/200 | loss=2.7119 | CRPS=14.4165 | MAE=17.4226 | RMSE=29.6389 | Brier=0.1629 | LR=9.64e-04 | 115.7s
+09:12:17 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.416515 at epoch 32
+09:14:13 [INFO] civicsafe.training.trainer: Epoch  33/200 | loss=2.7221 | CRPS=14.3198 | MAE=17.3601 | RMSE=29.5795 | Brier=0.1590 | LR=9.61e-04 | 115.8s
+09:14:13 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.319766 at epoch 33
+09:16:09 [INFO] civicsafe.training.trainer: Epoch  34/200 | loss=2.7016 | CRPS=14.2185 | MAE=17.2937 | RMSE=29.5162 | Brier=0.1552 | LR=9.58e-04 | 116.3s
+09:16:09 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.218492 at epoch 34
+09:18:05 [INFO] civicsafe.training.trainer: Epoch  35/200 | loss=2.6951 | CRPS=14.1131 | MAE=17.2238 | RMSE=29.4492 | Brier=0.1518 | LR=9.55e-04 | 116.6s
+09:18:05 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.113132 at epoch 35
+09:20:01 [INFO] civicsafe.training.trainer: Epoch  36/200 | loss=2.6954 | CRPS=14.0038 | MAE=17.1503 | RMSE=29.3785 | Brier=0.1485 | LR=9.51e-04 | 115.5s
+09:20:01 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 14.003771 at epoch 36
+09:21:57 [INFO] civicsafe.training.trainer: Epoch  37/200 | loss=2.7158 | CRPS=13.8912 | MAE=17.0735 | RMSE=29.3043 | Brier=0.1456 | LR=9.47e-04 | 116.4s
+09:21:57 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.891168 at epoch 37
+09:23:53 [INFO] civicsafe.training.trainer: Epoch  38/200 | loss=2.6911 | CRPS=13.7759 | MAE=16.9939 | RMSE=29.2269 | Brier=0.1429 | LR=9.44e-04 | 115.7s
+09:23:53 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.775864 at epoch 38
+09:25:49 [INFO] civicsafe.training.trainer: Epoch  39/200 | loss=2.6752 | CRPS=13.6585 | MAE=16.9120 | RMSE=29.1464 | Brier=0.1405 | LR=9.40e-04 | 116.1s
+09:25:49 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.658529 at epoch 39
+09:27:46 [INFO] civicsafe.training.trainer: Epoch  40/200 | loss=2.6730 | CRPS=13.5390 | MAE=16.8278 | RMSE=29.0627 | Brier=0.1384 | LR=9.36e-04 | 116.6s
+09:27:46 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.539045 at epoch 40
+09:29:42 [INFO] civicsafe.training.trainer: Epoch  41/200 | loss=2.6844 | CRPS=13.4172 | MAE=16.7414 | RMSE=28.9758 | Brier=0.1365 | LR=9.32e-04 | 115.8s
+09:29:42 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.417164 at epoch 41
+09:31:37 [INFO] civicsafe.training.trainer: Epoch  42/200 | loss=2.6351 | CRPS=13.2939 | MAE=16.6532 | RMSE=28.8858 | Brier=0.1349 | LR=9.27e-04 | 115.4s
+09:31:37 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.293852 at epoch 42
+09:33:32 [INFO] civicsafe.training.trainer: Epoch  43/200 | loss=2.6291 | CRPS=13.1693 | MAE=16.5632 | RMSE=28.7930 | Brier=0.1335 | LR=9.23e-04 | 115.4s
+09:33:33 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.169308 at epoch 43
+09:35:28 [INFO] civicsafe.training.trainer: Epoch  44/200 | loss=2.6145 | CRPS=13.0439 | MAE=16.4716 | RMSE=28.6974 | Brier=0.1324 | LR=9.19e-04 | 115.6s
+09:35:28 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 13.043880 at epoch 44
+09:39:49 [INFO] civicsafe.training.trainer: Epoch  45/200 | loss=2.6203 | CRPS=12.9178 | MAE=16.3785 | RMSE=28.5992 | Brier=0.1314 | LR=9.14e-04 | 260.9s
+09:39:49 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.917754 at epoch 45
+09:45:38 [INFO] civicsafe.training.trainer: Epoch  46/200 | loss=2.6256 | CRPS=12.7914 | MAE=16.2842 | RMSE=28.4987 | Brier=0.1307 | LR=9.09e-04 | 348.8s
+09:45:38 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.791418 at epoch 46
+09:51:14 [INFO] civicsafe.training.trainer: Epoch  47/200 | loss=2.6076 | CRPS=12.7466 | MAE=16.1888 | RMSE=28.3962 | Brier=0.1302 | LR=9.05e-04 | 336.4s
+09:51:14 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.746600 at epoch 47
+09:56:47 [INFO] civicsafe.training.trainer: Epoch  48/200 | loss=2.6001 | CRPS=12.7002 | MAE=16.0935 | RMSE=28.2920 | Brier=0.1298 | LR=9.00e-04 | 332.5s
+09:56:47 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.700193 at epoch 48
+10:02:34 [INFO] civicsafe.training.trainer: Epoch  49/200 | loss=2.5940 | CRPS=12.7210 | MAE=15.9978 | RMSE=28.1861 | Brier=0.1295 | LR=8.95e-04 | 347.7s
+10:02:34 [INFO] civicsafe.training.early_stopping:   EarlyStopping: no improvement for 1/10 epochs (best = 12.700193)
+10:08:22 [INFO] civicsafe.training.trainer: Epoch  50/200 | loss=2.5940 | CRPS=12.6660 | MAE=15.9024 | RMSE=28.0787 | Brier=0.1294 | LR=8.89e-04 | 347.3s
+10:08:22 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.665985 at epoch 50
+10:13:27 [INFO] civicsafe.training.trainer: Epoch  51/200 | loss=2.6140 | CRPS=12.6104 | MAE=15.8077 | RMSE=27.9701 | Brier=0.1295 | LR=8.84e-04 | 305.2s
+10:13:27 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.610439 at epoch 51
+10:17:14 [INFO] civicsafe.training.trainer: Epoch  52/200 | loss=2.5930 | CRPS=12.5528 | MAE=15.7127 | RMSE=27.8601 | Brier=0.1296 | LR=8.79e-04 | 226.9s
+10:17:14 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.552794 at epoch 52
+10:19:31 [INFO] civicsafe.training.trainer: Epoch  53/200 | loss=2.5964 | CRPS=12.4955 | MAE=15.6186 | RMSE=27.7494 | Brier=0.1298 | LR=8.73e-04 | 137.2s
+10:19:31 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.495525 at epoch 53
+10:21:50 [INFO] civicsafe.training.trainer: Epoch  54/200 | loss=2.5855 | CRPS=12.4370 | MAE=15.5252 | RMSE=27.6379 | Brier=0.1300 | LR=8.68e-04 | 139.3s
+10:21:50 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.436960 at epoch 54
+10:24:05 [INFO] civicsafe.training.trainer: Epoch  55/200 | loss=2.5929 | CRPS=12.3764 | MAE=15.4321 | RMSE=27.5251 | Brier=0.1304 | LR=8.62e-04 | 134.3s
+10:24:05 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.376426 at epoch 55
+10:26:13 [INFO] civicsafe.training.trainer: Epoch  56/200 | loss=2.5767 | CRPS=12.3154 | MAE=15.3403 | RMSE=27.4119 | Brier=0.1308 | LR=8.56e-04 | 128.3s
+10:26:13 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.315392 at epoch 56
+10:28:22 [INFO] civicsafe.training.trainer: Epoch  57/200 | loss=2.5894 | CRPS=12.3031 | MAE=15.2490 | RMSE=27.2978 | Brier=0.1312 | LR=8.51e-04 | 129.3s
+10:28:22 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.303052 at epoch 57
+10:30:31 [INFO] civicsafe.training.trainer: Epoch  58/200 | loss=2.5730 | CRPS=12.2414 | MAE=15.1598 | RMSE=27.1839 | Brier=0.1316 | LR=8.45e-04 | 128.6s
+10:30:31 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.241442 at epoch 58
+10:32:28 [INFO] civicsafe.training.trainer: Epoch  59/200 | loss=2.5719 | CRPS=12.1775 | MAE=15.0703 | RMSE=27.0686 | Brier=0.1320 | LR=8.39e-04 | 116.9s
+10:32:28 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.177451 at epoch 59
+10:34:25 [INFO] civicsafe.training.trainer: Epoch  60/200 | loss=2.5660 | CRPS=12.1148 | MAE=14.9820 | RMSE=26.9533 | Brier=0.1325 | LR=8.33e-04 | 117.2s
+10:34:25 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.114819 at epoch 60
+10:36:30 [INFO] civicsafe.training.trainer: Epoch  61/200 | loss=2.5778 | CRPS=12.0526 | MAE=14.8944 | RMSE=26.8376 | Brier=0.1329 | LR=8.26e-04 | 124.4s
+10:36:30 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 12.052637 at epoch 61
+10:38:31 [INFO] civicsafe.training.trainer: Epoch  62/200 | loss=2.5634 | CRPS=11.9913 | MAE=14.8079 | RMSE=26.7219 | Brier=0.1334 | LR=8.20e-04 | 121.6s
+10:38:31 [INFO] civicsafe.training.early_stopping:   EarlyStopping: new best metric = 11.991307 at epoch 62

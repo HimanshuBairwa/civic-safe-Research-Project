@@ -1,0 +1,20 @@
+{
+  "os": "Linux-5.15.0-1053-nvidia-x86_64-with-glibc2.39",
+  "python": "CPython 3.12.3",
+  "startedAt": "2026-06-08T07:53:58.924663Z",
+  "args": [
+    "data=chicago"
+  ],
+  "program": "/workspace/civic-safe-Research-Project/scripts/train.py",
+  "codePath": "scripts/train.py",
+  "codePathLocal": "scripts/train.py",
+  "git": {
+    "remote": "https://github.com/HimanshuBairwa/civic-safe-Research-Project.git",
+    "commit": "da3799b15d058f182602b661899193302c7fd33e"
+  },
+  "email": "bairwahimanshu29@gmail.com",
+  "root": "outputs/run_1780905237",
+  "host": "f451679cd68b",
+  "executable": "/usr/bin/python",
+  "writerId": "384p8w2sf79hrthgvaxrnoix2lje5kp7"
+}
