@@ -68,13 +68,21 @@ training:
     # it evaluates the full predictive distribution, not just point estimates.
     metric: val_crps
 
-    # Number of epochs without improvement before stopping. Range [5, 30].
-    # 10 epochs balances patience (avoiding premature termination during
-    # learning-rate warmup) with efficiency (not wasting GPU hours).
-    patience: 10
+    # Number of epochs without improvement before stopping. Range [5, 50].
+    # 30 epochs allows the cosine LR schedule to reach the exploitative decay
+    # phase. Previous value of 10 killed training at 92.7% of peak LR
+    # (epoch 42 out of 200), preventing fine-grained optimization.
+    patience: 30
 
     # 'min' = lower is better (CRPS is a loss).
     mode: min
+
+  # --- r-floor regularization (prevents ZINB distributional collapse) ---
+  # Opus formula: relu(r_floor - r_i).mean() penalizes each cell individually
+  # before averaging. Prevents r-collapse where the model sharpens medians
+  # (improving MAE) while destroying distributional calibration (degrading CRPS).
+  r_reg_lambda: 0.1
+  r_reg_floor: 0.5
 
   # --- Batch size ---
   # Number of (spatial_unit, time_window) samples per gradient step.

@@ -81,6 +81,11 @@ class Trainer:
         self.use_mixed_precision = train_cfg.get("mixed_precision", True)
         self.diversity_lambda = train_cfg.get("diversity_lambda", 0.1)
 
+        # r-floor regularization (Opus formula: per-cell penalty)
+        # Prevents ZINB dispersion collapse that degrades CRPS while MAE improves
+        self.r_reg_lambda = train_cfg.get("r_reg_lambda", 0.1)
+        self.r_reg_floor = train_cfg.get("r_reg_floor", 0.5)
+
         # --- Model ---
         self.model = model.to(self.device)
 
@@ -216,6 +221,11 @@ class Trainer:
                 model=eval_model,
             )
 
+            # --- Save checkpoint on improvement ---
+            if self.early_stopping.counter == 0:  # Just improved
+                ckpt_path = self.output_dir / "best.pt"
+                self.save_checkpoint(ckpt_path, epoch, val_metrics)
+
             if should_stop:
                 logger.info(
                     f"Early stopping triggered at epoch {epoch}. "
@@ -306,11 +316,24 @@ class Trainer:
                 y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
             )
 
+            # r-floor regularization (Opus formula: per-cell then average)
+            # Penalizes each cell where r < r_floor individually, preventing
+            # heavy-tailed cells from collapsing while batch mean stays safe.
+            # Ref: Conflict A resolution — Opus > Fable formulation
+            r_penalty = torch.nn.functional.relu(
+                self.r_reg_floor - r.reshape(-1)
+            ).mean()
+
             # Diversity regularization from MFFM
             div_loss = output.get(
                 "diversity_loss", torch.tensor(0.0, device=self.device)
             )
-            total_loss = total_loss + zinb_nll + self.diversity_lambda * div_loss
+            total_loss = (
+                total_loss
+                + zinb_nll
+                + self.diversity_lambda * div_loss
+                + self.r_reg_lambda * r_penalty
+            )
 
         # Average over batch
         total_loss = total_loss / B
