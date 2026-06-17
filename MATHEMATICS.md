@@ -192,3 +192,49 @@ $$\mathcal{L}_{r\text{-reg}} = \lambda_r \cdot \frac{1}{|\mathcal{B}|} \sum_{i \
 where $r_{\text{reg}} = 0.5$ (regularization floor, distinct from the hard floor $r_{\text{floor}} = 0.1$ in the architecture) and $\lambda_r = 0.1$.
 
 **Why per-cell, not batch-mean**: A batch-mean penalty $\text{ReLU}(r_{\text{reg}} - \bar{r})$ allows some cells to collapse to near-zero while others compensate by staying high. The per-cell formulation prevents any individual cell from collapsing.
+
+## 10. Sharpness-Aware Calibration Loss (Novel Contribution)
+
+### 10.1 Motivation
+
+Gneiting, Balabdaoui & Raftery (2007) established the foundational principle of probabilistic forecasting: **"maximize sharpness subject to calibration."** CRPS implicitly captures this tradeoff (it decomposes into reliability + resolution/sharpness), but doesn't explicitly control each component.
+
+SAC makes the sharpness-calibration tradeoff *explicit* in the training objective:
+
+$$\mathcal{L}_{\text{SAC}} = \underbrace{\text{CRPS}(F_{\text{ZINB}}, y)}_{\text{calibration}} + \lambda_s \cdot \underbrace{\log(1 + \text{Var}[Y_{\text{ZINB}}])}_{\text{sharpness}} + \lambda_r \cdot \underbrace{\text{ReLU}(r_{\text{floor}} - r)}_{\text{anti-collapse}}$$
+
+### 10.2 ZINB Variance (Differentiable)
+
+The variance of a ZINB random variable is:
+$$\text{Var}[Y_{\text{ZINB}}] = (1-\pi)\mu + (1-\pi)\frac{\mu^2}{r} + \pi(1-\pi)\mu^2$$
+
+Decomposition:
+- $(1-\pi)\mu$: Poisson-like baseline variance
+- $(1-\pi)\mu^2/r$: NB overdispersion (grows as $r \to 0$)
+- $\pi(1-\pi)\mu^2$: Zero-inflation variance
+
+The log-variance penalty $\log(1 + \text{Var})$ is used instead of raw variance because crime count variances span many orders of magnitude, and the log transform provides scale invariance.
+
+### 10.3 Why SAC > Pure CRPS
+
+CRPS rewards any calibrated distribution. But a calibrated distribution can be unnecessarily wide — it just needs to assign correct probabilities. SAC explicitly penalizes excess width (sharpness term), producing distributions that are both calibrated AND tight. This translates directly to narrower prediction intervals after conformal calibration, which is the ultimate practical objective.
+
+## 11. EMOS Ensemble (Cross-Domain Import from Meteorology)
+
+### 11.1 Mixture ZINB Distribution
+
+Given $K$ trained models (seeds), each producing ZINB parameters $(\pi_k, \mu_k, r_k)$, the ensemble prediction is the mixture:
+
+$$P_{\text{ens}}(Y = y) = \frac{1}{K}\sum_{k=1}^{K} P_{\text{ZINB}}(Y = y \mid \pi_k, \mu_k, r_k)$$
+
+### 11.2 Mixture CDF and CRPS
+
+The mixture CDF is simply the average of individual CDFs:
+$$F_{\text{ens}}(j) = \frac{1}{K}\sum_{k=1}^{K} F_{\text{ZINB}}(j \mid \pi_k, \mu_k, r_k)$$
+
+CRPS of the mixture is then:
+$$\text{CRPS}(F_{\text{ens}}, y) = \sum_{j=0}^{K_{\max}} \left[\frac{1}{K}\sum_{k=1}^{K} F_{\text{ZINB}}^{(k)}(j) - \mathbb{1}(y \leq j)\right]^2$$
+
+### 11.3 Expected Improvement
+
+In weather forecasting (Gneiting et al., 2005; Raftery et al., 2005), EMOS typically improves CRPS by 10–30% over the best individual model. This is because model diversity (from different random seeds) captures uncertainty that any single model cannot. The improvement is essentially "free" — no additional training cost.
