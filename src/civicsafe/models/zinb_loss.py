@@ -19,6 +19,10 @@ from torch import Tensor
 
 from civicsafe.utils.numerics import NUMERICAL_EPS
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ZINBLoss(nn.Module):
     """Zero-Inflated Negative Binomial negative log-likelihood.
@@ -105,8 +109,14 @@ class ZINBLoss(nn.Module):
         # Negative log-likelihood
         nll = -log_prob
 
-        # Catch any NaN/Inf that slipped through (defensive)
-        nll = torch.where(torch.isfinite(nll), nll, torch.zeros_like(nll))
+        # Replace NaN/Inf with large penalty (not zero!) to prevent silent reward.
+        # Zero replacement would give NaN-producing cells zero gradient, letting
+        # their parameters drift uncorrected. A large penalty pushes them back
+        # to safe parameter ranges.
+        nan_count = (~torch.isfinite(nll)).sum()
+        if nan_count > 0:
+            logger.warning(f"ZINB NLL: {nan_count.item()} NaN/Inf values replaced with penalty")
+        nll = torch.where(torch.isfinite(nll), nll, torch.full_like(nll, 50.0))
 
         if self.reduction == "mean":
             return nll.mean()

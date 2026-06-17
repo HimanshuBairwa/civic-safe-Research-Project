@@ -64,6 +64,7 @@ def run_single_seed(
         Dictionary with training history and best metrics.
     """
     from civicsafe.models.civicsafe_model import CivicSafeModel
+    from civicsafe.models.civicsafe_model_v2 import CivicSafeModelV2
     from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
     from civicsafe.training.trainer import Trainer
     from civicsafe.utils.seeding import seed_everything
@@ -187,18 +188,35 @@ def run_single_seed(
         collate_fn=collate_fn,
     )
 
-    # --- Model ---
-    model = CivicSafeModel(
-        num_features=F,
-        hidden_dim=spatial_cfg.get("hidden_dim", 128),
-        spatial_layers=spatial_cfg.get("num_layers", 2),
-        spatial_heads=spatial_cfg.get("num_heads", 4),
-        temporal_layers=temporal_cfg.get("num_layers", 2),
-        temporal_heads=temporal_cfg.get("num_heads", 4),
-        temporal_ff_dim=temporal_cfg.get("dim_feedforward", 512),
-        num_categories=C,
-        max_seq_len=temporal_cfg.get("max_seq_len", 52),
-    )
+    # --- Model (architecture selection) ---
+    arch = model_cfg.get("architecture", "sequential")
+    logger.info(f"  Architecture: {arch}")
+
+    if arch == "unified":
+        # V2: Spatiotemporal Graph Transformer (joint space-time attention)
+        model = CivicSafeModelV2(
+            num_features=F,
+            hidden_dim=spatial_cfg.get("hidden_dim", 128),
+            st_layers=temporal_cfg.get("num_layers", 3),
+            st_heads=temporal_cfg.get("num_heads", 4),
+            st_ff_dim=temporal_cfg.get("dim_feedforward", 512),
+            max_nodes=S,
+            max_seq_len=temporal_cfg.get("max_seq_len", 52),
+            num_categories=C,
+        )
+    else:
+        # V1: Sequential GATv2 → Transformer (default)
+        model = CivicSafeModel(
+            num_features=F,
+            hidden_dim=spatial_cfg.get("hidden_dim", 128),
+            spatial_layers=spatial_cfg.get("num_layers", 2),
+            spatial_heads=spatial_cfg.get("num_heads", 4),
+            temporal_layers=temporal_cfg.get("num_layers", 2),
+            temporal_heads=temporal_cfg.get("num_heads", 4),
+            temporal_ff_dim=temporal_cfg.get("dim_feedforward", 512),
+            num_categories=C,
+            max_seq_len=temporal_cfg.get("max_seq_len", 52),
+        )
     num_params = sum(p.numel() for p in model.parameters())
     logger.info(f"  Model parameters: {num_params:,}")
 
