@@ -4,7 +4,7 @@ Native PyTorch training loop with:
   - BFloat16 mixed precision (A100-optimized, no GradScaler needed)
   - EMA model averaging (decay=0.999)
   - Per-step cosine warmup scheduler
-  - Dual loss: ZINB NLL + λ·diversity penalty
+  - Configurable loss: CRPS-direct / ZINB NLL / blended + λ·diversity penalty
   - Gradient clipping (global norm)
   - Non-blocking GPU transfers
   - Atomic checkpoint saves
@@ -85,6 +85,12 @@ class Trainer:
         # Prevents ZINB dispersion collapse that degrades CRPS while MAE improves
         self.r_reg_lambda = train_cfg.get("r_reg_lambda", 0.1)
         self.r_reg_floor = train_cfg.get("r_reg_floor", 0.5)
+
+        # Loss function selection: 'nll', 'crps', or 'blended'
+        # CRPS-direct training eliminates the train-eval metric mismatch
+        # that causes negative CRPSS when training on NLL.
+        self.loss_fn = train_cfg.get("loss_fn", "crps")
+        self.crps_blend_alpha = train_cfg.get("crps_blend_alpha", 0.5)
 
         # --- Model ---
         self.model = model.to(self.device)
@@ -312,9 +318,31 @@ class Trainer:
             r = output["r"].float()
             y = target_i.float()
 
-            zinb_nll = self.zinb_loss(
-                y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
-            )
+            # --- Primary loss computation ---
+            if self.loss_fn == "nll":
+                primary_loss = self.zinb_loss(
+                    y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
+                )
+            elif self.loss_fn == "crps":
+                # CRPS-direct training: eliminates train-eval metric mismatch
+                # The CDF summation is fully differentiable through ZINB params
+                primary_loss = crps_zinb(
+                    y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
+                ).mean()
+            elif self.loss_fn == "blended":
+                # Blended: α·CRPS + (1-α)·NLL for smooth transition
+                nll_loss = self.zinb_loss(
+                    y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
+                )
+                crps_loss = crps_zinb(
+                    y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1)
+                ).mean()
+                primary_loss = (
+                    self.crps_blend_alpha * crps_loss
+                    + (1.0 - self.crps_blend_alpha) * nll_loss
+                )
+            else:
+                raise ValueError(f"Unknown loss_fn: {self.loss_fn}")
 
             # r-floor regularization (Opus formula: per-cell then average)
             # Penalizes each cell where r < r_floor individually, preventing
@@ -330,7 +358,7 @@ class Trainer:
             )
             total_loss = (
                 total_loss
-                + zinb_nll
+                + primary_loss
                 + self.diversity_lambda * div_loss
                 + self.r_reg_lambda * r_penalty
             )

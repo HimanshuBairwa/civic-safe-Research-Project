@@ -84,6 +84,13 @@ training:
   r_reg_lambda: 0.1
   r_reg_floor: 0.5
 
+  # --- Loss function selection ---
+  # 'crps': Train directly on CRPS (recommended - eliminates train-eval mismatch)
+  # 'nll': Train on ZINB negative log-likelihood (legacy)
+  # 'blended': Weighted combination α·CRPS + (1-α)·NLL
+  loss_fn: crps
+  crps_blend_alpha: 0.5
+
   # --- Batch size ---
   # Number of (spatial_unit, time_window) samples per gradient step.
   # Range [4, 64]. 16 fits comfortably in 12 GB GPU memory with the

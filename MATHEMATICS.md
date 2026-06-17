@@ -47,10 +47,13 @@ $$\mathbf{h}_i' = \sigma\left(\sum_{j \in \mathcal{N}_{\text{queen}}(i) \cup \ma
 
 To prevent the model from overfitting to demographic covariates (a common source of proxy bias in predictive policing), the Temporal Encoder output is passed through a multi-head gating mechanism.
 
-### 3.1 Gated Cross-Attention
-Each head $k$ produces an attention distribution over the feature dimensions:
-$$\mathbf{g}_k = \text{softmax}\left(\frac{\mathbf{W}_Q^{(k)}\mathbf{x} \cdot (\mathbf{W}_K^{(k)}\mathbf{x})^\top}{\tau}\right)$$
-Where $\tau$ is the temperature parameter controlling sparsity.
+### 3.1 Feature Gating (Squeeze-and-Excitation Style)
+Each head $k$ produces an attention distribution over the feature dimensions via a learned linear projection:
+$$\mathbf{g}_k = \text{softmax}\left(\frac{\mathbf{W}^{(k)}\mathbf{x}}{\tau}\right)$$
+Where $\tau$ is the temperature parameter controlling sparsity. The gated output is the element-wise product:
+$$\mathbf{h}_k = \mathbf{x} \odot \mathbf{g}_k$$
+
+This is analogous to a Squeeze-and-Excitation block (Hu et al., 2018) with softmax normalization instead of sigmoid, applied independently per factor head to encourage diverse feature utilization.
 
 ### 3.2 Diversity Regularisation (Jensen-Shannon Divergence)
 To force the model to distribute its attention across diverse factors rather than collapsing onto a single proxy variable, we apply a pairwise Jensen-Shannon Divergence (JSD) penalty across all $K$ heads.
@@ -81,3 +84,111 @@ The risk mapping function converts the ZINB parameters for edge $e$ into a scala
 $$\rho_e = f(\mu_e, r_e, \pi_e) = (1 - \pi_e) \cdot \mu_e + \lambda_{\text{unc}} \cdot (1 - \pi_e) \cdot \frac{\mu_e(\mu_e + r_e)}{r_e}$$
 
 The Tsinghua SSSP algorithm is used to find the optimal path. If the peak uncertainty along the optimal path exceeds a critical threshold, the engine executes an **Abstention Protocol** and refuses to return a route, preventing false assurances of safety.
+
+## 6. CRPS-Direct Training (Novel Contribution)
+
+### 6.1 The Train-Eval Mismatch Problem
+
+Standard ZINB crime forecasting models (including STMGNN-ZINB, Wang et al. 2024) train by minimizing the negative log-likelihood:
+$$\mathcal{L}_{\text{NLL}} = -\frac{1}{N}\sum_{i=1}^{N} \log P(y_i \mid \pi_i, \mu_i, r_i)$$
+
+But they are *evaluated* using CRPS, which measures distributional calibration:
+$$\text{CRPS}(F, y) = \sum_{k=0}^{K_{\max}} \left[F_{\text{ZINB}}(k) - \mathbb{1}(y \leq k)\right]^2$$
+
+NLL and CRPS are both strictly proper scoring rules (Gneiting & Raftery, 2007), but they emphasize different aspects: NLL rewards density sharpness at the observed value, while CRPS rewards overall distributional calibration. In practice, NLL-trained models can achieve low NLL while having poor CRPS (the *r-collapse* failure mode), because NLL incentivizes narrowing the distribution around the mode, potentially at the expense of tail calibration.
+
+### 6.2 Differentiable CRPS Loss
+
+CRPS is fully differentiable with respect to the ZINB parameters $(\pi, \mu, r)$:
+
+$$\frac{\partial \text{CRPS}}{\partial \theta} = \sum_{k=0}^{K_{\max}} 2\left[F_{\text{ZINB}}(k; \theta) - \mathbb{1}(y \leq k)\right] \cdot \frac{\partial F_{\text{ZINB}}(k; \theta)}{\partial \theta}$$
+
+where $\theta \in \{\pi, \mu, r\}$. The indicator function $\mathbb{1}(y \leq k)$ has zero gradient (it's a constant for a given observation), so gradients flow entirely through the CDF $F_{\text{ZINB}}$.
+
+The CDF is computed via cumulative summation of the PMF: $F_{\text{ZINB}}(k) = \pi + (1-\pi)\sum_{j=0}^{k} \text{PMF}_{\text{NB}}(j; \mu, r)$, which involves only differentiable operations (`lgamma`, `exp`, `cumsum`).
+
+### 6.3 Blended Loss
+
+For transitional training or hyperparameter search, we support a blended loss:
+$$\mathcal{L}_{\text{blend}} = \alpha \cdot \text{CRPS} + (1-\alpha) \cdot \text{NLL}$$
+
+with $\alpha \in [0, 1]$. Setting $\alpha = 1$ gives pure CRPS training; $\alpha = 0$ gives legacy NLL training.
+
+## 7. Spatiotemporal Graph Transformer (V2 Architecture)
+
+### 7.1 Motivation
+
+The sequential V1 architecture applies spatial encoding (GATv2) and temporal encoding (Transformer) independently. This means the temporal encoder processes each spatial unit as an independent sequence — it cannot capture cross-spatial temporal patterns (e.g., "crime rose across the entire south side this week").
+
+### 7.2 Unified Token Representation
+
+We define a spatiotemporal token for each (node, timestep) pair. For $S$ spatial units and $T$ timesteps, the token sequence has length $L = S \times T$.
+
+The positional encoding combines learnable spatial embeddings with sinusoidal temporal encodings:
+$$\text{PE}(s, t) = \text{Emb}_{\text{spatial}}(s) + \text{PE}_{\text{sinusoidal}}(t)$$
+
+### 7.3 Structured Attention Mask
+
+The key innovation is a structured attention mask $M \in \{0, -\infty\}^{L \times L}$ that enforces:
+
+1. **Causal temporal self-attention**: Token $(s, t_1)$ can attend to $(s, t_2)$ iff $t_2 \leq t_1$ (same node, past/current time)
+2. **Same-timestep spatial cross-attention**: Token $(s_1, t)$ can attend to $(s_2, t)$ iff $(s_2 \to s_1) \in \mathcal{E}$ (graph neighbors at the same time)
+3. **No future leakage**: No token can attend to any future timestep
+
+Formally:
+$$M[(s_1, t_1), (s_2, t_2)] = \begin{cases} 0 & \text{if } s_1 = s_2 \text{ and } t_2 \leq t_1 \\ 0 & \text{if } (s_2, s_1) \in \mathcal{E} \text{ and } t_1 = t_2 \\ -\infty & \text{otherwise} \end{cases}$$
+
+**Complexity**: $O(S^2T + ST^2)$ per layer with the structured mask (sparse attention), compared to $O(S^2T^2)$ for dense attention. For $S=77, T=52$, this is $\approx 5.2\text{M}$ attention entries vs. $16.1\text{M}$ for dense — feasible on standard hardware.
+
+## 8. Adaptive Temporal ECRC (Novel Contribution)
+
+### 8.1 Conformal Prediction Background
+
+Given a calibration set $\{(X_i, Y_i)\}_{i=1}^n$ and non-conformity scores $s_i = \max(q_{\alpha/2}^{(i)} - Y_i, Y_i - q_{1-\alpha/2}^{(i)})$ (CQR scores from the ZINB quantile function), the conformal threshold is:
+$$\hat{q} = \text{Quantile}\left(\frac{\lceil(n+1)(1-\alpha)\rceil}{n}, \{s_1, \ldots, s_n\}\right)$$
+
+### 8.2 Equalized Conditional Risk Control (ECRC)
+
+For $G$ demographic groups, ECRC computes per-group thresholds $\hat{q}_g$ with Hoeffding-bounded risk control:
+$$P\left[\text{Coverage}_g \geq 1 - \alpha - \epsilon_g\right] \geq 1 - \delta_g$$
+
+where $\epsilon_g = \sqrt{\frac{\log(2/\delta_g)}{2n_g}}$ is the Hoeffding slack for group $g$ with $n_g$ calibration samples.
+
+### 8.3 Adaptive Temporal Extension (Our Contribution)
+
+Crime data is non-stationary: crime patterns shift due to policy changes, seasonal effects, and socioeconomic trends. Standard conformal prediction assumes exchangeability, which fails under drift.
+
+Our Adaptive Temporal ECRC extends the ECRC framework with an online gradient descent update rule inspired by Adaptive Conformal Inference (Gibbs & Candès, 2021):
+
+$$\alpha_{t,g} \leftarrow \text{clip}\left[\alpha_{t-1,g} + \gamma \cdot \left(\hat{\text{err}}_{t-1,g} - \alpha\right), \; 0.01, \; 0.99\right]$$
+
+where:
+- $\alpha_{t,g}$ is the per-group miscoverage target at time $t$
+- $\hat{\text{err}}_{t-1,g}$ is the observed empirical miscoverage for group $g$ at time $t-1$
+- $\gamma > 0$ is the learning rate (step size)
+
+**Theorem (Informal)**. Under bounded variance of per-group coverage errors, the time-averaged per-group miscoverage converges:
+$$\limsup_{T \to \infty} \frac{1}{T} \sum_{t=1}^T \mathbb{1}[Y_t \notin \hat{C}_t \mid G_t = g] \leq \alpha + O\left(\frac{1}{\gamma T}\right)$$
+
+This follows from the standard Online Gradient Descent regret bound applied to the per-group miscoverage loss.
+
+## 9. r-Collapse Diagnosis and Regularization (Novel Contribution)
+
+### 9.1 The r-Collapse Failure Mode
+
+When training ZINB models with NLL, the dispersion parameter $r$ can collapse toward its floor value. This happens because:
+
+1. As $r \to 0$, the NB variance $\sigma^2 = \mu + \mu^2/r \to \infty$, creating a heavy-tailed distribution
+2. A heavy-tailed distribution assigns non-negligible probability to the observed $y$, resulting in acceptable NLL
+3. But the distribution is poorly calibrated — CRPS degrades because the CDF is too spread
+
+Empirically, we observe $r$ collapsing to $r_{\text{floor}} = 0.1$ across many cells while MAE *improves* (the mode prediction gets better) but CRPS *degrades* (the distribution gets worse). This "hidden Goodhart" effect is the primary reason NLL-trained ZINB models have poor distributional calibration.
+
+### 9.2 Per-Cell Regularization
+
+We apply a per-cell penalty that individually penalizes cells where $r < r_{\text{reg}}$:
+$$\mathcal{L}_{r\text{-reg}} = \lambda_r \cdot \frac{1}{|\mathcal{B}|} \sum_{i \in \mathcal{B}} \text{ReLU}(r_{\text{reg}} - r_i)$$
+
+where $r_{\text{reg}} = 0.5$ (regularization floor, distinct from the hard floor $r_{\text{floor}} = 0.1$ in the architecture) and $\lambda_r = 0.1$.
+
+**Why per-cell, not batch-mean**: A batch-mean penalty $\text{ReLU}(r_{\text{reg}} - \bar{r})$ allows some cells to collapse to near-zero while others compensate by staying high. The per-cell formulation prevents any individual cell from collapsing.

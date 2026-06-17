@@ -7,6 +7,13 @@
 model:
   name: spatiotemporal_zinb
 
+  # Architecture variant: 'sequential' (V1) or 'unified' (V2)
+  # - sequential: GATv2 spatial → Causal Transformer temporal (decoupled)
+  # - unified: Spatiotemporal Graph Transformer (joint space-time attention)
+  # The unified architecture enables cross-spatial temporal patterns
+  # (e.g., city-wide events) that the sequential pipeline cannot capture.
+  architecture: sequential
+
   # ---------------------------------------------------------------------------
   # Ablations — Toggles for Architectural Components
   # ---------------------------------------------------------------------------
