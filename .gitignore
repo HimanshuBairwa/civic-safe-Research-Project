@@ -34,13 +34,19 @@ data/processed/
 *.csv
 *.feather
 
-# Model artifacts
+# Model checkpoints (too large for git, >100MB)
 checkpoints/
-outputs/
-wandb/
-*.pt
 *.pth
 *.onnx
+
+# IMPORTANT: Allow outputs/ and *.pt results to sync!
+# Only exclude large checkpoint files inside outputs
+outputs/**/best.pt
+outputs/**/last.pt
+outputs/**/ema.pt
+
+# W&B
+wandb/
 
 # DVC
 /data/*.dvc
@@ -48,10 +54,10 @@ wandb/
 # Jupyter
 .ipynb_checkpoints/
 
-# Logs
-*.log
+# Logs (allow output logs, exclude generic)
 logs/
 
 # Secrets
 .env
 *.key
+
