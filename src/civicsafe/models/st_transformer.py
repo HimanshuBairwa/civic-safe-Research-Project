@@ -86,7 +86,7 @@ def build_st_attention_mask(
     edge_index: Tensor,
     device: torch.device,
 ) -> Tensor:
-    """Build structured spatiotemporal attention mask.
+    """Build structured spatiotemporal attention mask (VECTORIZED).
     
     Token ordering: flatten (S, T) → (S*T,) in row-major order.
     Token index for node s at time t: s * T + t
@@ -97,6 +97,9 @@ def build_st_attention_mask(
       3. All other pairs: BLOCK
       4. Future time for any node: BLOCK (causal constraint)
     
+    Implementation: Fully vectorized using tensor broadcasting.
+    No Python loops — runs in O(1) Python steps, O(S²T + ET) tensor ops.
+    
     Args:
         num_nodes: S = number of spatial units
         num_timesteps: T = number of timesteps  
@@ -105,28 +108,35 @@ def build_st_attention_mask(
     
     Returns:
         Attention mask. Shape: (S*T, S*T)
-        True = BLOCK, False = ATTEND (PyTorch convention for additive masks)
+        True = BLOCK, False = ATTEND (PyTorch convention)
     """
-    L = num_nodes * num_timesteps
-    # Start with everything blocked
-    mask = torch.ones(L, L, dtype=torch.bool, device=device)
+    S, T = num_nodes, num_timesteps
+    L = S * T
     
-    # Rule 1: Same node, causal temporal attention
-    for s in range(num_nodes):
-        for t1 in range(num_timesteps):
-            for t2 in range(t1 + 1):  # t2 <= t1 (causal)
-                idx1 = s * num_timesteps + t1
-                idx2 = s * num_timesteps + t2
-                mask[idx1, idx2] = False
+    # Build token-level metadata: which node and timestep each token belongs to
+    # token_node[i] = which node token i belongs to
+    # token_time[i] = which timestep token i belongs to
+    token_node = torch.arange(S, device=device).unsqueeze(1).expand(S, T).reshape(L)
+    token_time = torch.arange(T, device=device).unsqueeze(0).expand(S, T).reshape(L)
     
-    # Rule 2: Neighbor nodes, same timestep
-    src_nodes = edge_index[0].tolist()
-    dst_nodes = edge_index[1].tolist()
-    for src, dst in zip(src_nodes, dst_nodes):
-        for t in range(num_timesteps):
-            idx_src = src * num_timesteps + t
-            idx_dst = dst * num_timesteps + t
-            mask[idx_src, idx_dst] = False  # src can attend to dst at same time
+    # Rule 1: Same node AND causal (t_query >= t_key)
+    same_node = token_node.unsqueeze(0) == token_node.unsqueeze(1)  # (L, L)
+    causal = token_time.unsqueeze(0) >= token_time.unsqueeze(1)      # (L, L)
+    temporal_attend = same_node & causal  # (L, L)
+    
+    # Rule 2: Graph neighbors at the SAME timestep
+    # Build a (S, S) adjacency matrix from edge_index, then expand to (L, L)
+    adj = torch.zeros(S, S, dtype=torch.bool, device=device)
+    adj[edge_index[0], edge_index[1]] = True
+    
+    # For each pair of tokens: are their nodes neighbors AND same timestep?
+    neighbor_nodes = adj[token_node.unsqueeze(0), token_node.unsqueeze(1)]  # (L, L)
+    same_time = token_time.unsqueeze(0) == token_time.unsqueeze(1)           # (L, L)
+    spatial_attend = neighbor_nodes & same_time  # (L, L)
+    
+    # Final mask: BLOCK = True, ATTEND = False
+    attend = temporal_attend | spatial_attend
+    mask = ~attend  # Invert: True means BLOCK
     
     return mask
 

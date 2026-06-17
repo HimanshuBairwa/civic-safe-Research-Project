@@ -33,6 +33,7 @@ from torch.utils.data import DataLoader
 from civicsafe.models.zinb_loss import ZINBLoss
 from civicsafe.training.early_stopping import EarlyStopping
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb
+from civicsafe.training.sac_loss import sac_loss
 from civicsafe.training.scheduler import CosineWarmupScheduler
 from civicsafe.utils.seeding import seed_everything
 
@@ -86,11 +87,13 @@ class Trainer:
         self.r_reg_lambda = train_cfg.get("r_reg_lambda", 0.1)
         self.r_reg_floor = train_cfg.get("r_reg_floor", 0.5)
 
-        # Loss function selection: 'nll', 'crps', or 'blended'
+        # Loss function selection: 'nll', 'crps', 'blended', or 'sac'
         # CRPS-direct training eliminates the train-eval metric mismatch
         # that causes negative CRPSS when training on NLL.
+        # SAC = Sharpness-Aware Calibration (CRPS + sharpness + r-reg)
         self.loss_fn = train_cfg.get("loss_fn", "crps")
         self.crps_blend_alpha = train_cfg.get("crps_blend_alpha", 0.5)
+        self.sac_lambda_sharpness = train_cfg.get("sac_lambda_sharpness", 0.1)
 
         # --- Model ---
         self.model = model.to(self.device)
@@ -340,6 +343,16 @@ class Trainer:
                 primary_loss = (
                     self.crps_blend_alpha * crps_loss
                     + (1.0 - self.crps_blend_alpha) * nll_loss
+                )
+            elif self.loss_fn == "sac":
+                # SAC: Sharpness-Aware Calibration (novel contribution)
+                # Unified objective: CRPS + λ_s·log(1+Var) + λ_r·r_penalty
+                # Implements Gneiting & Raftery (2007) 'max sharpness s.t. calibration'
+                primary_loss, sac_diag = sac_loss(
+                    y.reshape(-1), pi.reshape(-1), mu.reshape(-1), r.reshape(-1),
+                    lambda_sharpness=self.sac_lambda_sharpness,
+                    lambda_r_reg=self.r_reg_lambda,
+                    r_reg_floor=self.r_reg_floor,
                 )
             else:
                 raise ValueError(f"Unknown loss_fn: {self.loss_fn}")
