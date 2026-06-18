@@ -86,32 +86,60 @@ class KillCriterionTriggered(Exception):
 # Checkpoint Discovery
 # ───────────────────────────────────────────────────────────────────
 def discover_checkpoint(data_name: str) -> Path:
-    """Auto-discover the most recent checkpoint for the given dataset."""
+    """Auto-discover the most recent checkpoint for the given dataset.
+    
+    Falls back to single-checkpoint mode if discover_all_checkpoints
+    is not called explicitly.
+    """
+    checkpoints = discover_all_checkpoints(data_name)
+    if not checkpoints:
+        raise FileNotFoundError(f"No checkpoints found for {data_name}")
+    # Default: pick the first seed (usually seed_42)
+    chosen = checkpoints[0]
+    logger.info(f"  Auto-discovered checkpoint: {chosen}")
+    return chosen
+
+
+def discover_all_checkpoints(data_name: str) -> list[Path]:
+    """Discover ALL seed checkpoints in the latest run directory.
+    
+    This enables ensemble evaluation: load all K seeds, average their
+    predictions, and evaluate the ensemble. EMOS-style ensembling
+    typically improves CRPS by 10-30% (Gneiting et al., 2005).
+    
+    Returns:
+        Sorted list of best.pt paths, one per seed.
+    """
     outputs_dir = PROJECT_ROOT / "outputs"
     if not outputs_dir.exists():
         raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
-
-    candidates: list[Path] = []
-    for ext in ("*.pt", "*.pth"):
-        candidates.extend(outputs_dir.rglob(ext))
-
-    # Filter out non-checkpoint files (e.g., panel.pt, graph.pt)
-    candidates = [
-        p for p in candidates
-        if "panel" not in p.name and "graph" not in p.name
-        and "demographics" not in p.name
-    ]
-
-    if not candidates:
-        raise FileNotFoundError(
-            f"No checkpoint files found under {outputs_dir}. "
-            f"Train a model first: python scripts/train.py data={data_name}"
-        )
-
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    chosen = candidates[0]
-    logger.info(f"  Auto-discovered checkpoint: {chosen}")
-    return chosen
+    
+    # Find the most recent run directory
+    run_dirs = sorted(outputs_dir.glob("run_*"), key=lambda p: p.name)
+    if not run_dirs:
+        raise FileNotFoundError(f"No run directories found under {outputs_dir}")
+    
+    latest_run = run_dirs[-1]
+    
+    # Find all seed_*/best.pt checkpoints
+    seed_checkpoints = sorted(latest_run.glob("seed_*/best.pt"))
+    
+    if not seed_checkpoints:
+        # Fallback: search for any .pt files
+        candidates = list(outputs_dir.rglob("*.pt"))
+        candidates = [
+            p for p in candidates
+            if "panel" not in p.name and "graph" not in p.name
+            and "demographics" not in p.name and "calibrators" not in p.name
+        ]
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates[:1] if candidates else []
+    
+    logger.info(f"  Found {len(seed_checkpoints)} seed checkpoints in {latest_run.name}")
+    for ckpt in seed_checkpoints:
+        logger.info(f"    {ckpt.parent.name}/{ckpt.name}")
+    
+    return seed_checkpoints
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -486,26 +514,71 @@ def run_conformal_evaluation(
 
     if checkpoint_path and checkpoint_path != "auto":
         ckpt_path = Path(checkpoint_path)
+        all_ckpts = [ckpt_path]
     else:
-        ckpt_path = discover_checkpoint(data_name)
+        all_ckpts = discover_all_checkpoints(data_name)
+        if not all_ckpts:
+            raise FileNotFoundError(f"No checkpoints found for {data_name}")
 
-    model = load_model_from_checkpoint(ckpt_path, F, C, config, device)
+    # ─── Step 4-5: Ensemble inference (EMOS-style) ───
+    K = len(all_ckpts)
+    logger.info(f"\n[3-5/7] Ensemble inference with {K} seed(s)...")
 
-    # ─── Step 4: Run inference on calibration set ───
-    logger.info("\n[4/7] Running inference on calibration set (2022 H2)...")
-    cal_results = run_rolling_inference(model, cal_dataset, edge_queen, edge_knn, device)
+    cal_results_list = []
+    test_results_list = []
+
+    for i, ckpt in enumerate(all_ckpts):
+        logger.info(f"\n  --- Seed {i+1}/{K}: {ckpt.parent.name}/{ckpt.name} ---")
+        model_i = load_model_from_checkpoint(ckpt, F, C, config, device)
+
+        cal_res = run_rolling_inference(model_i, cal_dataset, edge_queen, edge_knn, device)
+        test_res = run_rolling_inference(model_i, test_dataset, edge_queen, edge_knn, device)
+
+        cal_results_list.append(cal_res)
+        test_results_list.append(test_res)
+
+        seed_crps = crps_zinb(
+            test_res["y"].reshape(-1), test_res["pi"].reshape(-1),
+            test_res["mu"].reshape(-1), test_res["r"].reshape(-1)
+        ).mean().item()
+        logger.info(f"    Individual CRPS: {seed_crps:.4f}")
+
+        del model_i
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # Average ZINB parameters across seeds (EMOS ensemble)
+    if K > 1:
+        logger.info(f"\n  Ensembling {K} seeds (averaging pi, mu, r)...")
+        cal_results = {
+            "y": cal_results_list[0]["y"],
+            "pi": torch.stack([r["pi"] for r in cal_results_list]).mean(dim=0),
+            "mu": torch.stack([r["mu"] for r in cal_results_list]).mean(dim=0),
+            "r": torch.stack([r["r"] for r in cal_results_list]).mean(dim=0),
+        }
+        test_results = {
+            "y": test_results_list[0]["y"],
+            "pi": torch.stack([r["pi"] for r in test_results_list]).mean(dim=0),
+            "mu": torch.stack([r["mu"] for r in test_results_list]).mean(dim=0),
+            "r": torch.stack([r["r"] for r in test_results_list]).mean(dim=0),
+        }
+        ensemble_crps = crps_zinb(
+            test_results["y"].reshape(-1), test_results["pi"].reshape(-1),
+            test_results["mu"].reshape(-1), test_results["r"].reshape(-1)
+        ).mean().item()
+        logger.info(f"  Ensemble CRPS: {ensemble_crps:.4f}")
+    else:
+        cal_results = cal_results_list[0]
+        test_results = test_results_list[0]
+
     logger.info(
-        f"  Calibration inference: {cal_results['y'].shape[0]} windows × "
-        f"{S} spatial × {C} categories = "
+        f"\n  Calibration: {cal_results['y'].shape[0]} windows x "
+        f"{S} spatial x {C} categories = "
         f"{cal_results['y'].numel()} total observations"
     )
-
-    # ─── Step 5: Run inference on test set ───
-    logger.info("\n[5/7] Running inference on test set (2023)...")
-    test_results = run_rolling_inference(model, test_dataset, edge_queen, edge_knn, device)
     logger.info(
-        f"  Test inference: {test_results['y'].shape[0]} windows × "
-        f"{S} spatial × {C} categories = "
+        f"  Test: {test_results['y'].shape[0]} windows x "
+        f"{S} spatial x {C} categories = "
         f"{test_results['y'].numel()} total observations"
     )
 

@@ -1,0 +1,54 @@
+{
+  "config": {
+    "num_nodes": 10,
+    "num_time_steps": 20,
+    "num_categories": 3,
+    "alpha": 0.1,
+    "seed": 42
+  },
+  "data": {
+    "shape": [
+      10,
+      20,
+      3
+    ],
+    "total_crimes": 9936
+  },
+  "model": {
+    "parameters": 88841,
+    "pi_mean": 0.4871997535228729,
+    "mu_mean": 0.688140869140625
+  },
+  "calibration": {
+    "method": "split_cp",
+    "coverage": 0.9,
+    "target_coverage": 0.9,
+    "avg_width": 51.0,
+    "threshold": 48.29
+  },
+  "audit": {
+    "coverage_equity": false,
+    "point_accuracy_equity": false,
+    "disparity_metrics": {
+      "max_ratio": 1.5,
+      "max_diff": 0.3333,
+      "cv": 0.1768,
+      "max_gap_from_target": 0.2333
+    }
+  },
+  "routing": {
+    "source": 0,
+    "target": 9,
+    "path": [
+      0,
+      1,
+      9
+    ],
+    "total_cost": 72.0,
+    "should_abstain": false,
+    "peak_uncertainty": 51.0,
+    "algorithm": "tsinghua",
+    "matches_dijkstra": true,
+    "frontier_reductions": 1
+  }
+}

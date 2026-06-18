@@ -1,0 +1,20 @@
+{
+  "0 $\\rightarrow$ 10": {
+    "Dijkstra Cost": 26.603585829958316,
+    "Tsinghua Cost": 26.603585829958316,
+    "Cost Match": 1.0,
+    "Frontier Reductions": 14
+  },
+  "0 $\\rightarrow$ 50": {
+    "Dijkstra Cost": 18.424825458228586,
+    "Tsinghua Cost": 18.424825458228586,
+    "Cost Match": 1.0,
+    "Frontier Reductions": 10
+  },
+  "0 $\\rightarrow$ 99": {
+    "Dijkstra Cost": 7.159896672517062,
+    "Tsinghua Cost": 7.159896672517062,
+    "Cost Match": 1.0,
+    "Frontier Reductions": 2
+  }
+}

@@ -1,0 +1,327 @@
+{
+  "metadata": {
+    "dataset": "chicago",
+    "checkpoint": "C:\\Users\\kamle\\OneDrive\\Desktop\\PCC project\\outputs\\run_1781590552\\seed_42\\best.pt",
+    "alpha": 0.1,
+    "timestamp": "2026-06-16T11:47:45.193975",
+    "panel_hash": "4bb2e1e3322b",
+    "spatial_units": 77,
+    "time_steps": 313,
+    "categories": 3,
+    "cal_set_size": 26,
+    "test_set_size": 53,
+    "total_cal_observations": 6006,
+    "total_test_observations": 12243
+  },
+  "point_forecast_metrics": {
+    "crps": 15.481332778930664,
+    "mae": 18.535348892211914,
+    "rmse": 30.86444664001465,
+    "brier_zero": 0.16325367987155914
+  },
+  "skill_scores": {
+    "baseline_crps_ha": 3.878715991973877,
+    "baseline_crps_seasonal_naive": 4.401771545410156,
+    "model_crps": 15.481332778930664,
+    "crpss_vs_ha": -2.9913550801259414,
+    "crpss_vs_seasonal_naive": -2.5170686663812574,
+    "crpss": -2.5170686663812574,
+    "crpss_passes_threshold": false
+  },
+  "coverage_results": {
+    "split_cp": {
+      "marginal_coverage": 0.9002695679664612,
+      "mean_width": 50.33333206176758,
+      "median_width": 51.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.00026956796646115944,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.8166170120239258,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.944389283657074,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.978814959526062,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.8632075190544128,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.16219794750213623,
+      "min_group_coverage": 0.8166170120239258,
+      "max_group_coverage": 0.978814959526062,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9154618978500366,
+          "mean_width": 51.0,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.7853467464447021,
+          "mean_width": 51.0,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 49.0,
+          "n_samples": 4081
+        }
+      }
+    },
+    "weighted_cp": {
+      "marginal_coverage": 0.8211222887039185,
+      "mean_width": 37.33333206176758,
+      "median_width": 38.0,
+      "target_coverage": 0.9,
+      "coverage_gap": -0.07887771129608157,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.6875206828117371,
+          "mean_width": 37.33333206176758,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.8421052694320679,
+          "mean_width": 37.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.9400860667228699,
+          "mean_width": 37.33333206176758,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.8150943517684937,
+          "mean_width": 37.33333206176758,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.2525653839111328,
+      "min_group_coverage": 0.6875206828117371,
+      "max_group_coverage": 0.9400860667228699,
+      "per_category": {
+        "violent": {
+          "coverage": 0.8123009204864502,
+          "mean_width": 38.0,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.6510658860206604,
+          "mean_width": 38.0,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 36.0,
+          "n_samples": 4081
+        }
+      }
+    },
+    "mondrian": {
+      "marginal_coverage": 0.9040268063545227,
+      "mean_width": 50.735931396484375,
+      "median_width": 61.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.004026806354522683,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.910956621170044,
+          "mean_width": 64.33333587646484,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.9073154330253601,
+          "mean_width": 45.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.9016881585121155,
+          "mean_width": 30.33333396911621,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.8965408802032471,
+          "mean_width": 62.33333206176758,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.014415740966796875,
+      "min_group_coverage": 0.8965408802032471,
+      "max_group_coverage": 0.910956621170044,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9468267560005188,
+          "mean_width": 51.40259552001953,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.7652536034584045,
+          "mean_width": 51.40259552001953,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 49.40259552001953,
+          "n_samples": 4081
+        }
+      }
+    },
+    "equalized_coverage": {
+      "marginal_coverage": 0.9002695679664612,
+      "mean_width": 50.33333206176758,
+      "median_width": 51.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.00026956796646115944,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.8166170120239258,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.944389283657074,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.978814959526062,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.8632075190544128,
+          "mean_width": 50.33333206176758,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.16219794750213623,
+      "min_group_coverage": 0.8166170120239258,
+      "max_group_coverage": 0.978814959526062,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9154618978500366,
+          "mean_width": 51.0,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.7853467464447021,
+          "mean_width": 51.0,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 49.0,
+          "n_samples": 4081
+        }
+      }
+    },
+    "ecrc": {
+      "marginal_coverage": 0.9476435780525208,
+      "mean_width": 68.51515197753906,
+      "median_width": 78.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.04764357805252073,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.9496855139732361,
+          "mean_width": 79.33333587646484,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.9563058614730835,
+          "mean_width": 53.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.9427341818809509,
+          "mean_width": 38.33333206176758,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.9421383738517761,
+          "mean_width": 101.33333587646484,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.014167487621307373,
+      "min_group_coverage": 0.9421383738517761,
+      "max_group_coverage": 0.9563058614730835,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9784366488456726,
+          "mean_width": 69.18181610107422,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.8644940257072449,
+          "mean_width": 69.18181610107422,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 67.18181610107422,
+          "n_samples": 4081
+        }
+      }
+    },
+    "adaptive_ecrc": {
+      "marginal_coverage": 0.9476435780525208,
+      "mean_width": 68.51515197753906,
+      "median_width": 78.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.04764357805252073,
+      "per_group": {
+        "group_0": {
+          "coverage": 0.9496855139732361,
+          "mean_width": 79.33333587646484,
+          "n_samples": 3021
+        },
+        "group_1": {
+          "coverage": 0.9563058614730835,
+          "mean_width": 53.33333206176758,
+          "n_samples": 3021
+        },
+        "group_2": {
+          "coverage": 0.9427341818809509,
+          "mean_width": 38.33333206176758,
+          "n_samples": 3021
+        },
+        "group_3": {
+          "coverage": 0.9421383738517761,
+          "mean_width": 101.33333587646484,
+          "n_samples": 3180
+        }
+      },
+      "coverage_disparity": 0.014167487621307373,
+      "min_group_coverage": 0.9421383738517761,
+      "max_group_coverage": 0.9563058614730835,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9784366488456726,
+          "mean_width": 69.18181610107422,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.8644940257072449,
+          "mean_width": 69.18181610107422,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 1.0,
+          "mean_width": 67.18181610107422,
+          "n_samples": 4081
+        }
+      }
+    }
+  }
+}

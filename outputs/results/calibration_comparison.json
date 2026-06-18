@@ -1,0 +1,27 @@
+{
+  "Split CP": {
+    "Coverage": 0.9800000190734863,
+    "Target Cov": 0.9,
+    "Avg Width": 13.100000381469727
+  },
+  "Weighted CP": {
+    "Coverage": 0.9800000190734863,
+    "Target Cov": 0.9,
+    "Avg Width": 13.100000381469727
+  },
+  "Mondrian CP": {
+    "Coverage": 0.9800000190734863,
+    "Target Cov": 0.9,
+    "Avg Width": 13.100000381469727
+  },
+  "Equalized CP": {
+    "Coverage": 0.9800000190734863,
+    "Target Cov": 0.9,
+    "Avg Width": 13.100000381469727
+  },
+  "ECRC (Ours)": {
+    "Coverage": 1.0,
+    "Target Cov": 0.9,
+    "Avg Width": 9.819999694824219
+  }
+}
