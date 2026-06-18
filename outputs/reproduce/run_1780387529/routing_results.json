@@ -1,0 +1,25 @@
+{
+  "tsinghua_path": [
+    0,
+    53,
+    23,
+    8,
+    62,
+    76
+  ],
+  "dijkstra_path": [
+    0,
+    53,
+    23,
+    8,
+    62,
+    76
+  ],
+  "tsinghua_cost": 77.1,
+  "dijkstra_cost": 77.1,
+  "cost_match": true,
+  "path_match": true,
+  "tsinghua_settled": 58,
+  "dijkstra_settled": 53,
+  "tsinghua_frontier_reductions": 2
+}

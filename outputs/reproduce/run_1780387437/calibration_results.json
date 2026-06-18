@@ -1,0 +1,32 @@
+[
+  {
+    "method": "split_cp",
+    "target_coverage": 0.9,
+    "coverage": 0.9870129823684692,
+    "avg_width": 40.92207717895508
+  },
+  {
+    "method": "weighted_cp",
+    "target_coverage": 0.9,
+    "coverage": 0.9870129823684692,
+    "avg_width": 40.92207717895508
+  },
+  {
+    "method": "mondrian_cp",
+    "target_coverage": 0.9,
+    "coverage": 0.9870129823684692,
+    "avg_width": 40.92207717895508
+  },
+  {
+    "method": "equalized_coverage",
+    "target_coverage": 0.9,
+    "coverage": 0.9870129823684692,
+    "avg_width": 40.92207717895508
+  },
+  {
+    "method": "ecrc",
+    "target_coverage": 0.9,
+    "coverage": 1.0,
+    "avg_width": 29.259740829467773
+  }
+]
