@@ -610,10 +610,17 @@ class ECRCCalibrator:
         G = len(unique_groups)
         n_cal = scores.shape[0]
 
-        # Hoeffding epsilon
-        self._epsilon = math.sqrt(
-            math.log(2.0 * G / self.delta) / (2.0 * n_cal / G)
-        )
+        # Bonferroni-corrected per-group delta
+        delta_g = self.delta / G
+
+        # Hoeffding epsilon: use ACTUAL per-group sample size, not n_cal/G
+        # which incorrectly assumes equal group sizes.
+        max_epsilon = 0.0
+        for g in unique_groups:
+            n_g = (groups == g).sum().item()
+            epsilon_g = math.sqrt(math.log(2.0 / delta_g) / (2.0 * n_g))
+            max_epsilon = max(max_epsilon, epsilon_g)
+        self._epsilon = max_epsilon
 
         # Adjusted alpha for per-group guarantees
         adjusted_alpha = max(self.alpha - self._epsilon, 0.01)

@@ -140,23 +140,38 @@ def rmse_zinb(y: Tensor, pi: Tensor, mu: Tensor) -> Tensor:
     return torch.sqrt(((y.float() - y_hat) ** 2).mean())
 
 
-def brier_zero_inflation(y: Tensor, pi: Tensor) -> Tensor:
-    """Brier Score for the zero-inflation component.
+def brier_zero_inflation(y: Tensor, pi: Tensor, mu: Tensor = None, r: Tensor = None) -> Tensor:
+    """Brier Score for zero-probability calibration.
 
     Evaluates how well the model predicts P(Y=0).
-    Brier = mean((π_pred - I(y=0))²)
+    For ZINB: P(Y=0) = π + (1-π)·(r/(r+μ))^r
+    Brier = mean((P_pred(Y=0) - I(y=0))²)
 
     Perfect score = 0, worst = 1.
 
     Args:
         y: Observed counts.
-        pi: Predicted zero-inflation probability P(Y=0).
+        pi: Zero-inflation probability.
+        mu: NB mean (optional, for full ZINB P(Y=0)).
+        r: NB dispersion (optional, for full ZINB P(Y=0)).
 
     Returns:
         Scalar Brier score.
     """
     is_zero = (y == 0).float()
-    return ((pi.clamp(0.0, 1.0) - is_zero) ** 2).mean()  # type: ignore[no-any-return]
+    pi_clamped = pi.clamp(0.0, 1.0)
+
+    if mu is not None and r is not None:
+        # Full ZINB P(Y=0) = pi + (1-pi) * (r/(r+mu))^r
+        mu_safe = mu.clamp(min=1e-6)
+        r_safe = r.clamp(min=0.1)
+        nb_zero_prob = (r_safe / (r_safe + mu_safe)).pow(r_safe)
+        p_zero = pi_clamped + (1.0 - pi_clamped) * nb_zero_prob
+    else:
+        # Fallback: use pi only (backward compatible)
+        p_zero = pi_clamped
+
+    return ((p_zero - is_zero) ** 2).mean()
 
 
 def pit_values(
@@ -246,7 +261,7 @@ def compute_all_metrics(
         crps = crps_zinb(y, pi, mu, r).mean().item()
         mae = mae_zinb(y, pi, mu).item()
         rmse = rmse_zinb(y, pi, mu).item()
-        brier = brier_zero_inflation(y, pi).item()
+        brier = brier_zero_inflation(y, pi, mu, r).item()
 
     return {
         "crps": crps,

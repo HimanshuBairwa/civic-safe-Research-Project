@@ -361,9 +361,12 @@ class Trainer:
             # Penalizes each cell where r < r_floor individually, preventing
             # heavy-tailed cells from collapsing while batch mean stays safe.
             # Ref: Conflict A resolution — Opus > Fable formulation
-            r_penalty = torch.nn.functional.relu(
-                self.r_reg_floor - r.reshape(-1)
-            ).mean()
+            if self.loss_fn != 'sac':  # SAC already includes r-regularization
+                r_penalty = torch.nn.functional.relu(
+                    self.r_reg_floor - r.reshape(-1)
+                ).mean()
+            else:
+                r_penalty = torch.tensor(0.0, device=self.device)
 
             # Diversity regularization from MFFM
             div_loss = output.get(

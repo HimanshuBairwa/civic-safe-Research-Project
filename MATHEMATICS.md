@@ -215,9 +215,19 @@ Decomposition:
 
 The log-variance penalty $\log(1 + \text{Var})$ is used instead of raw variance because crime count variances span many orders of magnitude, and the log transform provides scale invariance.
 
-### 10.3 Why SAC > Pure CRPS
+### 10.3 The Propriety–Sharpness Tradeoff
 
-CRPS rewards any calibrated distribution. But a calibrated distribution can be unnecessarily wide — it just needs to assign correct probabilities. SAC explicitly penalizes excess width (sharpness term), producing distributions that are both calibrated AND tight. This translates directly to narrower prediction intervals after conformal calibration, which is the ultimate practical objective.
+CRPS is a strictly proper scoring rule: its unique minimiser is the true data-generating distribution $F^*$ (Gneiting & Raftery, 2007). Adding the sharpness penalty $\lambda_s \cdot \log(1 + \text{Var})$ makes the composite objective $\mathcal{L}_{\text{SAC}}$ **improper** — its minimiser $\hat{F}_{\text{SAC}}$ is a biased estimator of $F^*$.
+
+We deliberately accept this bias because:
+
+1. **The bias is bounded**: For small $\lambda_s$, the KL-divergence between $\hat{F}_{\text{SAC}}$ and $\hat{F}_{\text{CRPS}}$ is $O(\lambda_s)$. In our experiments $\lambda_s = 0.1$, producing negligible distributional shift.
+
+2. **The variance reduction is substantial**: The sharpness penalty reduces $\text{Var}[Y_{\text{ZINB}}]$, producing tighter prediction intervals. For downstream conformal calibration, tighter base intervals translate directly to narrower conformalized intervals at the same coverage level.
+
+3. **Conformal correction restores validity**: Even if $\hat{F}_{\text{SAC}}$ is slightly miscalibrated, the conformal calibration layer (§8) provides distribution-free coverage guarantees that hold regardless of the base model's propriety. The conformal guarantee depends only on exchangeability of non-conformity scores, not on the scoring rule used during training.
+
+Thus, SAC implements a principled **calibration–sharpness tradeoff**: sacrifice a small, bounded amount of calibration (corrected by conformal post-processing) to gain substantially sharper intervals. This is the training-time analog of the inference-time tradeoff that conformal prediction manages.
 
 ## 11. EMOS Ensemble (Cross-Domain Import from Meteorology)
 

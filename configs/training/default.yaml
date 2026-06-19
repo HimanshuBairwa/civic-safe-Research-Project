@@ -11,8 +11,8 @@ training:
   seed: 42
 
   # Number of independent training runs. Range [3, 10].
-  # 5 gives sufficient statistical power for paired t-tests / Wilcoxon signed-
-  # rank tests across metrics (effect size d ≈ 0.8, power ≈ 0.80).
+  # 5 gives reasonable reproducibility; for formal paired t-tests at
+  # power 0.80 with effect size d=0.8, 7-8 seeds would be needed.
   # 3 is underpowered per the analysis plan.
   num_seeds: 5
 
@@ -109,7 +109,7 @@ training:
   gradient_clip_norm: 1.0
 
   # --- Mixed precision ---
-  # Use torch.cuda.amp (float16 forward pass, float32 gradient accumulation).
+  # Use torch.cuda.amp (bfloat16 forward pass, float32 gradient accumulation).
   # Safe for all operations except the ZINB log-prob computation, which is
   # explicitly cast to float32 inside the loss function.
   mixed_precision: true
