@@ -69,6 +69,21 @@ def run_single_seed(
     from civicsafe.training.trainer import Trainer
     from civicsafe.utils.seeding import seed_everything
 
+    # --- Check for completed seed (Auto-Resume) ---
+    seed_dir = output_dir / f"seed_{seed}"
+    best_ckpt = seed_dir / "best.pt"
+    if best_ckpt.exists():
+        logger.info(f"=" * 60)
+        logger.info(f"  SEED {seed} — ALREADY COMPLETED (Skipping)")
+        logger.info(f"=" * 60)
+        # Load metrics from checkpoint to return them for aggregation
+        try:
+            checkpoint = torch.load(best_ckpt, map_location="cpu", weights_only=False)
+            metrics = checkpoint.get("metrics", {})
+            return {"best_metrics": metrics}
+        except Exception as e:
+            logger.warning(f"  Could not load metrics from {best_ckpt}: {e}. Retraining.")
+
     # --- Seed everything ---
     seed_everything(seed)
     logger.info(f"=" * 60)
@@ -308,11 +323,23 @@ def main() -> None:
     num_seeds = train_cfg.get("num_seeds", 5)
     seeds = train_cfg.get("seeds", [42, 137, 256, 512, 1024])[:num_seeds]
 
-    output_dir = Path("outputs") / f"run_{int(time.time())}"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # --- Auto-Resume Logic ---
+    output_base = Path("outputs")
+    output_base.mkdir(parents=True, exist_ok=True)
+    
+    # Check if user explicitly asked for a new run
+    force_new = config.get("training", {}).get("force_new_run", False)
+    
+    existing_runs = sorted([d for d in output_base.iterdir() if d.is_dir() and d.name.startswith("run_")])
+    if existing_runs and not force_new:
+        output_dir = existing_runs[-1]
+        logger.info(f"Auto-resuming in most recent directory: {output_dir}")
+    else:
+        output_dir = output_base / f"run_{int(time.time())}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created new output directory: {output_dir}")
 
     logger.info(f"CIVIC-SAFE Training — {num_seeds} seed(s): {seeds}")
-    logger.info(f"Output directory: {output_dir}")
 
     # --- W&B init (optional) ---
     try:
