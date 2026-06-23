@@ -119,10 +119,19 @@ def run_single_seed(
         S, T, C = counts.shape
         F = features.shape[-1]
 
-        # Normalize features (z-score) for stable training
-        feat_mean = features.mean(dim=(0, 1), keepdim=True)
-        feat_std = features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+        # Normalize features using TRAINING period only (no data leakage)
+        # Training = 2018-2021 = first 208 weeks
+        train_end_idx = 208
+        train_features = features[:, :train_end_idx, :]
+        feat_mean = train_features.mean(dim=(0, 1), keepdim=True)
+        feat_std = train_features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
         features = (features - feat_mean) / feat_std
+
+        # Save normalization stats for evaluation consistency
+        norm_stats_path = project_root / 'data' / 'processed' / f'{data_name}_norm_stats.pt'
+        torch.save({'mean': feat_mean, 'std': feat_std}, norm_stats_path)
+        logger.info(f'  Saved normalization stats to {norm_stats_path}')
+
         # Update the panel with normalized features
         panel["features"] = features
 
@@ -323,23 +332,20 @@ def main() -> None:
     num_seeds = train_cfg.get("num_seeds", 5)
     seeds = train_cfg.get("seeds", [42, 137, 256, 512, 1024])[:num_seeds]
 
-    # --- Auto-Resume Logic ---
-    output_base = Path("outputs")
-    output_base.mkdir(parents=True, exist_ok=True)
+    output_dir = Path("outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Check if user explicitly asked for a new run
-    force_new = config.get("training", {}).get("force_new_run", False)
-    
-    existing_runs = sorted([d for d in output_base.iterdir() if d.is_dir() and d.name.startswith("run_")])
-    if existing_runs and not force_new:
+    # Auto-resume: reuse most recent run directory if it exists
+    existing_runs = sorted([d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("run_")])
+    if existing_runs:
         output_dir = existing_runs[-1]
         logger.info(f"Auto-resuming in most recent directory: {output_dir}")
     else:
-        output_dir = output_base / f"run_{int(time.time())}"
+        output_dir = output_dir / f"run_{int(time.time())}"
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created new output directory: {output_dir}")
 
     logger.info(f"CIVIC-SAFE Training — {num_seeds} seed(s): {seeds}")
+    logger.info(f"Output directory: {output_dir}")
 
     # --- W&B init (optional) ---
     try:

@@ -65,6 +65,8 @@ from civicsafe.calibration.zinb_distribution import zinb_ppf_pair
 from civicsafe.models.civicsafe_model import CivicSafeModel
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
+from civicsafe.calibration.recalibration import recalibrate_and_evaluate
+from civicsafe.audit.feedback_loop import compute_all_feedback_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -479,12 +481,20 @@ def run_conformal_evaluation(
     S, T, C = counts.shape
     F = features.shape[-1]
 
-    # Normalize features using TRAINING data only (no data leakage)
-    # Training period = first 208 weeks (2018-2021)
-    train_end = 208
-    train_features = features[:, :train_end, :]
-    feat_mean = train_features.mean(dim=(0, 1), keepdim=True)
-    feat_std = train_features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+    # Normalize features using training-only statistics (no data leakage)
+    norm_stats_path = PROJECT_ROOT / 'data' / 'processed' / f'{data_name}_norm_stats.pt'
+    if norm_stats_path.exists():
+        norm_stats = torch.load(norm_stats_path, weights_only=False)
+        feat_mean = norm_stats['mean']
+        feat_std = norm_stats['std']
+        logger.info('  Loaded normalization stats from training')
+    else:
+        # Fallback: compute from training period only
+        train_end = 208
+        train_features = features[:, :train_end, :]
+        feat_mean = train_features.mean(dim=(0, 1), keepdim=True)
+        feat_std = train_features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+        logger.info('  Computed normalization from training period (no saved stats)')
     features = (features - feat_mean) / feat_std
 
     graph = torch.load(graph_path, weights_only=False)
@@ -744,6 +754,93 @@ def run_conformal_evaluation(
             f"Disparity: {coverage.get('coverage_disparity', 0):.4f}"
         )
 
+    # ─── Rolling Adaptive ECRC (the REAL adaptive evaluation) ───
+    # The loop above evaluates Adaptive ECRC on the full test set without
+    # calling update() — making the "adaptive" claim non-functional.
+    # Here we implement the CORRECT rolling evaluation that processes
+    # the test set window-by-window, calling update() after each window.
+    logger.info("\n  ─── ROLLING ADAPTIVE ECRC (week-by-week) ───")
+    
+    rolling_calibrator = AdaptiveTemporalECRCCalibrator(
+        alpha=alpha, gamma=0.05, delta=0.05, group_type="demographic"
+    )
+    rolling_calibrator.fit(y_cal, pi_cal, mu_cal, r_cal, groups=groups_cal)
+    
+    # Process test data window-by-window
+    # test_results["y"] shape: (N_windows, S, C)
+    N_test_windows = test_results["y"].shape[0]
+    rolling_coverages = []
+    rolling_widths = []
+    rolling_alpha_history: dict[int, list[float]] = {}  # Track alpha_t per group
+    
+    all_rolling_lower = []
+    all_rolling_upper = []
+    
+    for w in range(N_test_windows):
+        # Extract this window's data: (S, C) → flatten to (S*C,)
+        y_w = test_results["y"][w].reshape(-1)
+        pi_w = test_results["pi"][w].reshape(-1)
+        mu_w = test_results["mu"][w].reshape(-1)
+        r_w = test_results["r"][w].reshape(-1)
+        groups_w = spatial_groups.unsqueeze(-1).expand(S, C).reshape(-1)
+        
+        # Predict intervals using CURRENT adaptive alpha_t values
+        intervals_w = rolling_calibrator.predict(
+            pi_w, mu_w, r_w, groups=groups_w
+        )
+        all_rolling_lower.append(intervals_w["lower"])
+        all_rolling_upper.append(intervals_w["upper"])
+        
+        # Compute this window's coverage
+        covered_w = ((y_w >= intervals_w["lower"]) & 
+                     (y_w <= intervals_w["upper"])).float()
+        width_w = (intervals_w["upper"] - intervals_w["lower"]).float()
+        rolling_coverages.append(covered_w.mean().item())
+        rolling_widths.append(width_w.mean().item())
+        
+        # Record alpha_t history before update
+        for g_idx, a_t in rolling_calibrator._alpha_t.items():
+            if g_idx not in rolling_alpha_history:
+                rolling_alpha_history[g_idx] = []
+            rolling_alpha_history[g_idx].append(a_t)
+        
+        # UPDATE: This is the critical step that makes it adaptive!
+        rolling_calibrator.update(
+            y_w, pi_w, mu_w, r_w, groups=groups_w
+        )
+    
+    # Concatenate all rolling predictions for aggregate metrics
+    rolling_lower_all = torch.cat(all_rolling_lower)
+    rolling_upper_all = torch.cat(all_rolling_upper)
+    
+    rolling_coverage_overall = compute_coverage_metrics(
+        y_test, rolling_lower_all, rolling_upper_all,
+        groups=groups_test, alpha=alpha,
+    )
+    
+    # Add rolling-specific metrics
+    rolling_coverage_overall["per_window_coverage"] = rolling_coverages
+    rolling_coverage_overall["per_window_width"] = rolling_widths
+    rolling_coverage_overall["alpha_convergence"] = {
+        str(g): alphas for g, alphas in rolling_alpha_history.items()
+    }
+    rolling_coverage_overall["final_alpha_t"] = {
+        str(g): a for g, a in rolling_calibrator._alpha_t.items()
+    }
+    
+    all_coverage_results["adaptive_ecrc_rolling"] = rolling_coverage_overall
+    
+    logger.info(
+        f"  Rolling Adaptive ECRC Coverage: {rolling_coverage_overall['marginal_coverage']:.4f} "
+        f"(target: {1-alpha:.2f}) | "
+        f"Width: {rolling_coverage_overall['mean_width']:.2f} | "
+        f"Disparity: {rolling_coverage_overall.get('coverage_disparity', 0):.4f}"
+    )
+    logger.info(
+        f"  Coverage convergence: window 1-5 avg={np.mean(rolling_coverages[:5]):.4f}, "
+        f"last 5 avg={np.mean(rolling_coverages[-5:]):.4f}"
+    )
+
     # ─── Compute baseline CRPS and CRPSS ───
     logger.info("\n  ─── CRPS SKILL SCORE ───")
     baselines = compute_baseline_crps(counts)
@@ -761,6 +858,28 @@ def run_conformal_evaluation(
     logger.info(f"  Model CRPS:                          {model_crps:.4f}")
     logger.info(f"  CRPSS vs HA:                         {crpss_ha:.4f}")
     logger.info(f"  CRPSS vs Seasonal Naive:             {crpss_sn:.4f} (threshold: ≥{CRPSS_SKILL_THRESHOLD})")
+
+    # ─── Post-hoc Recalibration ───
+    logger.info("\n  ─── POST-HOC RECALIBRATION ───")
+    
+    (pi_recal, mu_recal, r_recal), recal_metrics = recalibrate_and_evaluate(
+        y_cal, pi_cal, mu_cal, r_cal,
+        y_test, pi_test, mu_test, r_test,
+        method="affine", lr=0.01, max_iter=500,
+    )
+    logger.info(
+        f"  CRPS improvement: {recal_metrics['test_crps_before']:.4f} → "
+        f"{recal_metrics['test_crps_after']:.4f} "
+        f"({recal_metrics['test_improvement_pct']:.2f}% improvement)"
+    )
+    logger.info(f"  Learned params: {recal_metrics['learned_params']}")
+    
+    # Recompute CRPSS with recalibrated predictions
+    model_crps_recal = recal_metrics['test_crps_after']
+    crpss_ha_recal = 1.0 - (model_crps_recal / ha_crps) if ha_crps > 0 else 0.0
+    crpss_sn_recal = 1.0 - (model_crps_recal / sn_crps) if sn_crps > 0 else 0.0
+    logger.info(f"  CRPSS vs HA (recalibrated):   {crpss_ha_recal:.4f}")
+    logger.info(f"  CRPSS vs SN (recalibrated):   {crpss_sn_recal:.4f}")
 
     # ─── Per-Category CRPSS Breakdown ───
     logger.info("\n  ─── PER-CATEGORY CRPSS ───")
@@ -813,6 +932,40 @@ def run_conformal_evaluation(
     logger.info(f"  Test RMSE: {test_metrics['rmse']:.4f}")
     logger.info(f"  Test Brier: {test_metrics['brier_zero']:.4f}")
 
+    # ─── Feedback Loop Index + Bias Amplification Score ───
+    logger.info("\n  ─── FEEDBACK LOOP ANALYSIS ───")
+    
+    # Point predictions: E[Y] = (1-pi)*mu
+    y_pred_point = ((1.0 - pi_test) * mu_test)
+    
+    # Historical mean per spatial unit (training period) as trend baseline
+    train_means = counts[:, :208, :].float().mean(dim=1)  # (S, C)
+    # Expand to match test shape: (S, C) → (N_windows, S, C) → (N*S*C,)
+    historical_trend = train_means.unsqueeze(0).expand(
+        n_test_windows, S, C
+    ).reshape(-1)
+    
+    feedback_metrics = compute_all_feedback_metrics(
+        y_pred=y_pred_point,
+        y_true=y_test,
+        groups=groups_test,
+        counts_historical=historical_trend,
+    )
+    
+    fli_agg = feedback_metrics["fli"]["aggregate"]
+    bas_agg = feedback_metrics["bas"]["aggregate"]
+    logger.info(f"  FLI — mean: {fli_agg['mean_fli']:.4f}, "
+                f"max: {fli_agg['max_fli']:.4f}, min: {fli_agg['min_fli']:.4f}")
+    logger.info(f"  BAS — mean |BAS|: {bas_agg['mean_abs_bas']:.4f}, "
+                f"max |BAS|: {bas_agg['max_abs_bas']:.4f}")
+    
+    if abs(fli_agg['mean_fli']) < 0.1:
+        logger.info("  ✅ Model predictions are trend-neutral (low feedback loop risk)")
+    elif fli_agg['mean_fli'] > 0.1:
+        logger.info("  ⚠️ Model predictions may amplify historical trends")
+    else:
+        logger.info("  ✅ Model predictions counteract historical trends (corrective)")
+
     # ─── Step 7: Compile and save results ───
     logger.info("\n[7/7] Compiling results and saving to disk...")
 
@@ -857,6 +1010,12 @@ def run_conformal_evaluation(
             "pit_is_uniform": bool(chi2_p > 0.05),
         },
         "coverage_results": all_coverage_results,
+        "recalibration": {
+            **recal_metrics,
+            "crpss_ha_recalibrated": crpss_ha_recal,
+            "crpss_sn_recalibrated": crpss_sn_recal,
+        },
+        "feedback_loop_analysis": feedback_metrics,
     }
     
     # Add ensemble-specific results if applicable
