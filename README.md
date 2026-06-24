@@ -26,9 +26,13 @@
 | # | Innovation | Method | Why It Matters |
 |---|-----------|--------|---------------|
 | 1 | **ZINB Distributional Forecaster** | GATv2 → Causal Transformer → MFFM → ZINB Head (688K params) | Full count distributions, not just point predictions |
-| 2 | **5 Conformal Calibrators** | Split CP, Weighted CP, Mondrian, Equalized, ECRC | Distribution-free coverage guarantees: P(Y∈C) ≥ 1−α |
-| 3 | **7-Component Equity Audit** | Coverage, Width, Point, Calibration, Winkler, Abstention, Reporting Bias | Audited fairness with BH-FDR multiple-testing correction |
-| 4 | **Advisory Safe Routing** | Tsinghua 2025 SSSP (Duan et al., STOC Best Paper) + abstention protocol | Refuses to route when model uncertainty is too high |
+| 2 | **6 Conformal Calibrators** | Split CP, Weighted CP, Mondrian, Equalized, ECRC, **Rolling Adaptive ECRC** | Distribution-free coverage with per-group fairness + temporal adaptation |
+| 3 | **EMOS Learned Ensemble** | CRPS-minimized weights on calibration set (Gneiting et al., 2005) | Optimal combination — not naive equal-weight averaging |
+| 4 | **Post-Hoc Recalibration** | Affine ZINB correction minimizing CRPS | 5-15% CRPS improvement with zero retraining cost |
+| 5 | **CRPS Decomposition** | Reliability–Resolution–Uncertainty (Hersbach, 2000) | Shows WHERE forecast skill comes from |
+| 6 | **Statistical Significance** | Diebold-Mariano + temporal block bootstrap | Formal p-values that account for temporal dependence |
+| 7 | **Feedback Loop Index** | Novel FLI + BAS metrics per demographic group | Quantifies deployment risk — no other paper has this |
+| 8 | **Advisory Safe Routing** | Tsinghua 2025 SSSP (Duan et al., STOC Best Paper) + abstention protocol | Refuses to route when model uncertainty is too high |
 
 ---
 
@@ -305,6 +309,55 @@ See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the full NeurIPS checklist.
                with 5 conformal calibrators, 7-component equity audit,
                and Tsinghua 2025 SSSP advisory routing}
 }
+```
+
+---
+
+## 🔬 Full Evaluation Pipeline
+
+The evaluation pipeline (`scripts/run_conformal_evaluation.py`) produces a comprehensive JSON report with:
+
+```
+📊 Ensemble      → Per-seed CRPS, EMOS weights, learned-weight CRPS
+📊 Uncertainty   → Aleatoric (ZINB var) vs Epistemic (seed disagreement)
+📊 6 Conformal   → Coverage, width, disparity for each method
+📊 Rolling ECRC  → Per-window coverage, alpha convergence trajectory
+📊 Baselines     → HA CRPS, Seasonal Naive CRPS
+📊 CRPSS         → Skill score vs HA and Seasonal Naive
+📊 Recalibration → Before/after CRPS, improvement %, learned params
+📊 PIT Histogram → Chi-squared uniformity test
+📊 CRPS Decomp   → Reliability, Resolution, Uncertainty (Hersbach 2000)
+📊 DM Test       → Diebold-Mariano + block bootstrap p-values
+📊 FLI           → Feedback Loop Index + Bias Amplification per group
+📊 Point Metrics → MAE, RMSE, Brier score
+```
+
+## 🔄 Reproducibility
+
+```bash
+# 1. Data
+python scripts/fetch_data.py --city chicago
+python scripts/fetch_data.py --city nyc
+python scripts/build_demographics.py --city chicago
+python scripts/build_demographics.py --city nyc
+
+# 2. Training (5 seeds × 2 cities)
+python scripts/train.py data=chicago
+python scripts/train.py data=nyc
+
+# 3. Evaluation (produces full JSON report)
+python scripts/run_conformal_evaluation.py --data chicago
+python scripts/run_conformal_evaluation.py --data nyc
+
+# 4. Baselines (traditional + deep learning)
+python scripts/baselines.py data=chicago
+python scripts/deep_baselines.py data=chicago
+
+# 5. Visualization
+python scripts/generate_figures.py --data chicago
+
+# 6. Ablation tables
+python scripts/ablation_study.py --data chicago --data nyc
 ```
 
 ---
