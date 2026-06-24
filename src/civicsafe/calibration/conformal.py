@@ -753,10 +753,15 @@ class AdaptiveTemporalECRCCalibrator:
         G = len(unique_groups)
         n_cal = scores.shape[0]
 
-        # Initial Hoeffding epsilon (ECRC base)
-        self._epsilon = math.sqrt(
-            math.log(2.0 * G / self.delta) / (2.0 * max(n_cal / G, 1.0))
-        )
+        # Initial Hoeffding epsilon per group (use actual group sizes, not n_cal/G)
+        # Bonferroni-corrected per-group delta
+        delta_g = self.delta / G
+        max_epsilon = 0.0
+        for g in unique_groups:
+            n_g = (groups == g).sum().item()
+            epsilon_g = math.sqrt(math.log(2.0 / delta_g) / (2.0 * max(n_g, 1)))
+            max_epsilon = max(max_epsilon, epsilon_g)
+        self._epsilon = max_epsilon
         base_alpha = max(self.nominal_alpha - self._epsilon, 0.01)
 
         for g in unique_groups:

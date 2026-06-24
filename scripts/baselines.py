@@ -42,10 +42,23 @@ logger = logging.getLogger(__name__)
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    """Compute MAE, RMSE, and CRPS (equals MAE for deterministic point forecasts)."""
+    """Compute MAE, RMSE, and proper CRPS for deterministic point forecasts.
+    
+    For point forecasts, CRPS is computed by wrapping them as Poisson(lambda=y_pred)
+    and evaluating against the ZINB CRPS formula. This ensures fair comparison
+    with the probabilistic CIVIC-SAFE model.
+    """
     mae = np.abs(y_true - y_pred).mean()
     rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
-    crps = mae  # Point forecast CRPS matches MAE
+    
+    # Proper CRPS via Poisson approximation: pi=0, mu=y_pred, r=1000 (NB→Poisson)
+    from civicsafe.training.metrics import crps_zinb
+    y_t = torch.tensor(y_true.flatten(), dtype=torch.float32)
+    pi_t = torch.zeros_like(y_t)
+    mu_t = torch.tensor(y_pred.flatten(), dtype=torch.float32).clamp(min=0.01)
+    r_t = torch.full_like(y_t, 1000.0)
+    crps = crps_zinb(y_t, pi_t, mu_t, r_t).mean().item()
+    
     return {"crps": float(crps), "mae": float(mae), "rmse": float(rmse)}
 
 
@@ -287,9 +300,19 @@ def main():
     counts = panel["counts"]
     features = panel["features"]
     
-    # Normalize features
-    feat_mean = features.mean(dim=(0, 1), keepdim=True)
-    feat_std = features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+    # Normalize features using training-only statistics (no data leakage)
+    norm_stats_path = project_root / 'data' / 'processed' / f'{data_name}_norm_stats.pt'
+    if norm_stats_path.exists():
+        norm_stats = torch.load(norm_stats_path, weights_only=False)
+        feat_mean = norm_stats['mean']
+        feat_std = norm_stats['std']
+        logger.info(f'  Loaded normalization stats from training')
+    else:
+        train_end_idx = 208
+        train_features = features[:, :train_end_idx, :]
+        feat_mean = train_features.mean(dim=(0, 1), keepdim=True)
+        feat_std = train_features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+        logger.info(f'  Computed normalization from training period (first {train_end_idx} weeks)')
     features = (features - feat_mean) / feat_std
     
     # Splits (match main model exactly)
