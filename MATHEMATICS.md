@@ -248,3 +248,165 @@ $$\text{CRPS}(F_{\text{ens}}, y) = \sum_{j=0}^{K_{\max}} \left[\frac{1}{K}\sum_{
 ### 11.3 Expected Improvement
 
 In weather forecasting (Gneiting et al., 2005; Raftery et al., 2005), EMOS typically improves CRPS by 10–30% over the best individual model. This is because model diversity (from different random seeds) captures uncertainty that any single model cannot. The improvement is essentially "free" — no additional training cost.
+
+### 11.4 EMOS Weight Learning (Novel Application to ZINB)
+
+Rather than using equal weights $w_k = 1/K$, EMOS learns optimal weights $\mathbf{w}^* \in \Delta_K$ (the probability simplex) by minimizing CRPS on a held-out calibration set:
+
+$$\mathbf{w}^* = \arg\min_{\mathbf{w} \in \Delta_K} \frac{1}{N_{\text{cal}}} \sum_{i=1}^{N_{\text{cal}}} \text{CRPS}\!\left(F_{\text{ZINB}}(\cdot; \bar{\pi}_\mathbf{w}^{(i)}, \bar{\mu}_\mathbf{w}^{(i)}, \bar{r}_\mathbf{w}^{(i)}), y_i\right)$$
+
+where the weighted parameters are:
+$$\bar{\pi}_\mathbf{w} = \sum_{k=1}^K w_k \pi_k, \qquad \bar{\mu}_\mathbf{w} = \sum_{k=1}^K w_k \mu_k, \qquad \bar{r}_\mathbf{w} = \sum_{k=1}^K w_k r_k$$
+
+The simplex constraint is enforced via softmax reparameterization: $w_k = \frac{\exp(\ell_k)}{\sum_j \exp(\ell_j)}$ where $\boldsymbol{\ell} \in \mathbb{R}^K$ are unconstrained logits optimized by Adam.
+
+**Novelty**: While EMOS is standard for Gaussian distributions in meteorology (Gneiting et al., 2005), its application to ZINB distributions for crime forecasting is new. The key challenge is that CRPS for ZINB has no closed-form expression (unlike the Gaussian case), requiring numerical computation via CDF summation (§4.1).
+
+## 12. CRPS Decomposition (Hersbach 2000)
+
+### 12.1 The Decomposition
+
+Following Hersbach (2000), the mean CRPS over $N$ forecast-observation pairs can be decomposed analogously to the Brier Score decomposition:
+
+$$\overline{\text{CRPS}} = \text{REL} - \text{RES} + \text{UNC}$$
+
+where:
+- **Reliability (REL)**: Measures calibration error. A perfectly calibrated forecast has $\text{REL} = 0$. Computed via PIT (Probability Integral Transform) histogram deviation from uniformity.
+- **Resolution (RES)**: Measures the forecast's ability to discriminate between different outcomes — how much the predictive distribution varies from the climatological distribution. Higher resolution is better.
+- **Uncertainty (UNC)**: The inherent unpredictability of the observations. This is a property of the data, not the model. $\text{UNC} = \frac{2}{N^2} \sum_{i=1}^{N} \left(i - \frac{N+1}{2}\right) y_{(i)}$ where $y_{(1)} \leq \cdots \leq y_{(N)}$ are the sorted observations.
+
+### 12.2 CRPS Skill Score
+
+The CRPSS relative to climatology is:
+$$\text{CRPSS} = 1 - \frac{\overline{\text{CRPS}}}{\text{UNC}} = \frac{\text{RES} - \text{REL}}{\text{UNC}}$$
+
+A model with perfect calibration ($\text{REL}=0$) and maximum resolution achieves $\text{CRPSS} \to 1$. A model no better than climatology has $\text{CRPSS} = 0$.
+
+### 12.3 Connection to PIT Calibration
+
+For a calibrated model, PIT values $p_i = F_i(y_i)$ are uniformly distributed on $[0,1]$. For discrete distributions (ZINB), we use the randomized PIT:
+$$p_i = F_i(y_i - 1) + U_i \cdot [F_i(y_i) - F_i(y_i - 1)], \qquad U_i \sim \text{Uniform}(0,1)$$
+
+The reliability component is directly linked to deviation of the PIT histogram from uniformity:
+$$\text{REL} \propto \sum_{k=1}^{B} \left(\hat{o}_k - \frac{1}{B}\right)^2$$
+where $\hat{o}_k$ is the observed frequency in PIT bin $k$ and $B$ is the number of bins.
+
+## 13. Rolling Adaptive ECRC Algorithm
+
+### 13.1 Problem Setting
+
+Standard conformal prediction treats all test observations as exchangeable. In temporal crime forecasting, we observe test data sequentially (week by week). The Rolling Adaptive ECRC exploits this structure.
+
+### 13.2 Algorithm
+
+**Input**: Calibrated $\hat{\alpha}_g$ for each group $g \in \{1, \ldots, G\}$; learning rate $\gamma > 0$; calibration scores $\{s_i^{(g)}\}$
+
+**For each test window $w = 1, 2, \ldots, W_{\text{test}}$:**
+
+1. **Predict**: Compute conformal intervals using current $\hat{\alpha}_g^{(w)}$:
+   $$\hat{q}_g^{(w)} = \text{Quantile}\!\left(\{s_i^{(g)}\}, \lceil(1 - \hat{\alpha}_g^{(w)})(1 + 1/n_g^{(w)})\rceil\right)$$
+   $$C_g^{(w)}(x) = \{y : s(x, y) \leq \hat{q}_g^{(w)}\}$$
+
+2. **Observe**: Receive true counts $y^{(w)}$ for window $w$.
+
+3. **Evaluate**: Compute empirical miscoverage error:
+   $$\text{err}_g^{(w)} = 1 - \frac{1}{n_g^{(w)}} \sum_{i \in \text{group}_g} \mathbb{1}\!\left(y_i^{(w)} \in C_g^{(w)}(x_i)\right)$$
+
+4. **Update**: Adjust the target coverage per group:
+   $$\hat{\alpha}_g^{(w+1)} = \hat{\alpha}_g^{(w)} + \gamma \left(\text{err}_g^{(w)} - \alpha\right)$$
+   This implements the Gibbs & Candès (2021) adaptive conformal inference update with per-group stratification.
+
+5. **Record**: Store $\hat{\alpha}_g^{(w+1)}$ and coverage for convergence diagnostics.
+
+### 13.3 Convergence Guarantee
+
+Under mild regularity conditions (bounded scores, ergodic stationarity), the rolling average coverage converges:
+$$\frac{1}{W} \sum_{w=1}^{W} \text{err}_g^{(w)} \xrightarrow{W \to \infty} \alpha \quad \text{for each group } g$$
+
+The convergence rate depends on $\gamma$: smaller $\gamma$ gives slower adaptation but lower variance in the coverage trajectory.
+
+## 14. Statistical Significance Testing
+
+### 14.1 Diebold-Mariano Test
+
+To establish that CIVIC-SAFE significantly outperforms baselines, we use the Diebold & Mariano (1995) test.
+
+**Setup**: Given per-timestep CRPS values $\{L_{1,t}\}_{t=1}^T$ and $\{L_{2,t}\}_{t=1}^T$ for two competing forecasts, define the loss differential:
+$$d_t = L_{1,t} - L_{2,t}$$
+
+**Test statistic** (with HAC standard errors):
+$$\text{DM} = \frac{\bar{d}}{\sqrt{\hat{\sigma}_d^2 / T}} \xrightarrow{d} \mathcal{N}(0, 1) \quad \text{under } H_0: E[d_t] = 0$$
+
+where $\hat{\sigma}_d^2$ is the Newey-West (1987) HAC estimator of the long-run variance:
+$$\hat{\sigma}_d^2 = \hat{\gamma}_0 + 2 \sum_{j=1}^{h} \left(1 - \frac{j}{h+1}\right) \hat{\gamma}_j$$
+
+with autocovariance $\hat{\gamma}_j = \frac{1}{T} \sum_{t=j+1}^{T} (d_t - \bar{d})(d_{t-j} - \bar{d})$ and truncation lag $h = \lfloor T^{1/3} \rfloor$.
+
+### 14.2 Temporal Block Bootstrap
+
+As a complementary non-parametric test, we use the stationary block bootstrap (Politis & Romano, 1994):
+
+1. Choose block length $\ell = \lceil T^{1/3} \rceil$
+2. For $b = 1, \ldots, B$ bootstrap replicates:
+   - Sample $\lceil T/\ell \rceil$ blocks of length $\ell$ with replacement from $\{d_t\}$
+   - Compute $\bar{d}^{*(b)}$ from the bootstrap sample
+3. Two-sided p-value: $\hat{p} = \frac{1}{B} \sum_{b=1}^{B} \mathbb{1}(|\bar{d}^{*(b)} - \bar{d}| \geq |\bar{d}|)$
+
+This accounts for temporal dependence in the loss differentials without parametric assumptions on their distribution.
+
+## 15. Feedback Loop Index (Novel Contribution)
+
+### 15.1 Motivation
+
+Predictive policing systems risk creating feedback loops: if the model predicts high crime in area $A$, more officers are deployed to $A$, resulting in more arrests, which increases reported crime, which reinforces the prediction. The Feedback Loop Index quantifies this risk.
+
+### 15.2 Definition
+
+For demographic group $g$, the FLI is:
+
+$$\text{FLI}_g = \text{Corr}(\hat{y}_g - \bar{y}_g^{\text{hist}}, \; y_g - \bar{y}_g^{\text{hist}})$$
+
+where:
+- $\hat{y}_g$ = model predictions for group $g$
+- $y_g$ = observed counts for group $g$
+- $\bar{y}_g^{\text{hist}}$ = historical training-period mean for group $g$
+
+**Interpretation**:
+- $\text{FLI}_g > 0$: Model deviations from historical trends are correlated with observed deviations — the model *amplifies* existing trends (potential feedback loop)
+- $\text{FLI}_g \approx 0$: Model is trend-neutral (safe)
+- $\text{FLI}_g < 0$: Model *counteracts* trends (corrective)
+
+### 15.3 Bias Amplification Score
+
+$$\text{BAS}_g = \frac{\text{Var}(\hat{y}_g)}{\text{Var}(y_g)} - 1$$
+
+- $\text{BAS}_g > 0$: Model over-predicts variance for group $g$ (amplifies signal)
+- $\text{BAS}_g < 0$: Model under-predicts variance (dampens signal)
+- $\text{BAS}_g = 0$: Model preserves the natural variance structure
+
+### 15.4 Aggregate Fairness Metric
+
+The overall disparity is measured as the maximum absolute difference in FLI across groups:
+$$\Delta_{\text{FLI}} = \max_{g, g'} |\text{FLI}_g - \text{FLI}_{g'}|$$
+
+A system is considered fair (in the feedback loop sense) if $\Delta_{\text{FLI}} < 0.2$.
+
+## 16. Post-Hoc Recalibration
+
+### 16.1 Affine ZINB Recalibration
+
+After training, the ZINB parameters may be slightly miscalibrated. We learn an affine correction on the calibration set:
+
+$$\tilde{\mu} = a_\mu \cdot \mu + b_\mu, \qquad \tilde{r} = a_r \cdot r + b_r$$
+
+The parameters $(a_\mu, b_\mu, a_r, b_r)$ are learned by minimizing CRPS on the calibration set:
+$$\theta^* = \arg\min_\theta \frac{1}{N_{\text{cal}}} \sum_{i=1}^{N_{\text{cal}}} \text{CRPS}(F_{\text{ZINB}}(\cdot; \pi_i, \tilde{\mu}_i, \tilde{r}_i), y_i)$$
+
+The recalibrator is initialized at the identity mapping $(a_\mu = 1, b_\mu = 0, a_r = 1, b_r = 0)$ to ensure that no correction is applied if the model is already well-calibrated.
+
+### 16.2 Why CRPS Not NLL?
+
+CRPS optimization for recalibration is strictly preferred over NLL because:
+1. CRPS is a proper scoring rule that penalizes both miscalibration and lack of sharpness
+2. NLL can be manipulated by overfitting the variance parameter without improving the forecast
+3. The recalibrated model can be directly evaluated on the same metric, ensuring consistency between training and evaluation objectives
