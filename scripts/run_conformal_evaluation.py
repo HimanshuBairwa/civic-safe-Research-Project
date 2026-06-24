@@ -66,6 +66,8 @@ from civicsafe.models.civicsafe_model import CivicSafeModel
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
 from civicsafe.calibration.recalibration import recalibrate_and_evaluate
+from civicsafe.calibration.emos import learn_emos_weights, apply_emos_weights, crps_decomposition
+from civicsafe.calibration.significance import compare_forecasts
 from civicsafe.audit.feedback_loop import compute_all_feedback_metrics
 
 logger = logging.getLogger(__name__)
@@ -613,7 +615,42 @@ def run_conformal_evaluation(
         
         logger.info(f"  Per-seed CRPS: {[f'{c:.4f}' for c in per_seed_crps]}")
         logger.info(f"  Mean per-seed CRPS: {np.mean(per_seed_crps):.4f}")
-        logger.info(f"  Ensemble CRPS (param-avg): {ensemble_crps:.4f}")
+        logger.info(f"  Ensemble CRPS (equal-weight): {ensemble_crps:.4f}")
+
+        # --- EMOS: Learn Optimal Weights ---
+        logger.info("\n  --- EMOS WEIGHT LEARNING ---")
+        emos_info = learn_emos_weights(
+            y_cal=cal_results["y"].reshape(-1),
+            all_pi=cal_results["all_pi"],
+            all_mu=cal_results["all_mu"],
+            all_r=cal_results["all_r"],
+        )
+        # Apply learned weights to get EMOS-combined params
+        pi_emos_cal, mu_emos_cal, r_emos_cal = apply_emos_weights(
+            emos_info["weights"],
+            cal_results["all_pi"], cal_results["all_mu"], cal_results["all_r"],
+        )
+        pi_emos_test, mu_emos_test, r_emos_test = apply_emos_weights(
+            emos_info["weights"],
+            test_results["all_pi"], test_results["all_mu"], test_results["all_r"],
+        )
+        # Overwrite the ensemble params with EMOS-optimized versions
+        cal_results["pi"] = pi_emos_cal
+        cal_results["mu"] = mu_emos_cal
+        cal_results["r"] = r_emos_cal
+        test_results["pi"] = pi_emos_test
+        test_results["mu"] = mu_emos_test
+        test_results["r"] = r_emos_test
+        
+        emos_crps = crps_zinb(
+            test_results["y"].reshape(-1), pi_emos_test.reshape(-1),
+            mu_emos_test.reshape(-1), r_emos_test.reshape(-1)
+        ).mean().item()
+        logger.info(f"  EMOS CRPS (learned weights): {emos_crps:.4f}")
+        logger.info(
+            f"  EMOS improvement over equal-weight: "
+            f"{(1.0 - emos_crps / ensemble_crps) * 100:.2f}%"
+        )
         
         # ─── Uncertainty Decomposition ───
         # Aleatoric = mean of per-seed ZINB variance
@@ -966,6 +1003,49 @@ def run_conformal_evaluation(
     else:
         logger.info("  ✅ Model predictions counteract historical trends (corrective)")
 
+    # ─── CRPS Decomposition (Hersbach 2000) ───
+    logger.info("\n  ─── CRPS DECOMPOSITION (Hersbach 2000) ───")
+    crps_decomp = crps_decomposition(y_test, pi_test, mu_test, r_test)
+
+    # ─── Statistical Significance (Diebold-Mariano + Block Bootstrap) ───
+    logger.info("\n  ─── STATISTICAL SIGNIFICANCE ───")
+    # Compute per-timestep CRPS for model and baseline
+    crps_per_obs_model = crps_zinb(y_test, pi_test, mu_test, r_test)
+    
+    # Historical Average baseline CRPS per observation
+    # HA predicts the training-period mean for each (S, C) cell
+    ha_pred_flat = counts[:, :208, :].float().mean(dim=1)  # (S, C)
+    ha_pred_expanded = ha_pred_flat.unsqueeze(0).expand(
+        n_test_windows, S, C
+    ).reshape(-1)
+    # Poisson approx CRPS for HA: pi=0, mu=ha_pred, r=1000 (NB->Poisson)
+    crps_per_obs_ha = crps_zinb(
+        y_test,
+        torch.zeros_like(y_test),
+        ha_pred_expanded.clamp(min=0.01),
+        torch.full_like(y_test, 1000.0),
+    )
+    
+    # Aggregate into per-window CRPS for DM test (need temporal sequence)
+    obs_per_window = S * C
+    n_windows_actual = y_test.shape[0] // obs_per_window
+    if n_windows_actual >= 10:
+        crps_model_windows = crps_per_obs_model.reshape(
+            n_windows_actual, obs_per_window
+        ).mean(dim=1)
+        crps_ha_windows = crps_per_obs_ha.reshape(
+            n_windows_actual, obs_per_window
+        ).mean(dim=1)
+        
+        significance_results = compare_forecasts(
+            crps_model_windows, crps_ha_windows,
+            baseline_name="Historical Average",
+        )
+        logger.info(f"  {significance_results['summary']}")
+    else:
+        significance_results = {"note": "Insufficient windows for DM test (need >= 10)"}
+        logger.info("  ⚠️ Too few test windows for DM test")
+
     # ─── Step 7: Compile and save results ───
     logger.info("\n[7/7] Compiling results and saving to disk...")
 
@@ -1016,6 +1096,8 @@ def run_conformal_evaluation(
             "crpss_sn_recalibrated": crpss_sn_recal,
         },
         "feedback_loop_analysis": feedback_metrics,
+        "crps_decomposition": crps_decomp,
+        "statistical_significance": significance_results,
     }
     
     # Add ensemble-specific results if applicable
@@ -1024,8 +1106,11 @@ def run_conformal_evaluation(
             "num_seeds": K,
             "per_seed_crps": per_seed_crps,
             "mean_seed_crps": float(np.mean(per_seed_crps)),
-            "ensemble_crps": ensemble_crps,
-            "ensemble_improvement": float(1.0 - ensemble_crps / np.mean(per_seed_crps)),
+            "ensemble_crps_equal_weight": ensemble_crps,
+            "emos_crps_learned_weight": emos_crps,
+            "emos_weights": emos_info["weights"],
+            "emos_improvement_pct": emos_info["improvement_pct"],
+            "ensemble_improvement": float(1.0 - emos_crps / np.mean(per_seed_crps)),
             "aleatoric_uncertainty": aleatoric,
             "epistemic_uncertainty": epistemic,
             "epistemic_fraction": float(epistemic / (aleatoric + epistemic)),
