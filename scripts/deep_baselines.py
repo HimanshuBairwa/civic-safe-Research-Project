@@ -29,6 +29,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,7 +37,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
-from civicsafe.models.zinb_loss import ZINBLoss
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb
 
 logging.basicConfig(
@@ -928,6 +928,14 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # --- Reproducibility ---
+    SEED = 42
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+
     # --- Device selection ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Device: {device}")
@@ -978,8 +986,6 @@ def main() -> None:
         adj = torch.eye(S)
 
     # --- Loss functions ---
-    zinb_loss_fn = ZINBLoss(reduction="mean")
-
     def crps_loss_fn(y: Tensor, pi: Tensor, mu: Tensor, r: Tensor) -> Tensor:
         """CRPS loss for ZINB outputs (same loss used by CIVIC-SAFE)."""
         return crps_zinb(y, pi, mu, r).mean()
