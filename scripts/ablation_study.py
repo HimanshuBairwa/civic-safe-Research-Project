@@ -73,6 +73,11 @@ def _bold(text: str) -> str:
     return rf"\textbf{{{text}}}"
 
 
+def _latex_escape(text: str) -> str:
+    """Escape characters for LaTeX."""
+    return text.replace("_", r"\_")
+
+
 def _bold_best_column(
     rows: list[dict[str, str]],
     columns: list[str],
@@ -249,7 +254,7 @@ def generate_main_results_table(
         if base_res is not None:
             for bname, bmetrics in base_res.items():
                 city_rows.append({
-                    "name": bname,
+                    "name": _latex_escape(bname),
                     "CRPS": _fmt(bmetrics.get("crps")),
                     "MAE": _fmt(bmetrics.get("mae")),
                     "RMSE": _fmt(bmetrics.get("rmse")),

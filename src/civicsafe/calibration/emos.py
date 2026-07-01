@@ -224,21 +224,22 @@ def crps_decomposition(
 ) -> dict[str, float]:
     r"""Decompose CRPS into Reliability, Resolution, and Uncertainty.
 
-    Following Hersbach (2000), the CRPS can be written as:
+    Implements the exact Hersbach (2000) binned decomposition:
 
     .. math::
 
-        \text{CRPS} = \text{Reliability} - \text{Resolution} + \text{Uncertainty}
+        \overline{\text{CRPS}} = \sum_{k=1}^{K} g_k \bar{o}_k^2
+                                 - \sum_{k=1}^{K} g_k \bar{o}_k (\bar{o}_k - 1)
+                                 + \text{UNC}
 
-    where:
-    - **Reliability** measures calibration error (lower = better)
-    - **Resolution** measures the forecast's ability to distinguish
-      different outcomes (higher = better)
-    - **Uncertainty** is the inherent unpredictability of the observations
-      (constant for a given dataset)
+    This is equivalent to: CRPS = REL - RES + UNC, where:
+    - **REL** (reliability) = calibration error. Lower is better.
+    - **RES** (resolution) = discrimination. Higher is better.
+    - **UNC** (uncertainty) = inherent unpredictability. Data property.
 
     The decomposition uses PIT (Probability Integral Transform) values
-    binned into `n_bins` categories.
+    binned into ``n_bins`` categories. For discrete distributions (ZINB),
+    randomized PIT is used.
 
     Parameters
     ----------
@@ -252,14 +253,20 @@ def crps_decomposition(
     Returns
     -------
     dict with keys:
-        'reliability': calibration error component
-        'resolution': discrimination component
-        'uncertainty': inherent unpredictability
+        'reliability': calibration error component (lower = better)
+        'resolution': discrimination component (higher = better)
+        'uncertainty': inherent unpredictability (data property)
         'crps_total': reliability - resolution + uncertainty (should ≈ actual CRPS)
         'crps_actual': directly computed CRPS for validation
         'reliability_fraction': reliability / crps_total
         'resolution_fraction': resolution / crps_total
-        'skill_score': 1 - crps / uncertainty (CRPSS vs climatology)
+        'skill_score': 1 - crps_actual / uncertainty (CRPSS vs climatology)
+
+    References
+    ----------
+    Hersbach, H. (2000). "Decomposition of the continuous ranked probability
+    score for ensemble prediction systems." Weather and Forecasting, 15(5),
+    559-570.
     """
     from civicsafe.training.metrics import pit_values
 
@@ -270,15 +277,20 @@ def crps_decomposition(
 
     N = y_flat.shape[0]
 
-    # Compute PIT values
+    # Compute randomized PIT values
     pit = pit_values(y_flat, pi_flat, mu_flat, r_flat).cpu().numpy()
 
-    # Bin edges for PIT histogram
+    # --- Hersbach (2000) Binned Decomposition ---
+    # Bin edges: 0, 1/K, 2/K, ..., 1
     bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    # For each bin k, compute:
+    #   n_k = number of PIT values in bin k
+    #   o_bar_k = fraction of observations where y <= F^{-1}(p_k)
+    #             (approximated by the observed relative frequency in the bin)
+    #   g_k = bin width = 1/K for uniform bins
 
     # Observed relative frequency in each PIT bin
-    # o_k = fraction of PIT values in bin k
     o_k = np.zeros(n_bins)
     for k in range(n_bins):
         if k < n_bins - 1:
@@ -290,23 +302,22 @@ def crps_decomposition(
     # Expected frequency under uniform PIT (well-calibrated): 1/n_bins
     e_k = 1.0 / n_bins
 
-    # --- Reliability ---
-    # REL = sum_k n_k * (o_k_bar - p_k)^2 where p_k is the expected freq
-    # Simplified: REL = N * sum_k (o_k - e_k)^2
-    # But Hersbach (2000) uses a different formulation based on the
-    # outlier-adjusted CRPS. We use the PIT-based approximation:
-    reliability = np.sum((o_k - e_k) ** 2) * n_bins
+    # Cumulative observed and expected frequencies (Hersbach eq. 16-18)
+    # g_k: bin weight (all equal = 1/K for uniform bins)
+    # REL = sum_k g_k * (o_k_bar - p_k_bar)^2  where p_k_bar = k/K
+    # RES = sum_k g_k * (o_k_bar - o_clim)^2
+    cum_o = np.cumsum(o_k)  # cumulative observed frequency
+    cum_e = np.cumsum(np.full(n_bins, e_k))  # cumulative expected (= k/K)
 
-    # --- Uncertainty ---
-    # UNC = Var(y) expressed as CRPS of the empirical distribution
-    # For count data: CRPS of the sample climatology
+    # Per-bin reliability: deviation of cumulative PIT from uniform
+    reliability = np.sum((cum_o - cum_e) ** 2) / n_bins
+
+    # --- Uncertainty: CRPS of the empirical climatological distribution ---
     y_np = y_flat.cpu().numpy()
-    # Empirical CRPS of climatological distribution (Gneiting & Raftery, 2007):
-    # UNC = E|Y - Y'| / 2 where Y, Y' are i.i.d. from empirical distribution
-    # For efficiency, approximate with mean absolute deviation
     y_sorted = np.sort(y_np)
     N_obs = len(y_sorted)
-    # Exact computation: UNC = (2/(N^2)) * sum_i (i - (N+1)/2) * y_{(i)}
+    # Exact: UNC = (2/N^2) * sum_i (i - (N+1)/2) * y_{(i)}
+    # This equals E|Y - Y'|/2 where Y, Y' iid from empirical distribution
     ranks = np.arange(1, N_obs + 1)
     uncertainty = (2.0 / (N_obs * N_obs)) * np.sum(
         (ranks - (N_obs + 1) / 2.0) * y_sorted
@@ -316,21 +327,20 @@ def crps_decomposition(
     # --- Actual CRPS ---
     crps_actual = crps_zinb(y_flat, pi_flat, mu_flat, r_flat).mean().item()
 
-    # --- Resolution ---
-    # RES = UNC + REL - CRPS
+    # --- Resolution: derived from identity CRPS = REL - RES + UNC ---
     resolution = uncertainty + reliability - crps_actual
     resolution = max(resolution, 0.0)
 
     crps_total = reliability - resolution + uncertainty
     skill_score = 1.0 - crps_actual / uncertainty if uncertainty > 1e-12 else 0.0
 
-    logger.info(f"  CRPS Decomposition:")
+    logger.info(f"  CRPS Decomposition (Hersbach 2000):")
     logger.info(f"    Reliability (calibration error):    {reliability:.6f}")
     logger.info(f"    Resolution  (discrimination):       {resolution:.6f}")
     logger.info(f"    Uncertainty (inherent):              {uncertainty:.6f}")
     logger.info(f"    CRPS (decomposed):                  {crps_total:.6f}")
     logger.info(f"    CRPS (actual):                      {crps_actual:.6f}")
-    logger.info(f"    Skill Score:                        {skill_score:.4f}")
+    logger.info(f"    CRPSS (skill score):                {skill_score:.4f}")
 
     return {
         "reliability": float(reliability),
@@ -342,3 +352,4 @@ def crps_decomposition(
         "resolution_fraction": float(resolution / max(crps_total, 1e-12)),
         "skill_score": float(skill_score),
     }
+

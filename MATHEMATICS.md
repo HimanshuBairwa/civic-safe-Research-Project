@@ -304,7 +304,7 @@ Standard conformal prediction treats all test observations as exchangeable. In t
 **For each test window $w = 1, 2, \ldots, W_{\text{test}}$:**
 
 1. **Predict**: Compute conformal intervals using current $\hat{\alpha}_g^{(w)}$:
-   $$\hat{q}_g^{(w)} = \text{Quantile}\!\left(\{s_i^{(g)}\}, \lceil(1 - \hat{\alpha}_g^{(w)})(1 + 1/n_g^{(w)})\rceil\right)$$
+   $$\hat{q}_g^{(w)} = \text{Quantile}\!\left(\{s_i^{(g)}\}, \min\left(1.0, (1 - \hat{\alpha}_g^{(w)})(1 + 1/n_g^{(w)})\right)\right)$$
    $$C_g^{(w)}(x) = \{y : s(x, y) \leq \hat{q}_g^{(w)}\}$$
 
 2. **Observe**: Receive true counts $y^{(w)}$ for window $w$.
@@ -362,9 +362,9 @@ Predictive policing systems risk creating feedback loops: if the model predicts 
 
 ### 15.2 Definition
 
-For demographic group $g$, the FLI is:
+For demographic group $g$, the FLI is computed over all spatial units in group $g$ and all test time steps $t \in T_{\text{test}}$:
 
-$$\text{FLI}_g = \text{Corr}(\hat{y}_g - \bar{y}_g^{\text{hist}}, \; y_g - \bar{y}_g^{\text{hist}})$$
+$$\text{FLI}_g = \text{Corr}_{s \in \text{group}_g, t \in T_{\text{test}}}(\hat{y}_{s,t} - \bar{y}_{s}^{\text{hist}}, \; y_{s,t} - \bar{y}_{s}^{\text{hist}})$$
 
 where:
 - $\hat{y}_g$ = model predictions for group $g$
