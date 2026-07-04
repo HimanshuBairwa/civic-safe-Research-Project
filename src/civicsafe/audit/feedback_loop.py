@@ -1,11 +1,11 @@
-"""Feedback Loop Index (FLI) and Bias Amplification Score (BAS).
+"""Anomaly Skill Coefficient (ASC) and Bias Amplification Score (BAS).
 
 This module introduces two **novel** audit metrics designed to quantify the
 risk that deploying a predictive model will *reinforce* existing patterns of
 over- or under-policing across demographic groups.  Traditional fairness
 metrics (equalized odds, calibration) measure static parity at a single
 snapshot; they cannot detect whether a model's predictions will **amplify**
-historical trends when fed back into resource-allocation decisions.  The FLI
+historical trends when fed back into resource-allocation decisions.  The ASC
 and BAS fill this gap.
 
 Why this matters
@@ -15,13 +15,13 @@ conflates true incidence with enforcement intensity.  If a model's forecasts
 correlate with the *direction of change* in a group's crime trend, deploying
 that model may reinforce the trajectory — allocating more patrols to areas
 already trending upward, starving resources from areas trending downward.
-The Feedback Loop Index makes this dynamic measurable *before* deployment.
+The Anomaly Skill Coefficient makes this dynamic measurable *before* deployment.
 
 Mathematical formulations are given in each class docstring.
 
 Classes
 -------
-FeedbackLoopIndex
+AnomalySkillCoefficient
     Per-group metric capturing trend-amplification risk.
 BiasAmplificationScore
     Per-group metric capturing systematic over/under-prediction ratios.
@@ -49,18 +49,18 @@ _MIN_GROUP_SIZE: int = 5
 
 
 # ===================================================================
-# Feedback Loop Index
+# Anomaly Skill Coefficient
 # ===================================================================
 
 
-class FeedbackLoopIndex:
+class AnomalySkillCoefficient:
     r"""Quantify trend-amplification risk per demographic group.
 
-    For each demographic group :math:`g` the **Feedback Loop Index** is
+    For each demographic group :math:`g` the **Anomaly Skill Coefficient** is
 
     .. math::
 
-        \mathrm{FLI}_g
+        \mathrm{ASC}_g
         = \rho\!\bigl(\hat{y}_g,\;\Delta_g\bigr)
           \;\cdot\;
           \frac{\operatorname{Var}(\hat{y}_g)}
@@ -89,11 +89,11 @@ class FeedbackLoopIndex:
     The variance-ratio term scales the correlation by the model's
     *decisiveness*: a model that concentrates its probability mass
     (high :math:`\operatorname{Var}(\hat{y})`) relative to the
-    ground truth contributes more to the feedback loop, all else equal.
+    ground truth contributes more to the skill disparity, all else equal.
     """
 
     def __init__(self) -> None:
-        """Initialise FeedbackLoopIndex (stateless — no fitted parameters)."""
+        """Initialise AnomalySkillCoefficient (stateless — no fitted parameters)."""
 
     # ------------------------------------------------------------------
     def compute(
@@ -103,7 +103,7 @@ class FeedbackLoopIndex:
         groups: Tensor,
         historical_trend: Optional[Tensor] = None,
     ) -> Dict[str, Any]:
-        r"""Compute per-group FLI values.
+        r"""Compute per-group ASC values.
 
         Parameters
         ----------
@@ -121,8 +121,8 @@ class FeedbackLoopIndex:
         Returns
         -------
         dict
-            ``per_group``  — ``{group_id: fli_value}`` mapping.
-            ``aggregate``  — ``{"mean_fli", "max_fli", "min_fli"}``.
+            ``per_group``  — ``{group_id: asc_value}`` mapping.
+            ``aggregate``  — ``{"mean_asc", "max_asc", "min_asc"}``.
         """
         y_pred = y_pred.detach().float()
         y_true = y_true.detach().float()
@@ -138,7 +138,7 @@ class FeedbackLoopIndex:
 
             if n_g < _MIN_GROUP_SIZE:
                 logger.warning(
-                    "Group %s has %d samples (< %d); FLI set to NaN.",
+                    "Group %s has %d samples (< %d); ASC set to NaN.",
                     g_label, n_g, _MIN_GROUP_SIZE,
                 )
                 per_group[g_label] = float("nan")
@@ -159,7 +159,7 @@ class FeedbackLoopIndex:
 
             if var_yt.item() < 1e-12 or var_yp.item() < 1e-12:
                 logger.info(
-                    "Group %s has near-zero variance; FLI set to 0.0.",
+                    "Group %s has near-zero variance; ASC set to 0.0.",
                     g_label,
                 )
                 per_group[g_label] = 0.0
@@ -174,15 +174,15 @@ class FeedbackLoopIndex:
             if np.isnan(corr):
                 corr = 0.0
 
-            fli = corr * (var_yp.item() / var_yt.item())
-            per_group[g_label] = float(fli)
+            asc = corr
+            per_group[g_label] = float(asc)
 
         # Aggregate statistics (ignoring NaN entries)
         valid = [v for v in per_group.values() if not np.isnan(v)]
         aggregate: Dict[str, float] = {
-            "mean_fli": float(np.mean(valid)) if valid else float("nan"),
-            "max_fli": float(np.max(valid)) if valid else float("nan"),
-            "min_fli": float(np.min(valid)) if valid else float("nan"),
+            "mean_asc": float(np.mean(valid)) if valid else float("nan"),
+            "max_asc": float(np.max(valid)) if valid else float("nan"),
+            "min_asc": float(np.min(valid)) if valid else float("nan"),
         }
 
         return {"per_group": per_group, "aggregate": aggregate}
@@ -287,6 +287,59 @@ class BiasAmplificationScore:
 
 
 # ===================================================================
+# Downstream Allocation Disparity
+# ===================================================================
+
+class DownstreamAllocationDisparity:
+    r"""Measure downstream patrol allocation disparity per group.
+    
+    Allocations are typically proportional to predicted upper bounds or means.
+    This metric compares the share of total resources allocated to a group
+    versus the share of total true incidents experienced by that group.
+    
+    .. math::
+    
+        \mathrm{DAD}_g = \frac{\text{Allocation Share}_g}{\text{True Share}_g} - 1
+        
+    * > 0 means the group is over-allocated relative to its true incidents.
+    * < 0 means the group is under-allocated relative to its true incidents.
+    """
+    def __init__(self) -> None:
+        """Initialise DownstreamAllocationDisparity (stateless)."""
+
+    def compute(self, y_pred: Tensor, y_true: Tensor, groups: Tensor) -> Dict[str, Any]:
+        y_pred = y_pred.detach().float().clamp(min=0)
+        y_true = y_true.detach().float().clamp(min=0)
+        
+        total_alloc = y_pred.sum().item()
+        total_true = y_true.sum().item()
+        
+        unique_groups = torch.unique(groups)
+        per_group: Dict[str, float] = {}
+        for g in unique_groups:
+            g_label = str(g.item())
+            mask = groups == g
+            group_alloc = y_pred[mask].sum().item()
+            group_true = y_true[mask].sum().item()
+            
+            if total_alloc < 1e-9 or total_true < 1e-9 or group_true < 1e-9:
+                per_group[g_label] = float('nan')
+                continue
+                
+            alloc_share = group_alloc / total_alloc
+            true_share = group_true / total_true
+            
+            disparity = (alloc_share / true_share) - 1.0
+            per_group[g_label] = float(disparity)
+            
+        valid = [v for v in per_group.values() if not np.isnan(v)]
+        aggregate: Dict[str, float] = {
+            "max_alloc_disparity": float(np.max(np.abs(valid))) if valid else float("nan"),
+            "mean_alloc_disparity": float(np.mean(np.abs(valid))) if valid else float("nan"),
+        }
+        return {"per_group": per_group, "aggregate": aggregate}
+
+# ===================================================================
 # Convenience wrapper
 # ===================================================================
 
@@ -297,7 +350,7 @@ def compute_all_feedback_metrics(
     groups: Tensor,
     counts_historical: Optional[Tensor] = None,
 ) -> Dict[str, Any]:
-    """Compute FLI and BAS in one call and return a JSON-ready summary.
+    """Compute ASC and BAS in one call and return a JSON-ready summary.
 
     Parameters
     ----------
@@ -309,36 +362,38 @@ def compute_all_feedback_metrics(
         Integer group labels.
     counts_historical : Tensor, shape ``(N,)``, optional
         Historical baseline counts per observation.  Forwarded to
-        :pyclass:`FeedbackLoopIndex` as ``historical_trend``.
+        :pyclass:`AnomalySkillCoefficient` as ``historical_trend``.
 
     Returns
     -------
     dict
-        Top-level keys: ``"fli"``, ``"bas"``, ``"disparity"``.
+        Top-level keys: ``"asc"``, ``"bas"``, ``"disparity"``.
         All values are plain Python scalars (JSON-serialisable).
     """
-    fli_result = FeedbackLoopIndex().compute(
+    asc_result = AnomalySkillCoefficient().compute(
         y_pred, y_true, groups, historical_trend=counts_historical,
     )
     bas_result = BiasAmplificationScore().compute(y_pred, y_true, groups)
+    dad_result = DownstreamAllocationDisparity().compute(y_pred, y_true, groups)
 
-    # Cross-metric disparity: max |FLI| spread and max |BAS| spread
-    fli_vals = [
-        v for v in fli_result["per_group"].values() if not np.isnan(v)
+    # Cross-metric disparity: max |ASC| spread and max |BAS| spread
+    asc_vals = [
+        v for v in asc_result["per_group"].values() if not np.isnan(v)
     ]
     bas_vals = [
         v for v in bas_result["per_group"].values() if not np.isnan(v)
     ]
 
     disparity: Dict[str, float] = {
-        "fli_range": (max(fli_vals) - min(fli_vals)) if len(fli_vals) >= 2 else 0.0,
+        "asc_range": (max(asc_vals) - min(asc_vals)) if len(asc_vals) >= 2 else 0.0,
         "bas_range": (max(bas_vals) - min(bas_vals)) if len(bas_vals) >= 2 else 0.0,
-        "max_abs_fli": float(np.max(np.abs(fli_vals))) if fli_vals else float("nan"),
+        "max_abs_asc": float(np.max(np.abs(asc_vals))) if asc_vals else float("nan"),
         "max_abs_bas": float(np.max(np.abs(bas_vals))) if bas_vals else float("nan"),
     }
 
     return {
-        "fli": fli_result,
+        "asc": asc_result,
         "bas": bas_result,
+        "dad": dad_result,
         "disparity": disparity,
     }

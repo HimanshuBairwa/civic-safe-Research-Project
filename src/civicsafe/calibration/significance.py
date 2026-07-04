@@ -40,6 +40,7 @@ __all__ = [
     "diebold_mariano_test",
     "block_bootstrap_test",
     "compare_forecasts",
+    "benjamini_hochberg",
 ]
 
 # ---------------------------------------------------------------------------
@@ -160,6 +161,40 @@ def _newey_west_variance(d: np.ndarray, h: int) -> float:
 
     # Clamp to a tiny positive value to avoid division by zero
     return max(nw_var, 1e-15)
+
+def politis_white_block_length(d: np.ndarray) -> int:
+    """Politis-White (2004) automatic block-length selection heuristic.
+    
+    Computes autocorrelations up to the point where they become insignificant,
+    and returns an estimated optimal block length.
+    """
+    T = len(d)
+    if T < 10:
+        return 1
+        
+    d_mean = d.mean()
+    d_demean = d - d_mean
+    var = np.mean(d_demean**2)
+    if var < 1e-12:
+        return 1
+        
+    threshold = 2.0 / math.sqrt(T)
+    rho = []
+    m = 1
+    
+    # Compute autocorrelations until insignificant
+    for k in range(1, min(T, int(10 * math.log10(T)))):
+        cov = np.sum(d_demean[k:] * d_demean[:-k]) / T
+        r = cov / var
+        rho.append(r)
+        if abs(r) < threshold:
+            m = k
+            break
+            
+    # Heuristic block length based on sum of significant autocorrelations
+    l_opt = 1.0 + 2.0 * sum(abs(r) for r in rho[:m])
+    return max(1, int(math.ceil(l_opt)))
+
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +438,7 @@ def block_bootstrap_test(
 
     # --- block length -------------------------------------------------------
     if block_length is None:
-        block_length = int(math.ceil(T ** (1.0 / 3.0)))
+        block_length = politis_white_block_length(d)
     if block_length < 1:
         raise ValueError(f"block_length must be >= 1, got {block_length}.")
     # Clamp block_length to T so that at least one full block exists.
@@ -542,3 +577,38 @@ def compare_forecasts(
         "baseline_name": baseline_name,
         "T": T,
     }
+
+def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> list[dict[str, Any]]:
+    """Benjamini-Hochberg FDR correction for multiple hypothesis tests.
+    
+    Args:
+        p_values: List of raw p-values.
+        alpha: False Discovery Rate (FDR) level to control.
+        
+    Returns:
+        List of dicts with `raw_p`, `adjusted_p`, and `significant`.
+    """
+    n = len(p_values)
+    if n == 0:
+        return []
+        
+    arr = np.array(p_values, dtype=np.float64)
+    sorted_idx = np.argsort(arr)
+    sorted_p = arr[sorted_idx]
+    
+    adjusted = np.zeros(n, dtype=np.float64)
+    adjusted[-1] = sorted_p[-1]
+    for i in range(n - 2, -1, -1):
+        rank = i + 1
+        adjusted[i] = min(sorted_p[i] * n / rank, adjusted[i + 1])
+    adjusted = np.minimum(adjusted, 1.0)
+    
+    result = [{}] * n
+    for rank, orig_idx in enumerate(sorted_idx):
+        result[orig_idx] = {
+            "raw_p": float(p_values[orig_idx]),
+            "adjusted_p": float(adjusted[rank]),
+            "significant": bool(adjusted[rank] < alpha),
+        }
+    return result
+

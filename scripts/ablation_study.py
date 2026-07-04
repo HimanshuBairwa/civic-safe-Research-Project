@@ -342,6 +342,10 @@ def generate_ablation_table(results: dict[str, Any] | None = None) -> str:
         ("no_emos", r"$-$ EMOS weighting"),
         ("no_recal", r"$-$ Recalibration"),
         ("no_r_reg", r"$-$ $r$-floor regularization"),
+        ("nb_only", r"$-$ Zero-inflation (NB only)"),
+        ("nll_loss", r"$-$ CRPS loss (NLL only)"),
+        ("no_sharpness", r"$-$ Sharpness penalty"),
+        ("no_grl", r"$-$ GRL (Demographic blindness)"),
     ]
 
     rows: list[dict[str, str]] = []

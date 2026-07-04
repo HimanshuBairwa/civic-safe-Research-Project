@@ -679,6 +679,76 @@ class GraphWaveNetModel(nn.Module):
 
 
 # ============================================================================
+# Baseline 4: STZINB-GNN (Zhuang et al.)
+# ============================================================================
+
+class STZINBGNNModel(nn.Module):
+    """Spatiotemporal GNN with ZINB output head (Zhuang et al. 2022 baseline)."""
+    
+    def __init__(
+        self,
+        num_nodes: int,
+        input_dim: int,
+        hidden_dim: int = 64,
+        num_categories: int = 3,
+        r_floor: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.num_nodes = num_nodes
+        self.num_categories = num_categories
+        self.r_floor = r_floor
+        
+        self.fc_in = nn.Linear(input_dim, hidden_dim)
+        self.spatial_conv = nn.Linear(hidden_dim, hidden_dim)
+        
+        self.lstm = nn.LSTM(
+            input_size=hidden_dim,
+            hidden_size=hidden_dim,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.1
+        )
+        
+        self.pi_head = nn.Linear(hidden_dim, num_categories)
+        self.mu_head = nn.Linear(hidden_dim, num_categories)
+        self.r_head = nn.Linear(hidden_dim, num_categories)
+        self._init_output_heads()
+
+    def _init_output_heads(self) -> None:
+        for head in [self.pi_head, self.mu_head, self.r_head]:
+            nn.init.normal_(head.weight, 0.0, 0.01)
+            nn.init.zeros_(head.bias)
+
+    def forward(
+        self, counts: Tensor, features: Tensor, static_adj: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        B, S, W, _ = counts.shape
+        x = torch.cat([counts, features], dim=-1)  # (B, S, W, C+F)
+        
+        x = self.fc_in(x)  # (B, S, W, H)
+        
+        adj_norm = static_adj + torch.eye(S, device=static_adj.device)
+        d = adj_norm.sum(1, keepdim=True)
+        adj_norm = adj_norm / d
+        
+        x_sp = torch.einsum('ij,bsjh->bsih', adj_norm, x)
+        x_sp = F.relu(self.spatial_conv(x_sp))
+        
+        x_flat = x_sp.reshape(B * S, W, -1)
+        lstm_out, _ = self.lstm(x_flat)
+        h_last = lstm_out[:, -1, :]  # (B*S, H)
+        
+        pi = torch.sigmoid(self.pi_head(h_last))
+        mu = F.softplus(self.mu_head(h_last))
+        r = F.softplus(self.r_head(h_last)) + self.r_floor
+        
+        pi = pi.reshape(B, S, self.num_categories)
+        mu = mu.reshape(B, S, self.num_categories)
+        r = r.reshape(B, S, self.num_categories)
+        return pi, mu, r
+
+
+# ============================================================================
 # Training and Evaluation Infrastructure
 # ============================================================================
 
@@ -1106,6 +1176,48 @@ def main() -> None:
     )
     gwnet_metrics["train_time_s"] = round(gwnet_time, 1)
     results["GraphWaveNet"] = gwnet_metrics
+
+    # =====================================================================
+    # Baseline 4: STZINB-GNN
+    # =====================================================================
+    logger.info("=" * 70)
+    logger.info("Baseline 4: STZINB-GNN (Zhuang et al. 2022)")
+    logger.info("=" * 70)
+
+    stzinb_model = STZINBGNNModel(
+        num_nodes=S,
+        input_dim=C + F_dim,
+        hidden_dim=64,
+        num_categories=C,
+    )
+    total_params = sum(p.numel() for p in stzinb_model.parameters())
+    logger.info(f"  Parameters: {total_params:,}")
+
+    stzinb_original_forward = stzinb_model.forward
+
+    def stzinb_forward_with_adj(counts: Tensor, features: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        return stzinb_original_forward(counts, features, static_adj=adj_device)
+
+    stzinb_model.forward = stzinb_forward_with_adj  # type: ignore[assignment]
+
+    t0 = time.time()
+    stzinb_model = train_model(
+        stzinb_model, splits["train"], splits["val"],
+        loss_fn=crps_loss_fn,
+        model_name="STZINB_GNN",
+        device=device,
+        lr=1e-3, epochs=50, patience=10,
+        batch_size=2,
+        is_graph_model=True,
+    )
+    stzinb_time = time.time() - t0
+
+    stzinb_metrics = evaluate_model(
+        stzinb_model, splits["test"], "STZINB_GNN", device,
+        batch_size=2, is_graph_model=True,
+    )
+    stzinb_metrics["train_time_s"] = round(stzinb_time, 1)
+    results["STZINB_GNN"] = stzinb_metrics
 
     # =====================================================================
     # Save results and print comparison table
