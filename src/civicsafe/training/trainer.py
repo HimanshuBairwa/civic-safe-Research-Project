@@ -93,7 +93,7 @@ class Trainer:
         # SAC = Sharpness-Aware Calibration (CRPS + sharpness + r-reg)
         self.loss_fn = train_cfg.get("loss_fn", "crps")
         self.crps_blend_alpha = train_cfg.get("crps_blend_alpha", 0.5)
-        self.sac_lambda_sharpness = train_cfg.get("sac_lambda_sharpness", 0.1)
+        self.sac_lambda_sharpness = train_cfg.get("sac_lambda_sharpness", 0.0)
 
         # --- Model ---
         self.model = model.to(self.device)
@@ -372,11 +372,20 @@ class Trainer:
             div_loss = output.get(
                 "diversity_loss", torch.tensor(0.0, device=self.device)
             )
+            
+            # Adversarial Loss (GRL)
+            adv_loss = torch.tensor(0.0, device=self.device)
+            if "adv_logits" in output and output["adv_logits"] is not None and "groups" in batch:
+                groups_i = batch["groups"][i].to(self.device, non_blocking=True)
+                adv_logits = output["adv_logits"] # (S, num_adv_classes)
+                adv_loss = torch.nn.functional.cross_entropy(adv_logits, groups_i)
+                
             total_loss = (
                 total_loss
                 + primary_loss
                 + self.diversity_lambda * div_loss
                 + self.r_reg_lambda * r_penalty
+                + adv_loss
             )
 
         # Average over batch

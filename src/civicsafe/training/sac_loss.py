@@ -91,7 +91,7 @@ def sac_loss(
     pi: Tensor,
     mu: Tensor,
     r: Tensor,
-    lambda_sharpness: float = 0.1,
+    lambda_sharpness: float = 0.0,
     lambda_r_reg: float = 0.1,
     r_reg_floor: float = 0.5,
 ) -> tuple[Tensor, dict[str, float]]:

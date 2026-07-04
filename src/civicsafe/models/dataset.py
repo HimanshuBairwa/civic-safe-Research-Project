@@ -35,15 +35,19 @@ class CrimeWindowDataset(Dataset):  # type: ignore[type-arg]
         self,
         counts: Tensor,
         features: Tensor,
+        groups: Tensor | None = None,
         window_size: int = 52,
         start_idx: int | None = None,
         end_idx: int | None = None,
+        exclude_crime_history: bool = False,
     ) -> None:
         super().__init__()
         _S, T, _C = counts.shape
         self.counts = counts
         self.features = features
+        self.groups = groups
         self.window_size = window_size
+        self.exclude_crime_history = exclude_crime_history
 
         # Default: use all valid windows
         if start_idx is None:
@@ -77,22 +81,32 @@ class CrimeWindowDataset(Dataset):  # type: ignore[type-arg]
         t = self.valid_targets[idx]
         w = self.window_size
 
-        return {
-            "input_counts": self.counts[:, t - w : t, :],  # (S, W, C)
+        input_counts = self.counts[:, t - w : t, :]
+        if self.exclude_crime_history:
+            input_counts = torch.zeros_like(input_counts)
+
+        res = {
+            "input_counts": input_counts,  # (S, W, C)
             "input_features": self.features[:, t - w : t, :],  # (S, W, F)
             "target_counts": self.counts[:, t, :],  # (S, C)
         }
+        if self.groups is not None:
+            res["groups"] = self.groups  # (S,)
+            
+        return res
 
 
 def create_chronological_splits(
     counts: Tensor,
     features: Tensor,
+    groups: Tensor | None = None,
     start_year: int = 2018,
     end_year: int = 2023,
     val_year: int = 2022,
     test_year: int = 2023,
     weeks_per_year: int = 52,
     window_size: int = 52,
+    exclude_crime_history: bool = False,
 ) -> dict[str, CrimeWindowDataset]:
     """Create train/val/cal/test splits with strict chronological separation.
 
@@ -103,12 +117,14 @@ def create_chronological_splits(
     Args:
         counts: (S, T, C) crime counts tensor.
         features: (S, T, F) covariate tensor.
+        groups: (S,) optional demographic groups tensor.
         start_year: First year in the dataset.
         end_year: Last year in the dataset.
         val_year: Validation year.
         test_year: Test year.
         weeks_per_year: Weeks per year (52).
         window_size: History window size.
+        exclude_crime_history: If True, zeroes out crime history inputs.
 
     Returns:
         Dictionary with 'train', 'val', 'cal', 'test' CrimeWindowDataset instances.
@@ -130,30 +146,38 @@ def create_chronological_splits(
     train_ds = CrimeWindowDataset(
         counts,
         features,
+        groups=groups,
         window_size=window_size,
         start_idx=window_size,
         end_idx=val_start_week,
+        exclude_crime_history=exclude_crime_history,
     )
     val_ds = CrimeWindowDataset(
         counts,
         features,
+        groups=groups,
         window_size=window_size,
         start_idx=val_start_week,
         end_idx=cal_start_week,
+        exclude_crime_history=exclude_crime_history,
     )
     cal_ds = CrimeWindowDataset(
         counts,
         features,
+        groups=groups,
         window_size=window_size,
         start_idx=cal_start_week,
         end_idx=test_start_week,
+        exclude_crime_history=exclude_crime_history,
     )
     test_ds = CrimeWindowDataset(
         counts,
         features,
+        groups=groups,
         window_size=window_size,
         start_idx=test_start_week,
         end_idx=total_weeks,
+        exclude_crime_history=exclude_crime_history,
     )
 
     return {"train": train_ds, "val": val_ds, "cal": cal_ds, "test": test_ds}

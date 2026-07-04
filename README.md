@@ -2,7 +2,7 @@
 
 # 🏛️ CIVIC-SAFE
 
-### Conformal Inference for Vigilant, Interpretable Crime-prediction with Spatial Attention and Fairness Evaluation
+### Honest Uncertainty Under Observation Bias: Online Conformal Prediction for Count Forecasting with Closed-Loop Feedback Evaluation
 
 [![Tests](https://img.shields.io/badge/tests-264%20passed-brightgreen?style=for-the-badge)](tests/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -13,7 +13,7 @@
 [![mypy](https://img.shields.io/badge/mypy-strict-blue?style=for-the-badge)](http://mypy-lang.org/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=for-the-badge)](https://docs.astral.sh/ruff/)
 
-**Uncertainty-aware spatiotemporal crime forecasting with conformal prediction intervals, audited equity guarantees, and advisory safe-route routing.**
+**Uncertainty-aware spatiotemporal forecasting with conformal prediction intervals, audited equity guarantees, and advisory safe-route routing.**
 
 [Paper Outline](docs/PAPER_OUTLINE.md) · [Math Formulation](docs/METHODOLOGY.md) · [Reproducibility](REPRODUCIBILITY.md)
 
@@ -31,7 +31,7 @@
 | 4 | **Post-Hoc Recalibration** | Affine ZINB correction minimizing CRPS | 5-15% CRPS improvement with zero retraining cost |
 | 5 | **CRPS Decomposition** | Reliability–Resolution–Uncertainty (Hersbach, 2000) | Shows WHERE forecast skill comes from |
 | 6 | **Statistical Significance** | Diebold-Mariano + temporal block bootstrap | Formal p-values that account for temporal dependence |
-| 7 | **Feedback Loop Index** | Novel FLI + BAS metrics per demographic group | Quantifies deployment risk — no other paper has this |
+| 7 | **Anomaly Skill Coefficient** | ASC metrics per demographic group | Quantifies deployment risk and anomaly predictive skill |
 | 8 | **Advisory Safe Routing** | Tsinghua 2025 SSSP (Duan et al., STOC Best Paper) + abstention protocol | Refuses to route when model uncertainty is too high |
 
 ---
@@ -95,7 +95,7 @@
 | 1 | **Civilian-facing only** — no police dashboards | Routing outputs advisory text, not deployment commands |
 | 2 | **No person-level prediction** — aggregates only | Input = `(S, T, C)` panel; no individual features |
 | 3 | **No protected attributes as inputs** | Demographics used only for post-hoc audit stratification |
-| 4 | **Predicts reported crime, not committed crime** | Mandatory `ReportingBiasSensitivityAudit` with binomial thinning |
+| 4 | **Predicts reported incidents, not committed acts** | Mandatory `ReportingBiasSensitivityAudit` with binomial thinning |
 | 5 | **Advisory only** — never autonomous | `AdvisoryRoutingEngine` returns text, not actions |
 | 6 | **Abstains under diagnostic failure** | `AbstentionMonitor` raises error when uncertainty is too high |
 
@@ -209,6 +209,7 @@ civic-safe-Research-Project/
 │   │   ├── feature_mixer.py          # Multi-Factor Feature Mixer (MFFM)
 │   │   ├── zinb_head.py              # ZINB (π, μ, r) projection head
 │   │   ├── zinb_loss.py              # Numerically stable ZINB NLL
+│   │   ├── adversarial_head.py       # Adversarial GRL for invariance
 │   │   └── civicsafe_model.py        # Full model composition
 │   ├── calibration/
 │   │   ├── conformal.py              # 5 conformal prediction calibrators
@@ -218,7 +219,8 @@ civic-safe-Research-Project/
 │   │   ├── components.py             # 7 audit components
 │   │   ├── harness.py                # Audit orchestration
 │   │   ├── statistical.py            # Bootstrap, permutation, BH-FDR
-│   │   └── stratification.py         # Demographic stratification
+│   │   ├── stratification.py         # Demographic stratification
+│   │   └── feedback_loop.py          # Closed-loop and anomaly metrics
 │   ├── routing/                      # Tsinghua SSSP + abstention engine
 │   ├── training/                     # Trainer, scheduler, early stopping
 │   ├── synthetic/                    # ZINB/Poisson data generators
@@ -299,8 +301,7 @@ See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the full NeurIPS checklist.
 
 ```bibtex
 @article{bairwa2025civicsafe,
-  title     = {{CIVIC-SAFE}: Conformal Inference for Vigilant, Interpretable
-               Crime-prediction with Spatial Attention and Fairness Evaluation},
+  title     = {Honest Uncertainty Under Observation Bias: Online Conformal Prediction for Count Forecasting with Closed-Loop Feedback Evaluation},
   author    = {Bairwa, Himanshu},
   year      = {2025},
   journal   = {arXiv preprint},
@@ -328,7 +329,7 @@ The evaluation pipeline (`scripts/run_conformal_evaluation.py`) produces a compr
 📊 PIT Histogram → Chi-squared uniformity test
 📊 CRPS Decomp   → Reliability, Resolution, Uncertainty (Hersbach 2000)
 📊 DM Test       → Diebold-Mariano + block bootstrap p-values
-📊 FLI           → Feedback Loop Index + Bias Amplification per group
+📊 ASC           → Anomaly Skill Coefficient per demographic group
 📊 Point Metrics → MAE, RMSE, Brier score
 ```
 
@@ -370,6 +371,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**CIVIC-SAFE** — *Because crime forecasting without uncertainty quantification, equity auditing, and principled abstention is not ready for the real world.*
+**CIVIC-SAFE** — *Because count forecasting without uncertainty quantification, equity auditing, and principled abstention is not ready for the real world.*
 
 </div>

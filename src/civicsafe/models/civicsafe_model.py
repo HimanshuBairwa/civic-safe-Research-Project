@@ -25,6 +25,7 @@ from civicsafe.models.feature_mixer import FeatureMixer
 from civicsafe.models.spatial import SpatialEncoder
 from civicsafe.models.temporal import TemporalEncoder
 from civicsafe.models.zinb_head import ZINBHead
+from civicsafe.models.adversarial_head import AdversarialDiscriminator
 
 
 class CivicSafeModel(nn.Module):
@@ -70,6 +71,8 @@ class CivicSafeModel(nn.Module):
         r_floor: float = 0.1,
         max_seq_len: int = 52,
         dropout: float = 0.1,
+        num_adv_classes: int = 0,
+        adv_lambda: float = 1.0,
         use_gradient_checkpointing: bool = False,
     ) -> None:
         super().__init__()
@@ -116,6 +119,16 @@ class CivicSafeModel(nn.Module):
             r_floor=r_floor,
         )
 
+        # Adversarial Head (GRL)
+        self.adv_head = None
+        if num_adv_classes > 0:
+            self.adv_head = AdversarialDiscriminator(
+                in_features=hidden_dim,
+                hidden_dim=hidden_dim,
+                num_classes=num_adv_classes,
+                lambda_=adv_lambda,
+            )
+
     def forward(
         self,
         features: Tensor,
@@ -136,6 +149,7 @@ class CivicSafeModel(nn.Module):
               mu: (S, C) NB means
               r:  (S, C) NB dispersions
               diversity_loss: scalar MFFM regularization term
+              adv_logits: (S, num_adv_classes) demographic predictions (if enabled)
         """
         S, T, F = features.shape
 
@@ -173,11 +187,17 @@ class CivicSafeModel(nn.Module):
         last_hidden = mixed[:, -1, :]  # (S, hidden_dim)
         pi, mu, r = self.zinb_head(last_hidden)  # each (S, C)
 
+        # --- Adversarial demographic prediction ---
+        adv_logits = None
+        if self.adv_head is not None:
+            adv_logits = self.adv_head(last_hidden)
+
         return {
             "pi": pi,
             "mu": mu,
             "r": r,
             "diversity_loss": diversity_loss,
+            "adv_logits": adv_logits,
         }
 
     def _spatial_forward(

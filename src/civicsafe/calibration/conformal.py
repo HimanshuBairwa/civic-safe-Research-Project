@@ -714,9 +714,12 @@ class AdaptiveTemporalECRCCalibrator:
     def __init__(
         self,
         alpha: float = 0.1,
-        gamma: float = 0.05,
-        delta: float = 0.05,
-        group_type: str = "geographic",
+        gamma: float = 0.005,
+        delta: float = 0.1,
+        group_type: str = "income",
+        k_i: float = 0.001,
+        k_d: float = 0.0005,
+        max_width: float = 100.0,
     ) -> None:
         if not 0.01 <= alpha <= 0.5:
             raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
@@ -725,8 +728,16 @@ class AdaptiveTemporalECRCCalibrator:
         self.delta = delta
         self.group_type = group_type
         
+        # PID Constants
+        self.k_p = gamma
+        self.k_i = k_i
+        self.k_d = k_d
+        self.max_width = max_width
+        
         # State tracking per group
         self._alpha_t: dict[int, float] = {}
+        self._integral_err: dict[int, float] = {}
+        self._prev_err: dict[int, float] = {}
         self._calibration_scores: dict[int, torch.Tensor] = {}
         self._epsilon: float = 0.0
         self._fitted = False
@@ -815,6 +826,12 @@ class AdaptiveTemporalECRCCalibrator:
         upper = (q_high + thresholds).ceil()
         upper = torch.max(upper, lower)
         point = (1.0 - pi_f) * mu_f
+        
+        # Abstention Logic: Output NaN if width > max_width
+        width = upper - lower
+        abstain_mask = width > self.max_width
+        lower[abstain_mask] = float('nan')
+        upper[abstain_mask] = float('nan')
 
         return {
             "lower": lower.reshape(orig_shape),
@@ -864,8 +881,21 @@ class AdaptiveTemporalECRCCalibrator:
                 if g_idx not in self._alpha_t:
                     self._alpha_t[g_idx] = max(self.nominal_alpha - self._epsilon, 0.01)
                     
-                # ACI update rule
-                new_alpha = self._alpha_t[g_idx] + self.gamma * (err_t - self.nominal_alpha)
+                # PID update rule
+                e_t = self.nominal_alpha - err_t # Negative feedback error term
+                
+                if g_idx not in self._integral_err:
+                    self._integral_err[g_idx] = 0.0
+                    self._prev_err[g_idx] = e_t
+                
+                self._integral_err[g_idx] += e_t
+                p_term = self.k_p * e_t
+                i_term = self.k_i * self._integral_err[g_idx]
+                d_term = self.k_d * (e_t - self._prev_err[g_idx])
+                
+                self._prev_err[g_idx] = e_t
+                
+                new_alpha = self._alpha_t[g_idx] + p_term + i_term + d_term
                 self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
                 
                 # 2. Add to calibration set (EnbPI style)

@@ -158,19 +158,19 @@ where $\epsilon_g = \sqrt{\frac{\log(2/\delta_g)}{2n_g}}$ is the Hoeffding slack
 
 Crime data is non-stationary: crime patterns shift due to policy changes, seasonal effects, and socioeconomic trends. Standard conformal prediction assumes exchangeability, which fails under drift.
 
-Our Adaptive Temporal ECRC extends the ECRC framework with an online gradient descent update rule inspired by Adaptive Conformal Inference (Gibbs & Candès, 2021):
+Our Adaptive Temporal ECRC extends the ECRC framework with an online PID controller update rule inspired by Adaptive Conformal Inference (Angelopoulos et al. 2023):
 
-$$\alpha_{t,g} \leftarrow \text{clip}\left[\alpha_{t-1,g} + \gamma \cdot \left(\hat{\text{err}}_{t-1,g} - \alpha\right), \; 0.01, \; 0.99\right]$$
+$$\alpha_{t,g} \leftarrow \text{clip}\left[\alpha_{t-1,g} + K_P e_{t-1,g} + K_I \sum_{\tau=1}^{t-1} e_{\tau,g} + K_D (e_{t-1,g} - e_{t-2,g}), \; 0.01, \; 0.99\right]$$
 
 where:
 - $\alpha_{t,g}$ is the per-group miscoverage target at time $t$
-- $\hat{\text{err}}_{t-1,g}$ is the observed empirical miscoverage for group $g$ at time $t-1$
-- $\gamma > 0$ is the learning rate (step size)
+- $e_{t-1,g} = \alpha - \hat{\text{err}}_{t-1,g}$ is the error term (target coverage minus empirical miscoverage)
+- $K_P, K_I, K_D$ are the proportional, integral, and derivative gains
 
-**Theorem (Informal)**. Under bounded variance of per-group coverage errors, the time-averaged per-group miscoverage converges:
-$$\limsup_{T \to \infty} \frac{1}{T} \sum_{t=1}^T \mathbb{1}[Y_t \notin \hat{C}_t \mid G_t = g] \leq \alpha + O\left(\frac{1}{\gamma T}\right)$$
+**Theorem (Informal)**. Under bounded variance of per-group coverage errors and appropriate PID gains, the time-averaged per-group miscoverage converges asymptotically:
+$$\limsup_{T \to \infty} \left| \frac{1}{T} \sum_{t=1}^T \mathbb{1}[Y_t \notin \hat{C}_t \mid G_t = g] - \alpha \right| = 0$$
 
-This follows from the standard Online Gradient Descent regret bound applied to the per-group miscoverage loss.
+Note: This provides a long-run asymptotic average coverage guarantee, not an exact per-step marginal guarantee.
 
 ## 9. r-Collapse Diagnosis and Regularization (Novel Contribution)
 
@@ -313,8 +313,8 @@ Standard conformal prediction treats all test observations as exchangeable. In t
    $$\text{err}_g^{(w)} = 1 - \frac{1}{n_g^{(w)}} \sum_{i \in \text{group}_g} \mathbb{1}\!\left(y_i^{(w)} \in C_g^{(w)}(x_i)\right)$$
 
 4. **Update**: Adjust the target coverage per group:
-   $$\hat{\alpha}_g^{(w+1)} = \hat{\alpha}_g^{(w)} + \gamma \left(\text{err}_g^{(w)} - \alpha\right)$$
-   This implements the Gibbs & Candès (2021) adaptive conformal inference update with per-group stratification.
+   $$\hat{\alpha}_g^{(w+1)} = \hat{\alpha}_g^{(w)} + K_P e_g^{(w)} + K_I I_g^{(w)} + K_D D_g^{(w)}$$
+   where $e_g^{(w)} = \alpha - \text{err}_g^{(w)}$. This implements a PID controller for conformal inference (Angelopoulos et al. 2023).
 
 5. **Record**: Store $\hat{\alpha}_g^{(w+1)}$ and coverage for convergence diagnostics.
 
@@ -354,17 +354,17 @@ As a complementary non-parametric test, we use the stationary block bootstrap (P
 
 This accounts for temporal dependence in the loss differentials without parametric assumptions on their distribution.
 
-## 15. Feedback Loop Index (Novel Contribution)
+## 15. Anomaly Skill Coefficient (ASC)
 
 ### 15.1 Motivation
 
-Predictive policing systems risk creating feedback loops: if the model predicts high crime in area $A$, more officers are deployed to $A$, resulting in more arrests, which increases reported crime, which reinforces the prediction. The Feedback Loop Index quantifies this risk.
+Predictive models are often evaluated on absolute errors, but in spatiotemporal forecasting, it is crucial to measure whether the model successfully predicts *anomalies* (deviations from historical means).
 
 ### 15.2 Definition
 
-For demographic group $g$, the FLI is computed over all spatial units in group $g$ and all test time steps $t \in T_{\text{test}}$:
+For demographic group $g$, the ASC is computed over all spatial units in group $g$ and all test time steps $t \in T_{\text{test}}$:
 
-$$\text{FLI}_g = \text{Corr}_{s \in \text{group}_g, t \in T_{\text{test}}}(\hat{y}_{s,t} - \bar{y}_{s}^{\text{hist}}, \; y_{s,t} - \bar{y}_{s}^{\text{hist}})$$
+$$\text{ASC}_g = \text{Corr}_{s \in \text{group}_g, t \in T_{\text{test}}}(\hat{y}_{s,t} - \bar{y}_{s}^{\text{hist}}, \; y_{s,t} - \bar{y}_{s}^{\text{hist}})$$
 
 where:
 - $\hat{y}_g$ = model predictions for group $g$
@@ -372,9 +372,9 @@ where:
 - $\bar{y}_g^{\text{hist}}$ = historical training-period mean for group $g$
 
 **Interpretation**:
-- $\text{FLI}_g > 0$: Model deviations from historical trends are correlated with observed deviations — the model *amplifies* existing trends (potential feedback loop)
-- $\text{FLI}_g \approx 0$: Model is trend-neutral (safe)
-- $\text{FLI}_g < 0$: Model *counteracts* trends (corrective)
+- $\text{ASC}_g = 1$: Perfect anomaly prediction skill.
+- $\text{ASC}_g = 0$: No skill better than historical mean predicting.
+- $\text{ASC}_g < 0$: Actively inverse skill.
 
 ### 15.3 Bias Amplification Score
 
@@ -384,12 +384,12 @@ $$\text{BAS}_g = \frac{\text{Var}(\hat{y}_g)}{\text{Var}(y_g)} - 1$$
 - $\text{BAS}_g < 0$: Model under-predicts variance (dampens signal)
 - $\text{BAS}_g = 0$: Model preserves the natural variance structure
 
-### 15.4 Aggregate Fairness Metric
+### 15.4 Aggregate Skill Disparity
 
-The overall disparity is measured as the maximum absolute difference in FLI across groups:
-$$\Delta_{\text{FLI}} = \max_{g, g'} |\text{FLI}_g - \text{FLI}_{g'}|$$
+The overall skill disparity is measured as the maximum absolute difference in ASC across groups:
+$$\Delta_{\text{ASC}} = \max_{g, g'} |\text{ASC}_g - \text{ASC}_{g'}|$$
 
-A system is considered fair (in the feedback loop sense) if $\Delta_{\text{FLI}} < 0.2$.
+A system exhibits skill parity if $\Delta_{\text{ASC}}$ is near 0.
 
 ## 16. Post-Hoc Recalibration
 
