@@ -57,12 +57,40 @@ TEST_START_WEEK = (TEST_YEAR - START_YEAR) * WEEKS_PER_YEAR  # 260
 # Checkpoint discovery
 # ───────────────────────────────────────────────────────────────────
 def discover_checkpoint(data_name: str) -> Path:
-    """Auto-discover the latest checkpoint in outputs/."""
+    """Auto-discover the latest checkpoint for this dataset in outputs/.
+    
+    Searches dataset-specific directories first (``run_{data_name}_*``),
+    then falls back to generic ``run_*`` for backward compatibility.
+    """
     outputs_dir = PROJECT_ROOT / "outputs"
     if not outputs_dir.exists():
         raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
 
-    # Search pattern: outputs/run_*/seed_*/*.pt or *.pth
+    # Priority 1: dataset-specific run directories
+    dataset_prefix = f"run_{data_name}_"
+    run_dirs = sorted(
+        [d for d in outputs_dir.iterdir()
+         if d.is_dir() and d.name.startswith(dataset_prefix)],
+        key=lambda p: p.name,
+    )
+    
+    # Priority 2: generic run_* directories (backward compat)
+    if not run_dirs:
+        run_dirs = sorted(
+            [d for d in outputs_dir.iterdir()
+             if d.is_dir() and d.name.startswith("run_")],
+            key=lambda p: p.name,
+        )
+
+    # Search for checkpoints in run directories first
+    for run_dir in reversed(run_dirs):  # most recent first
+        candidates = sorted(run_dir.glob("seed_*/best.pt"))
+        if candidates:
+            chosen = candidates[0]
+            logger.info(f"  Auto-discovered checkpoint: {chosen}")
+            return chosen
+
+    # Fallback: any .pt file in outputs
     candidates: list[Path] = []
     for ext in ("*.pt", "*.pth"):
         candidates.extend(outputs_dir.rglob(ext))
@@ -73,7 +101,6 @@ def discover_checkpoint(data_name: str) -> Path:
             f"Train a model first with: python scripts/train.py"
         )
 
-    # Sort by modification time, most recent first
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     chosen = candidates[0]
     logger.info(f"  Auto-discovered checkpoint: {chosen}")

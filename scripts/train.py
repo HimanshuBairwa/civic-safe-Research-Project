@@ -335,13 +335,19 @@ def main() -> None:
     output_dir = Path("outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Auto-resume: reuse most recent run directory if it exists
-    existing_runs = sorted([d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("run_")])
+    # Auto-resume: reuse most recent run directory for THIS DATASET ONLY.
+    # Directory naming convention: run_{dataset}_{timestamp}
+    # This prevents Chicago runs from being confused with NYC runs.
+    dataset_prefix = f"run_{data_name}_"
+    existing_runs = sorted([
+        d for d in output_dir.iterdir()
+        if d.is_dir() and d.name.startswith(dataset_prefix)
+    ])
     if existing_runs:
         output_dir = existing_runs[-1]
-        logger.info(f"Auto-resuming in most recent directory: {output_dir}")
+        logger.info(f"Auto-resuming {data_name} in: {output_dir}")
     else:
-        output_dir = output_dir / f"run_{int(time.time())}"
+        output_dir = output_dir / f"run_{data_name}_{int(time.time())}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"CIVIC-SAFE Training — {num_seeds} seed(s): {seeds}")

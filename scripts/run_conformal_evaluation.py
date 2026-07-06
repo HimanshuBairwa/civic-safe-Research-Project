@@ -105,11 +105,14 @@ def discover_checkpoint(data_name: str) -> Path:
 
 
 def discover_all_checkpoints(data_name: str) -> list[Path]:
-    """Discover ALL seed checkpoints in the latest run directory.
+    """Discover ALL seed checkpoints in the latest run directory for this dataset.
     
     This enables ensemble evaluation: load all K seeds, average their
     predictions, and evaluate the ensemble. EMOS-style ensembling
     typically improves CRPS by 10-30% (Gneiting et al., 2005).
+    
+    Searches for dataset-specific directories first (``run_{data_name}_*``),
+    then falls back to generic ``run_*`` for backward compatibility.
     
     Returns:
         Sorted list of best.pt paths, one per seed.
@@ -118,10 +121,22 @@ def discover_all_checkpoints(data_name: str) -> list[Path]:
     if not outputs_dir.exists():
         raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
     
-    # Find the most recent run directory
-    run_dirs = sorted(outputs_dir.glob("run_*"), key=lambda p: p.name)
+    # Priority 1: dataset-specific run directories (run_chicago_*, run_nyc_*)
+    dataset_prefix = f"run_{data_name}_"
+    run_dirs = sorted(
+        outputs_dir.glob(f"{dataset_prefix}*"),
+        key=lambda p: p.name,
+    )
+    
+    # Priority 2: fall back to generic run_* directories (backward compat)
     if not run_dirs:
-        raise FileNotFoundError(f"No run directories found under {outputs_dir}")
+        run_dirs = sorted(outputs_dir.glob("run_*"), key=lambda p: p.name)
+    
+    if not run_dirs:
+        raise FileNotFoundError(
+            f"No run directories found under {outputs_dir} "
+            f"(searched for '{dataset_prefix}*' and 'run_*')"
+        )
     
     latest_run = run_dirs[-1]
     
