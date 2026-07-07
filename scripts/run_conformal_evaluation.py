@@ -1004,16 +1004,23 @@ def run_conformal_evaluation(
         counts_historical=historical_trend,
     )
     
-    fli_agg = feedback_metrics["fli"]["aggregate"]
+    asc_agg = feedback_metrics["asc"]["aggregate"]
     bas_agg = feedback_metrics["bas"]["aggregate"]
-    logger.info(f"  FLI — mean: {fli_agg['mean_fli']:.4f}, "
-                f"max: {fli_agg['max_fli']:.4f}, min: {fli_agg['min_fli']:.4f}")
+    logger.info(f"  ASC — mean: {asc_agg['mean_asc']:.4f}, "
+                f"max: {asc_agg['max_asc']:.4f}, min: {asc_agg['min_asc']:.4f}")
     logger.info(f"  BAS — mean |BAS|: {bas_agg['mean_abs_bas']:.4f}, "
                 f"max |BAS|: {bas_agg['max_abs_bas']:.4f}")
     
-    if abs(fli_agg['mean_fli']) < 0.1:
+    # DAD metric
+    dad_result = feedback_metrics.get("dad", {})
+    if dad_result:
+        dad_agg = dad_result.get("aggregate", {})
+        logger.info(f"  DAD — mean: {dad_agg.get('mean_dad', float('nan')):.4f}, "
+                    f"max: {dad_agg.get('max_dad', float('nan')):.4f}")
+    
+    if abs(asc_agg['mean_asc']) < 0.1:
         logger.info("  ✅ Model predictions are trend-neutral (low feedback loop risk)")
-    elif fli_agg['mean_fli'] > 0.1:
+    elif asc_agg['mean_asc'] > 0.1:
         logger.info("  ⚠️ Model predictions may amplify historical trends")
     else:
         logger.info("  ✅ Model predictions counteract historical trends (corrective)")
