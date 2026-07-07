@@ -1015,8 +1015,8 @@ def run_conformal_evaluation(
     dad_result = feedback_metrics.get("dad", {})
     if dad_result:
         dad_agg = dad_result.get("aggregate", {})
-        logger.info(f"  DAD — mean: {dad_agg.get('mean_dad', float('nan')):.4f}, "
-                    f"max: {dad_agg.get('max_dad', float('nan')):.4f}")
+        logger.info(f"  DAD — mean disparity: {dad_agg.get('mean_alloc_disparity', float('nan')):.4f}, "
+                    f"max disparity: {dad_agg.get('max_alloc_disparity', float('nan')):.4f}")
     
     if abs(asc_agg['mean_asc']) < 0.1:
         logger.info("  ✅ Model predictions are trend-neutral (low feedback loop risk)")

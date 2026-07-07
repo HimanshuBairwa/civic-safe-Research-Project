@@ -468,28 +468,28 @@ def fig6_uncertainty_decomposition(results: dict, output_dir: Path) -> list[Path
 
 
 # ───────────────────────────────────────────────────────────────────
-# Figure 7 – Feedback Loop Index Heatmap
+# Figure 7 – ASC (Anomaly Skill Coefficient) Heatmap
 # ───────────────────────────────────────────────────────────────────
 
-def fig7_fli_heatmap(results: dict, output_dir: Path) -> list[Path]:
-    """Heatmap of Feedback Loop Index per demographic group, diverging colour scale."""
+def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
+    """Heatmap of Anomaly Skill Coefficient per demographic group, diverging colour scale."""
     fla = results.get("feedback_loop_analysis", {})
-    fli_data = fla.get("fli", {})
-    per_group = fli_data.get("per_group", {})
+    asc_data = fla.get("asc", {})
+    per_group = asc_data.get("per_group", {})
     bas_data = fla.get("bas", {})
     bas_per_group = bas_data.get("per_group", {})
 
     if not per_group:
-        print("  ⚠  feedback_loop_analysis.fli.per_group not found – skipping Figure 7")
+        print("  ⚠  feedback_loop_analysis.asc.per_group not found – skipping Figure 7")
         return []
 
     groups = sorted(per_group.keys(), key=lambda k: int(k) if k.isdigit() else k)
-    fli_values = [per_group[g] for g in groups]
+    asc_values = [per_group[g] for g in groups]
     bas_values = [bas_per_group.get(g, float('nan')) for g in groups]
 
     group_labels = [f'Group {g}' for g in groups]
-    metrics = ['FLI', 'BAS']
-    data = np.array([fli_values, bas_values])
+    metrics = ['ASC', 'BAS']
+    data = np.array([asc_values, bas_values])
 
     # Diverging colourmap: green (corrective) → white (neutral) → red (amplifying)
     from matplotlib.colors import TwoSlopeNorm
@@ -518,10 +518,10 @@ def fig7_fli_heatmap(results: dict, output_dir: Path) -> list[Path]:
     cbar = fig.colorbar(im, ax=ax, shrink=0.8, pad=0.04)
     cbar.set_label('Index value (negative=corrective, positive=amplifying)', fontsize=9)
 
-    ax.set_title('Feedback Loop Index by Demographic Group', fontweight='bold')
+    ax.set_title('Anomaly Skill Coefficient by Demographic Group', fontweight='bold')
     _add_watermark(ax)
     fig.tight_layout()
-    return _savefig(fig, output_dir, 'fig7_fli_heatmap')
+    return _savefig(fig, output_dir, 'fig7_asc_heatmap')
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -695,7 +695,7 @@ def main() -> None:
         ("Figure 4: CRPS Decomposition", fig4_crps_decomposition),
         ("Figure 5: Conformal Comparison", fig5_conformal_comparison),
         ("Figure 6: Uncertainty Decomposition", fig6_uncertainty_decomposition),
-        ("Figure 7: FLI Heatmap", fig7_fli_heatmap),
+        ("Figure 7: ASC Heatmap", fig7_asc_heatmap),
         ("Figure 8: Recalibration Effect", fig8_recalibration_effect),
         ("Main Figure: Combined Panel", fig_main_combined),
     ]
