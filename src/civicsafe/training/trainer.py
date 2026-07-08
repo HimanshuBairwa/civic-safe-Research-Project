@@ -479,9 +479,11 @@ class Trainer:
         if self.ema_model is not None:
             checkpoint["ema_state_dict"] = self.ema_model.state_dict()
 
-        # Atomic save: write to tmp then rename
+        # Atomic save: write to tmp then atomically replace. Path.replace uses
+        # os.replace, which overwrites an existing target on both POSIX and
+        # Windows (Path.rename raises FileExistsError on Windows if it exists).
         tmp_path = path.with_suffix(".tmp")
         torch.save(checkpoint, tmp_path)
-        tmp_path.rename(path)
+        tmp_path.replace(path)
 
         logger.debug(f"Checkpoint saved: {path}")
