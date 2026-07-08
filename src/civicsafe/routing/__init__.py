@@ -32,6 +32,13 @@ from civicsafe.routing.cost import (
     UncertaintyPenalisedCost,
 )
 from civicsafe.routing.engine import AdvisoryRoutingEngine, SafeRouteResult
+from civicsafe.routing.feedback_aware import (
+    ExposureDisparityAudit,
+    ExposureDisparityResult,
+    LatentCVaRCost,
+    correct_node_intervals,
+    correct_node_risk,
+)
 from civicsafe.routing.graph import Edge, RoutingGraph
 from civicsafe.routing.tsinghua import DijkstraRouter, PathResult, TsinghuaRouter
 
@@ -43,6 +50,9 @@ __all__ = [
     "DijkstraRouter",
     "DistanceOnlyCost",
     "Edge",
+    "ExposureDisparityAudit",
+    "ExposureDisparityResult",
+    "LatentCVaRCost",
     "ParetoCost",
     "PathResult",
     "RiskOnlyCost",
@@ -50,4 +60,6 @@ __all__ = [
     "SafeRouteResult",
     "TsinghuaRouter",
     "UncertaintyPenalisedCost",
+    "correct_node_intervals",
+    "correct_node_risk",
 ]
