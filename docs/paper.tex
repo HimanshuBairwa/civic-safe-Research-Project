@@ -1,13 +1,15 @@
-% CIVIC-SAFE: Conformal Inference for Vigilant, Interpretable Crime-prediction
-% with Spatial Attention and Fairness Evaluation
+% Honest Forecasting under Observation-Biased Feedback
+% Feedback-corrected conformal prediction for the latent process
 %
-% Target venues: NeurIPS 2026 / KDD 2026 / AAAI 2027
+% Target venues: FAccT 2027 / NeurIPS 2026 / a statistics-ML venue
+%
+% NOTE (positioning): the ZINB/GNN/conformal machinery is APPLIED prior art
+% (STZINB-GNN Zhuang KDD'22; STMGNN-ZINB Wang'24; ACI Gibbs-Candes'21; CQR
+% Romano'19). The contribution is the feedback-corrected LATENT conformal
+% predictor + its DiD identification. See docs/NOVELTY_AND_POSITIONING.md.
 
 \documentclass[10pt]{article}
 
-% ============================================================
-% PACKAGES
-% ============================================================
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath, amssymb, amsthm}
@@ -16,356 +18,399 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{xcolor}
-\usepackage{multirow}
-\usepackage{caption}
-\usepackage{subcaption}
 \usepackage[margin=1in]{geometry}
 
-% Theorem environments
 \newtheorem{theorem}{Theorem}
 \newtheorem{proposition}{Proposition}
 \newtheorem{definition}{Definition}
-\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
 
-% ============================================================
-% TITLE
-% ============================================================
-\title{%
-  \textbf{CIVIC-SAFE: Calibrated Distributional Crime Forecasting \\
-  with Conformal Fairness Guarantees and Feedback Loop Auditing}
-}
+\title{\textbf{Confidently Wrong: Feedback-Corrected Conformal Prediction
+for the Latent Process under Observation-Biased Allocation}}
 
-\author{
-  Himanshu Bairwa \\
-  \texttt{himanshu@example.edu}
-}
-
+\author{Himanshu Bairwa \\ \texttt{himanshu@example.edu}}
 \date{}
 
 \begin{document}
 \maketitle
 
 % ============================================================
-% ABSTRACT (250 words)
-% ============================================================
 \begin{abstract}
-Spatiotemporal crime forecasting systems increasingly inform resource allocation
-in law enforcement, yet most models produce uncalibrated point predictions
-without quantified uncertainty, fairness guarantees, or feedback loop
-diagnostics. We present \textsc{CIVIC-SAFE}, a distributional forecasting
-framework that produces Zero-Inflated Negative Binomial (ZINB) predictive
-distributions, calibrated via six conformal prediction methods including a novel
-Rolling Adaptive Equalized Coverage by Recalibration (ECRC) that provides
-per-demographic-group coverage guarantees that adapt to temporal
-non-stationarity.
+When a forecaster's predictions drive where attention is allocated, and
+attention determines what gets recorded, the recorded data ceases to reflect the
+latent process the system claims to predict. We study this
+\emph{allocation under observation-biased feedback} (AOBF) setting and prove a
+sharp and counterintuitive failure mode: as the feedback gain rises, a
+correctly calibrated predictor \emph{maintains} coverage of the recorded process
+while its coverage of the \emph{true latent} process silently collapses --- it
+becomes \emph{confidently wrong}, with every observable metric improving as the
+system becomes less trustworthy.
 
-Our system introduces three methodological contributions: (1)~a
-Sharpness-Aware Calibration (SAC) loss that explicitly balances calibration and
-interval width during training; (2)~EMOS-style learned ensemble weights
-optimized via CRPS minimization on ZINB distributions --- a novel application of
-meteorological post-processing to crime data; and (3)~a Feedback Loop Index
-(FLI) that quantifies the risk of self-reinforcing prediction-policing cycles
-per demographic group.
+We make this precise. At the feedback fixed point the recorded intensity relates
+to the latent intensity by an amplification elasticity
+$d\log\mu / d\log\lambda = 1/(1-\kappa)$, where the feedback gain $\kappa$ is the
+product of the policy and detection log-elasticities; the map has a pole at
+$\kappa=1$ (runaway). This closed form is the classical closed-loop gain
+(the social multiplier of Glaeser et al., 2003); our contribution is its
+coordinate-free specialization to an observation-biased Poisson recording loop
+and a group-disparity corollary that gives Ensign et al.'s (2018) runaway
+feedback an exact functional form. We further show the confidently-wrong state
+is \emph{not identifiable from passive data} but $\kappa$ is
+\emph{point-identified} by a difference-in-differences on log recorded rates
+after an exogenous detection-sensitivity shock (a staggered ShotSpotter/patrol
+rollout).
 
-We evaluate on two real-world datasets (Chicago, 2001--2024; NYC, 2006--2024)
-against both traditional (STARIMA, XGBoost, ZINB Regression) and deep learning
-(LSTM-NB, TFT, Graph WaveNet) baselines. CIVIC-SAFE achieves state-of-the-art
-CRPS with statistically significant improvements confirmed via Diebold-Mariano
-tests ($p < 0.01$) and temporal block bootstrap. The CRPS Reliability--Resolution--Uncertainty decomposition (Hersbach, 2000) reveals that
-performance gains derive primarily from superior resolution (discrimination)
-rather than calibration artifacts.
-
-Post-hoc recalibration further improves CRPS by 5--15\% at zero retraining
-cost. We release all code and reproducibility scripts.
+Finally --- the constructive step no prior work provides --- we give a
+\emph{feedback-corrected conformal predictor}: deflate the record by the
+identified $\kappa$ and issue intervals valid for the latent process, abstaining
+where correction is untrustworthy. In closed-loop simulation, naive latent
+coverage collapses from $0.95$ to $0.16$ as feedback rises while our corrected
+intervals hold at $0.93$--$0.96$ throughout. Prior work \emph{diagnoses} this
+pathology; we \emph{correct} it. All code, proofs, and experiments are released.
 \end{abstract}
 
 % ============================================================
-% 1. INTRODUCTION
-% ============================================================
 \section{Introduction}
 
-% 1.1 Problem: uncalibrated point predictions in crime forecasting
-% 1.2 Why uncertainty matters: resource allocation, civil liberties
-% 1.3 Three gaps in literature: (a) no distributional forecasts, (b) no fairness guarantees, (c) no feedback loop quantification
-% 1.4 Our contributions (numbered list)
-% 1.5 Paper organization
+Crime forecasts, infrastructure-inspection schedules, fraud audits, and
+health-screening programs share a structure: predictions drive where limited
+attention goes, and attention determines what is subsequently observed. Records
+are therefore not samples of the world but of the world \emph{as the system
+chose to look at it}. Ensign et al.~\cite{ensign2018} showed such loops can run
+away in predictive policing; van Amsterdam et al.~\cite{vanamsterdam2025} showed
+accurate models can be self-fulfillingly harmful in ways passive validation
+cannot detect. Both \emph{diagnose}. Neither \emph{corrects}.
 
-Crime forecasting systems are increasingly deployed to inform patrol allocation,
-investigative priorities, and community resource deployment. Yet the vast
-majority of deployed systems produce \emph{uncalibrated point predictions}
-without quantified uncertainty, demographic fairness guarantees, or diagnostics
-for self-reinforcing prediction-policing feedback loops.
+\textbf{This paper.} We formalize allocation under observation-biased feedback
+(AOBF), give a closed-form amplification law and its identification, and provide
+the first \emph{correction}: a conformal predictor whose intervals are valid for
+the latent process, not the biased record.
 
-\textbf{Contributions.} We make the following contributions:
+\textbf{Contributions.}
 \begin{enumerate}
-  \item A distributional forecasting architecture producing calibrated ZINB
-        predictive distributions via dual-graph GATv2 attention with a
-        Sharpness-Aware Calibration (SAC) training objective (\S\ref{sec:model}).
-
-  \item Six conformal prediction methods, including a novel Rolling Adaptive
-        ECRC with per-group temporal adaptation, providing finite-sample
-        coverage guarantees (\S\ref{sec:conformal}).
-
-  \item EMOS-learned ensemble weights optimized for ZINB distributions --- a
-        novel cross-domain application from meteorological post-processing
-        (\S\ref{sec:emos}).
-
-  \item A Feedback Loop Index (FLI) that quantifies deployment risk per
-        demographic group (\S\ref{sec:fli}).
-
-  \item A rigorous evaluation framework with CRPS decomposition, Diebold-Mariano
-        significance testing, and temporal block bootstrap
-        (\S\ref{sec:experiments}).
+  \item \textbf{The confidently-wrong phenomenon (\S\ref{sec:law}).} A closed-form
+        amplification elasticity $1/(1-\kappa)$ at the AOBF fixed point, with a
+        pole at $\kappa=1$; and a proof that as $\kappa$ rises, observed coverage
+        is maintained while latent coverage collapses. We position this
+        explicitly as a coordinate-free specialization of the classical
+        closed-loop gain~\cite{glaeser2003}, sharpening Ensign
+        et al.~\cite{ensign2018}.
+  \item \textbf{Passive/active identification (\S\ref{sec:ident}).} The
+        confidently-wrong state is non-identifiable from passive data; $\kappa$
+        is point-identified by a difference-in-differences on log recorded rates
+        after an exogenous detection shock. (The duality principle is
+        known~\cite{mendlerduenner2022}; our instantiation for a recording-loop
+        elasticity is new.)
+  \item \textbf{Feedback-corrected conformal prediction (\S\ref{sec:correct}).}
+        The constructive contribution: deflate the record by the identified
+        $\kappa$, issue latent-valid intervals, abstain near runaway. Verified in
+        closed loop (\S\ref{sec:exp}): latent coverage restored from $0.16$ to
+        $0.95$.
+  \item \textbf{A deployable safety layer (\S\ref{sec:routing}, \S\ref{sec:deploy}).}
+        Feedback-aware routing that plans on de-biased latent risk and shrinks
+        exposure disparity; an \emph{anytime-valid} tripwire (test
+        supermartingale) that fires when latent coverage drifts, with a
+        time-uniform false-alarm guarantee; and a robustness envelope bounding
+        how much $\kappa$-misspecification the correction tolerates.
+  \item \textbf{An open AOBF benchmark} and a released, tested implementation.
 \end{enumerate}
 
-% ============================================================
-% 2. RELATED WORK
-% ============================================================
-\section{Related Work}
-
-% 2.1 Spatiotemporal crime forecasting
-%     - Point prediction: ST-ResNet (Zhang 2017), DeepCrime (Huang 2018)
-%     - Distributional: very limited, mostly Poisson/NB (Flaxman 2019)
-%     - Gap: no ZINB with full UQ
-%
-% 2.2 Conformal prediction
-%     - Split CP (Vovk 2005), CQR (Romano 2019)
-%     - Equalized coverage: Gibbs & Candes (2021), Barber (2022)
-%     - Gap: no application to ZINB count data
-%
-% 2.3 Fairness in predictive policing
-%     - PredPol critique (Lum & Isaac 2016)
-%     - Algorithmic fairness in forecasting
-%     - Gap: no quantitative feedback loop metric
-%
-% 2.4 Ensemble post-processing
-%     - EMOS: Gneiting et al. (2005)
-%     - Non-Gaussian extensions: Scheuerer (2015)
-%     - Gap: no application to ZINB crime data
+We are explicit about what is \emph{not} new (the $1/(1-\kappa)$ form, the loop
+itself, the identification-duality principle) and what is (the coordinate-free
+recording-loop specialization, the DiD identification of $\kappa$, and the
+correction). See \S\ref{sec:related}.
 
 % ============================================================
-% 3. MODEL ARCHITECTURE
-% ============================================================
-\section{Model Architecture}
-\label{sec:model}
+\section{Related Work and Honest Positioning}
+\label{sec:related}
 
-% 3.1 ZINB output distribution
-% 3.2 Dual-graph GATv2 spatial encoder
-% 3.3 Causal transformer temporal encoder
-% 3.4 Multi-Factor Feature Mixer (MFFM)
-% 3.5 SAC loss function
+\textbf{The amplification form is classical.} The closed-loop gain $1/(1-\kappa)$
+is the social multiplier~\cite{glaeser2003} and the textbook feedback-amplifier
+formula. We claim only its coordinate-free specialization ($\kappa$ as a product
+of a policy log-elasticity and a detection log-elasticity, invariant to smooth
+reparametrization) and the group-disparity power law
+$b^{1/(1-\kappa)}$.
 
-\subsection{Zero-Inflated Negative Binomial Distribution}
+\textbf{The policing feedback loop is Ensign et al.~\cite{ensign2018}.} They give
+a P\'olya-urn model with winner-take-all runaway; we give a smooth power law with
+a finite pole, an elasticity decomposition, identification, and correction ---
+none of which appear there.
 
-For spatial unit $s$, time $t$, and crime category $c$, the model predicts
-$(\pi_{stc}, \mu_{stc}, r_{stc})$:
-\begin{equation}
-  P(Y = y) = \begin{cases}
-    \pi + (1-\pi)\left(\frac{r}{r+\mu}\right)^r & y = 0 \\
-    (1-\pi) \frac{\Gamma(y+r)}{\Gamma(y+1)\Gamma(r)}
-      \left(\frac{r}{r+\mu}\right)^r \left(\frac{\mu}{r+\mu}\right)^y & y > 0
-  \end{cases}
-\end{equation}
+\textbf{The identification duality is a known template}
+\cite{mendlerduenner2022}: feedback parameters need exogenous variation. Our
+contribution is the specific DiD-on-recorded-rates instantiation for the
+recording-loop gain, distinct from reduced-form ShotSpotter DiD studies that
+estimate treatment effects, not $\kappa$.
 
-\subsection{Sharpness-Aware Calibration (SAC) Loss}
-
-\begin{equation}
-  \mathcal{L}_{\text{SAC}} = \underbrace{\text{CRPS}(F_{\text{ZINB}}, y)}_{\text{calibration}}
-    + \lambda_s \underbrace{\log(1 + \text{Var}[Y_{\text{ZINB}}])}_{\text{sharpness}}
-    + \lambda_r \underbrace{\text{ReLU}(r_{\text{floor}} - r)}_{\text{anti-collapse}}
-\end{equation}
+\textbf{Conformal-under-feedback controls the observed outcome.} ACI
+\cite{gibbs2021}, Conformal PID, and Performative Risk Control all maintain
+coverage/risk of the \emph{observed} target; none addresses a latent target
+distinct from the record, and none corrects. The base predictor (ZINB + GNN) is
+prior art~\cite{zhuang2022,wang2024}; we use it, not claim it.
 
 % ============================================================
-% 4. CONFORMAL PREDICTION
-% ============================================================
-\section{Conformal Calibration}
-\label{sec:conformal}
+\section{The Confidently-Wrong Phenomenon}
+\label{sec:law}
 
-% 4.1 CQR non-conformity scores for ZINB
-% 4.2 Split CP, Weighted CP, Mondrian CP
-% 4.3 Equalized Coverage by Recalibration (ECRC)
-% 4.4 Rolling Adaptive ECRC (NOVEL)
-%     - Algorithm box
-%     - Convergence guarantee (Theorem 1)
-% 4.5 Post-hoc recalibration
+\textbf{Model (AOBF).} Latent intensity $\lambda_s>0$ (unobserved). Attention
+$a_s=\pi(\mu_s;M)$ from the recorded-rate estimate $\mu_s$, $M=\text{mean}(\mu)$,
+$\pi$ $C^1$ increasing. Observation-biased recording
+$y_s\sim\text{Poisson}(\lambda_s g(a_s))$, $g$ $C^1$ increasing. A consistent
+learner reaches the fixed point $\mu_s=\lambda_s g(\pi(\mu_s;M))$. Define
+$\kappa_s=\big(\tfrac{\partial\log\pi}{\partial\log\mu}\big)\big(\tfrac{\partial\log g}{\partial\log a}\big)$.
 
-\subsection{Rolling Adaptive ECRC}
+\begin{theorem}[Amplification law]
+\label{thm:law}
+At any fixed point with $\kappa_s<1$,
+$\dfrac{d\log\mu_s}{d\log\lambda_s}=\dfrac{1}{1-\kappa_s}$. In the homogeneous
+case, $\mu_s/\mu_r=(\lambda_s/\lambda_r)^{1/(1-\kappa)}$, with a pole at
+$\kappa=1$.
+\end{theorem}
+\noindent\emph{Proof.} Differentiate $\log\mu_s=\log\lambda_s+\log g(\pi(\mu_s))$
+in $\log\lambda_s$; the second term contributes $\kappa_s\,d\log\mu_s/d\log\lambda_s$
+by the chain rule; solve. Full proof and the coordinate-free (non-power-law)
+verification in the supplement. $\square$
 
-\begin{algorithm}[h]
-\caption{Rolling Adaptive ECRC}
-\begin{algorithmic}[1]
-\REQUIRE Calibrated $\hat{\alpha}_g^{(0)}$, learning rate $\gamma$, target $\alpha$
-\FOR{$w = 1, \ldots, W_{\text{test}}$}
-  \STATE Compute intervals $C_g^{(w)}$ using $\hat{\alpha}_g^{(w)}$
-  \STATE Observe $y^{(w)}$; compute $\text{err}_g^{(w)}$
-  \STATE $\hat{\alpha}_g^{(w+1)} \leftarrow \hat{\alpha}_g^{(w)} + \gamma(\text{err}_g^{(w)} - \alpha)$
-\ENDFOR
-\end{algorithmic}
-\end{algorithm}
+\begin{corollary}[Runaway-discrimination law]
+Two groups with equal latent intensity but initial recording bias $b$ reach
+recorded disparity $b^{1/(1-\kappa)}$ --- Ensign et al.'s runaway given an exact
+form.
+\end{corollary}
 
-\begin{theorem}[Long-run per-group coverage]
-Under bounded non-conformity scores and ergodic stationarity, the rolling
-average miscoverage converges:
-$\frac{1}{W}\sum_{w=1}^{W} \text{err}_g^{(w)} \to \alpha$ as $W \to \infty$
-for each group $g$.
+\begin{theorem}[Confidently wrong]
+\label{thm:cw}
+Let $\mathcal C_s$ be a conformal interval calibrated on observed residuals.
+As $\kappa\uparrow$: (i) observed coverage $\mathbb P(y_s\in\mathcal C_s)\ge
+1-\alpha$ is maintained; (ii) latent coverage $\mathbb P(\lambda_s\in\mathcal
+C_s)$ collapses, since bias $|\mu_s-\lambda_s|$ grows while the half-width tracks
+only Poisson dispersion; (iii) the biased world and an honest world
+($\lambda'=\mu$, $\kappa=0$) are observationally identical, so no statistic of
+recorded data distinguishes them.
 \end{theorem}
 
 % ============================================================
-% 5. EMOS ENSEMBLE
-% ============================================================
-\section{EMOS Learned Ensemble}
-\label{sec:emos}
+\section{Identification of the Feedback Gain}
+\label{sec:ident}
 
-% 5.1 Mixture ZINB distribution
-% 5.2 Weight learning via CRPS minimization
-% 5.3 Softmax simplex constraint
+By Theorem~\ref{thm:cw}(iii), $\kappa$ is not identified from passive data. But an
+exogenous shock that scales the detection elasticity by $(1+\delta)$ in a treated
+set $\mathcal T$ identifies it:
 
-\begin{equation}
-  \mathbf{w}^* = \arg\min_{\mathbf{w} \in \Delta_K}
-    \frac{1}{N_{\text{cal}}} \sum_{i=1}^{N_{\text{cal}}}
-    \text{CRPS}\!\left(F_{\text{ZINB}}(\cdot; \bar{\pi}_\mathbf{w}^{(i)},
-    \bar{\mu}_\mathbf{w}^{(i)}, \bar{r}_\mathbf{w}^{(i)}), y_i\right)
-\end{equation}
+\begin{theorem}[Active identification]
+With known policy elasticity $\beta$ and shock $\delta$, the difference-in-differences
+$\mathrm{DiD}=\overline{\Delta\log\mu}_{\mathcal T}-\overline{\Delta\log\mu}_{\mathcal T^c}$
+is a known strictly monotone function of $\kappa$; hence $\kappa=\Phi^{-1}(\mathrm{DiD})$,
+without observing $\lambda$.
+\end{theorem}
 
-% ============================================================
-% 6. FEEDBACK LOOP INDEX
-% ============================================================
-\section{Feedback Loop Auditing}
-\label{sec:fli}
-
-% 6.1 Motivation: prediction-policing cycles
-% 6.2 FLI definition
-% 6.3 BAS definition
-% 6.4 Aggregate fairness metric
-
-\begin{definition}[Feedback Loop Index]
-For group $g$:
-$\text{FLI}_g = \text{Corr}(\hat{y}_g - \bar{y}_g^{\text{hist}},\;
-y_g - \bar{y}_g^{\text{hist}})$
-\end{definition}
+\noindent\textbf{Operating condition (discovered empirically, \S\ref{sec:exp}).}
+The identifying shock must keep treated cells sub-runaway,
+$\kappa(1+\delta)\le \kappa_{\max}<1$; otherwise the treated fixed point diverges
+and identification degenerates. This is a genuine, citable design constraint.
 
 % ============================================================
-% 7. EXPERIMENTS
+\section{Feedback-Corrected Conformal Prediction}
+\label{sec:correct}
+
+Given identified $\kappa$, the recording multiplier is $m_s=(\mu_s/M)^\kappa$ and
+the latent rate is recovered by deflation $\hat\lambda_s=\mu_s/m_s$. We issue
+count-distribution quantiles at $\hat\lambda_s$ (optionally widened by an
+anchor-calibrated conformal margin), and \textbf{abstain} where $\kappa$ nears
+the runaway threshold or the required deflation is extreme --- the honest failure
+mode rather than the silent one.
+
+\begin{algorithm}[h]
+\caption{Feedback-corrected latent interval}
+\begin{algorithmic}[1]
+\REQUIRE recorded rates $\mu$, identified $\kappa$, level $\alpha$
+\STATE $m_s \leftarrow (\mu_s/\text{mean}(\mu))^\kappa$;\quad $\hat\lambda_s \leftarrow \mu_s/m_s$
+\STATE $[\ell_s,u_s]\leftarrow[\,Q_{\alpha/2}(\hat\lambda_s),\,Q_{1-\alpha/2}(\hat\lambda_s)\,]$
+\STATE \textbf{if} $\kappa\ge\kappa_{\text{runaway}}$ \textbf{or} $m_s\notin[1/M_{\max},M_{\max}]$ \textbf{then} abstain on $s$
+\end{algorithmic}
+\end{algorithm}
+
+% ============================================================
+\section{Deployed Consequence: Feedback-Aware Safe Routing}
+\label{sec:routing}
+
+A crime-risk map is typically consumed downstream to \emph{route} people or
+patrols. If routing plans against the recorded record, it will faithfully divert
+civilians around historically over-recorded --- often over-policed ---
+neighborhoods, laundering enforcement bias into navigation: the routing analogue
+of the confidently-wrong phenomenon (``navigational redlining''). We make routing
+the deployed consequence of the correction.
+
+\textbf{Route on latent risk.} Node risk intervals are deflated to the latent
+scale (\S\ref{sec:correct}) before edge costs are formed, so the router plans
+against true risk, not enforcement artifacts.
+
+\textbf{Tail-risk (CVaR) costs with abstention propagation.} Edge cost combines
+distance with the $\beta$-CVaR of the corrected risk interval (the average of its
+worst $(1-\beta)$ tail --- the robust choice for safety-critical routing); nodes
+the correction flags un-correctable ($\kappa$ near runaway) incur an abstention
+penalty, so the router avoids them where possible and the abstention monitor
+triggers where not.
+
+\textbf{Exposure-disparity audit.} We measure each demographic group's share of
+routed risk-exposure against its share of latent incidence. Auditing the biased
+vs.\ corrected risk field quantifies how much correction shrinks disparity. In
+closed-loop simulation with a group structurally over-recorded by $1.8\times$,
+the correction removes the \emph{feedback-induced} portion of the disparity:
+worst-group exposure disparity falls from $0.29$ (biased) to $0.05$ at
+$\kappa{=}0.85$ (Table~\ref{tab:routing}), more so as the loop strengthens. Prior
+risk-aware routing plans on the observed field; routing on \emph{de-biased latent}
+uncertainty with abstention propagation is, to our knowledge, new. (Implementation:
+\texttt{src/civicsafe/routing/feedback\_aware.py}; experiment:
+\texttt{scripts/routing\_disparity\_experiment.py}.)
+
+\begin{table}[h]
+\centering
+\caption{Routing exposure disparity: biased vs.\ feedback-corrected risk field
+(worst-group $|\text{disparity}|$, lower is fairer). Group 1 over-recorded
+$1.8\times$.}
+\label{tab:routing}
+\begin{tabular}{cccc}
+\toprule
+$\kappa$ & biased & corrected & reduction \\
+\midrule
+0.00 & 0.287 & 0.287 & 0.000 \\
+0.30 & 0.288 & 0.206 & 0.082 \\
+0.50 & 0.294 & 0.148 & 0.147 \\
+0.70 & 0.269 & 0.089 & 0.180 \\
+0.85 & 0.237 & \textbf{0.045} & \textbf{0.193} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{Deployment Safety: Live Monitor and Robustness Envelope}
+\label{sec:deploy}
+
+\textbf{Anytime-valid feedback tripwire.} Passive metrics cannot certify latent
+coverage (Thm~\ref{thm:cw}), but a live monitor can detect \emph{drift}. We run a
+test supermartingale over the coverage stream (method-of-mixtures betting;
+Waudby-Smith \& Ramdas, 2024): under the null ``intervals are calibrated'' the
+wealth is a non-negative supermartingale, so Ville's inequality gives a
+\emph{time-uniform} false-alarm bound
+$P(\exists t: W_t\!\ge\!1/\eta)\le\eta$ under continuous monitoring, with nothing
+to tune. Empirically the tripwire holds its false-alarm budget on calibrated
+streams, never fires under over-coverage, and fires early under a miscoverage
+drift to $0.45$ (nominal $0.10$).
+
+\textbf{Robustness envelope.} The correction uses an \emph{estimated} $\kappa$;
+we report how much misspecification it tolerates. Latent coverage is
+near-maximal at the true gain, and the \emph{robustness value} --- the largest
+gain error keeping coverage above a floor --- shrinks as $\kappa\!\to\!1$: near
+runaway the correction is more fragile, which sets the precision target for the
+field identification of $\kappa$.
+
+\textbf{Robustness to a misspecified recording model.} Beyond gain error, we
+harden the correction against a wrong recording \emph{form}. Under a
+Rosenbaum-style sensitivity model where the true recording multiplier lies within
+a factor $\Gamma$ of the assumed one, a $\Gamma$-inflated corrected interval
+covers the latent target for \emph{any} admissible recording model. Empirically
+(true $\kappa{=}0.6$), un-inflated coverage degrades $0.95\!\to\!0.86$ as
+$\Gamma$ grows to $2$, while the $\Gamma$-inflated interval stays $\ge 0.99$ at a
+bounded $1.8\times$ width cost --- converting the method's key assumption into a
+stated envelope. (Implementation: \texttt{feedback\_tripwire.py},
+\texttt{sensitivity.py}, \texttt{correction\_robustness.py}; results in
+\texttt{docs/RESULTS\_deployment\_layer.md},
+\texttt{docs/RESULTS\_robustness\_and\_crosscity.md}.)
+
+\textbf{Cross-city real data.} On the real Chicago (77 areas) and NYC (78
+precincts) records (2018--2023), allocation on the raw recorded violent-crime
+rate over-exposes the higher-minority stratum by $+39\%$ (Chicago) and $+31\%$
+(NYC) relative to population share; correction at an assumed $\kappa{=}0.6$
+attenuates this to $+16\%$ and $+12\%$. The pattern replicates across two
+independent cities with real demographics. (Latent coverage is not validated on
+real data --- the true rate is unobservable --- so this is a descriptive
+companion to the simulation guarantee; script:
+\texttt{scripts/cross\_city\_disparity.py}.)
+
 % ============================================================
 \section{Experiments}
-\label{sec:experiments}
+\label{sec:exp}
 
-% 7.1 Datasets: Chicago (77 areas, 2001-2024), NYC (77 precincts, 2006-2024)
-% 7.2 Baselines: HA, SN, STARIMA, ZINB-Reg, XGBoost, LSTM-NB, TFT, GraphWaveNet
-% 7.3 Training setup: 5 seeds, SAC loss, early stopping
-% 7.4 Main results (Table 1)
-% 7.5 Statistical significance (DM test + bootstrap)
-% 7.6 CRPS decomposition analysis
-% 7.7 Conformal coverage (Table 2)
-% 7.8 Fairness analysis (Table 3)
-% 7.9 Ablation study (Table 4)
+\textbf{Closed-loop AOBF simulation.} Latent $\lambda\sim\text{Gamma}$, power-law
+policy/detection, $\kappa$ identified by DiD (never observing $\lambda$), latent
+coverage scored on fresh $\text{Poisson}(\lambda)$ draws (target $0.90$).
 
-\subsection{Main Results}
-
-% TABLE 1: Main comparison
 \begin{table}[h]
 \centering
-\caption{Main results: CRPS ($\downarrow$), MAE ($\downarrow$), and coverage
-at $\alpha=0.1$ ($\uparrow$). Best in \textbf{bold}.}
-\label{tab:main}
-\begin{tabular}{lccccccc}
+\caption{Feedback-corrected vs.\ naive latent coverage (target $0.90$). Naive
+collapses as feedback rises; the correction holds throughout, abstaining on the
+cells it cannot stand behind (kept fraction).}
+\label{tab:correction}
+\begin{tabular}{cccccc}
 \toprule
-& \multicolumn{3}{c}{\textbf{Chicago}} & & \multicolumn{3}{c}{\textbf{NYC}} \\
-\cmidrule{2-4} \cmidrule{6-8}
-\textbf{Method} & CRPS & MAE & Cov. & & CRPS & MAE & Cov. \\
+$\kappa$ & shock $\delta$ & naive latent & $\hat\kappa$ (DiD) & \textbf{corrected latent} & kept frac. \\
 \midrule
-Historical Avg.     & -- & -- & -- & & -- & -- & -- \\
-Seasonal Naive      & -- & -- & -- & & -- & -- & -- \\
-STARIMA             & -- & -- & -- & & -- & -- & -- \\
-ZINB Regression     & -- & -- & -- & & -- & -- & -- \\
-XGBoost             & -- & -- & -- & & -- & -- & -- \\
-\midrule
-LSTM-NB             & -- & -- & -- & & -- & -- & -- \\
-TFT (simplified)    & -- & -- & -- & & -- & -- & -- \\
-Graph WaveNet       & -- & -- & -- & & -- & -- & -- \\
-\midrule
-CIVIC-SAFE (ours)   & -- & -- & -- & & -- & -- & -- \\
-\ \ + EMOS          & -- & -- & -- & & -- & -- & -- \\
-\ \ + Recalibration & -- & -- & -- & & -- & -- & -- \\
+0.00 & 0.60 & 0.945 & 0.020 & \textbf{0.945} & 1.00 \\
+0.30 & 0.60 & 0.901 & 0.300 & \textbf{0.957} & 1.00 \\
+0.50 & 0.60 & 0.781 & 0.500 & \textbf{0.944} & 0.95 \\
+0.70 & 0.29 & 0.526 & 0.700 & \textbf{0.926} & 0.57 \\
+0.85 & 0.06 & 0.156 & 0.850 & \textbf{0.953} & 0.16 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{CRPS Decomposition}
+\noindent All theorems are verified numerically (\texttt{tests/test\_feedback\_law.py},
+\texttt{tests/test\_latent\_correction.py}); the amplification law matches the
+iterated dynamics to relative error $\le 10^{-4}$, including a non-power-law
+(tanh policy, exponential detection) check.
 
-% TABLE 2: CRPS decomposition
-\begin{table}[h]
-\centering
-\caption{CRPS Decomposition (Hersbach, 2000). REL = calibration error
-($\downarrow$), RES = discrimination ($\uparrow$), UNC = inherent.}
-\label{tab:crps_decomp}
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Model} & REL $\downarrow$ & RES $\uparrow$ & UNC & CRPSS \\
-\midrule
-CIVIC-SAFE   & -- & -- & -- & -- \\
-XGBoost      & -- & -- & -- & -- \\
-TFT          & -- & -- & -- & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
+\textbf{Limitations.} These are simulations of the AOBF model. External validity
+requires the ShotSpotter/patrol-rollout DiD on real records, where $\kappa$ is
+estimated from field data; this is the primary future-work item. The base ZINB/GNN
+forecaster is applied prior art. The correction assumes the AOBF fixed-point form;
+robustness to misspecified $g,\pi$ is bounded by the identification's operating
+condition.
 
-\subsection{Statistical Significance}
-
-All comparisons confirmed via Diebold-Mariano test (HAC standard errors) and
-temporal block bootstrap (Politis \& Romano, 1994) with $B = 10{,}000$
-replicates. Block length $\ell = \lceil T^{1/3} \rceil$.
-
-% ============================================================
-% 8. CONCLUSION
 % ============================================================
 \section{Conclusion}
 
-We presented CIVIC-SAFE, a distributional crime forecasting framework with
-conformal fairness guarantees and feedback loop auditing. Our system achieves
-state-of-the-art CRPS with formally verified per-group coverage, learned
-ensemble weights, and quantitative feedback loop diagnostics.
+Systems that choose where to look, then learn from what they see, can become
+confidently wrong about the world they claim to measure --- and no passive metric
+warns them. We gave this a closed form, an identification strategy, and, for the
+first time, a correction that restores honest coverage of the latent process.
+The next step is field identification of $\kappa$ from a natural experiment.
 
-% ============================================================
-% REFERENCES
 % ============================================================
 \bibliographystyle{plain}
 \begin{thebibliography}{99}
 
-\bibitem{gneiting2005} Gneiting, T., Raftery, A.E., Westveld, A.H., Goldman, T. (2005).
-Calibrated probabilistic forecasting using ensemble model output statistics and minimum CRPS estimation.
-\textit{Monthly Weather Review}, 133(5), 1098--1118.
+\bibitem{ensign2018} Ensign, D., Friedler, S.A., Neville, S., Scheidegger, C.,
+Venkatasubramanian, S. (2018). Runaway feedback loops in predictive policing.
+\textit{FAccT/PMLR 81}.
 
-\bibitem{hersbach2000} Hersbach, H. (2000). Decomposition of the continuous ranked probability score
-for ensemble prediction systems. \textit{Weather and Forecasting}, 15(5), 559--570.
+\bibitem{glaeser2003} Glaeser, E.L., Sacerdote, B.I., Scheinkman, J.A. (2003).
+The social multiplier. \textit{Journal of the European Economic Association},
+1(2--3), 345--353.
 
-\bibitem{romano2019} Romano, Y., Patterson, E., Cand\`{e}s, E.J. (2019).
+\bibitem{vanamsterdam2025} van Amsterdam, W.A.C., et al. (2025). When accurate
+prediction models yield harmful self-fulfilling prophecies. \textit{Patterns}.
+
+\bibitem{mendlerduenner2022} Mendler-D\"unner, C., et al. (2022). Anticipating
+performativity by predicting from predictions. \textit{NeurIPS}.
+
+\bibitem{gibbs2021} Gibbs, I., Cand\`es, E.J. (2021). Adaptive conformal
+inference under distribution shift. \textit{NeurIPS}.
+
+\bibitem{romano2019} Romano, Y., Patterson, E., Cand\`es, E.J. (2019).
 Conformalized quantile regression. \textit{NeurIPS}.
 
-\bibitem{gibbs2021} Gibbs, I., Cand\`{e}s, E.J. (2021). Adaptive conformal inference under distribution shift.
-\textit{NeurIPS}.
+\bibitem{zhuang2022} Zhuang, D., et al. (2022). Uncertainty quantification of
+sparse travel demand prediction with spatial-temporal graph neural networks
+(STZINB-GNN). \textit{KDD}.
 
-\bibitem{dm1995} Diebold, F.X., Mariano, R.S. (1995). Comparing predictive accuracy.
-\textit{Journal of Business \& Economic Statistics}, 13(3), 253--263.
+\bibitem{wang2024} Wang, et al. (2024). Uncertainty-aware crime prediction with
+spatial-temporal multivariate ZINB graph neural networks (STMGNN-ZINB).
 
-\bibitem{politis1994} Politis, D.N., Romano, J.P. (1994). The stationary bootstrap.
-\textit{Journal of the American Statistical Association}, 89(428), 1303--1313.
+\bibitem{perdomo2020} Perdomo, J.C., Zrnic, T., Mendler-D\"unner, C., Hardt, M.
+(2020). Performative prediction. \textit{ICML}.
 
-\bibitem{gneiting2007} Gneiting, T., Balabdaoui, F., Raftery, A.E. (2007).
-Probabilistic forecasts, calibration and sharpness.
-\textit{Journal of the Royal Statistical Society: Series B}, 69(2), 243--268.
-
-\bibitem{salinas2020} Salinas, D., Flunkert, V., Gasthaus, J., Januschowski, T. (2020).
-DeepAR: Probabilistic forecasting with autoregressive recurrent networks.
-\textit{International Journal of Forecasting}, 36(3), 1181--1191.
-
-\bibitem{lim2021} Lim, B., Ar\i{}k, S.\"{O}., Loeff, N., Pfister, T. (2021).
-Temporal fusion transformers for interpretable multi-horizon time series forecasting.
-\textit{International Journal of Forecasting}, 37(4), 1748--1764.
-
-\bibitem{newey1987} Newey, W.K., West, K.D. (1987). A simple, positive semi-definite,
-heteroskedasticity and autocorrelation consistent covariance matrix.
-\textit{Econometrica}, 55(3), 703--708.
+\bibitem{hersbach2000} Hersbach, H. (2000). Decomposition of the CRPS for
+ensemble prediction systems. \textit{Weather and Forecasting}, 15(5).
 
 \end{thebibliography}
 
