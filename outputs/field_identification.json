@@ -1,0 +1,136 @@
+{
+  "category": "violent",
+  "rollout_period": "2018-06",
+  "did": {
+    "tau": -0.03951100457527287,
+    "se": 0.021720832852392288,
+    "pvalue": 0.06890574364415178,
+    "ci": [
+      -0.08208305468017617,
+      0.003061045529630421
+    ],
+    "recording_inflation_pct": -3.8740624318763017,
+    "n_obs": 5544,
+    "n_treated_units": 25
+  },
+  "event_study": [
+    {
+      "rel_month": -5,
+      "coef": -0.05200704049922433,
+      "se": 0.052926482449769024
+    },
+    {
+      "rel_month": -4,
+      "coef": -0.11683332604538056,
+      "se": 0.0618544242190264
+    },
+    {
+      "rel_month": -3,
+      "coef": -0.140934143004183,
+      "se": 0.052675234521819964
+    },
+    {
+      "rel_month": -2,
+      "coef": -0.0814242945147318,
+      "se": 0.04883421178546807
+    },
+    {
+      "rel_month": 0,
+      "coef": 0.01866643291188652,
+      "se": 0.05043291460212095
+    },
+    {
+      "rel_month": 1,
+      "coef": -0.0387607643687458,
+      "se": 0.04698593452337651
+    },
+    {
+      "rel_month": 2,
+      "coef": -0.02658688978191267,
+      "se": 0.05878856140019962
+    },
+    {
+      "rel_month": 3,
+      "coef": -0.08279713286402575,
+      "se": 0.040709948939033826
+    },
+    {
+      "rel_month": 4,
+      "coef": -0.13570206902609422,
+      "se": 0.05038569442270888
+    },
+    {
+      "rel_month": 5,
+      "coef": -0.08465014007380024,
+      "se": 0.061348479545530125
+    },
+    {
+      "rel_month": 6,
+      "coef": -0.15856605391326994,
+      "se": 0.06370703516708762
+    },
+    {
+      "rel_month": 7,
+      "coef": -0.0907677708728055,
+      "se": 0.047839072413321394
+    },
+    {
+      "rel_month": 8,
+      "coef": -0.05294697548683386,
+      "se": 0.05864123441316191
+    },
+    {
+      "rel_month": 9,
+      "coef": -0.005782289668259239,
+      "se": 0.058313818848417555
+    },
+    {
+      "rel_month": 10,
+      "coef": 0.03232315732838386,
+      "se": 0.05980018451217731
+    },
+    {
+      "rel_month": 11,
+      "coef": 0.017164118729245795,
+      "se": 0.0508957062395076
+    },
+    {
+      "rel_month": 12,
+      "coef": -0.040058848295680446,
+      "se": 0.04421209611548757
+    }
+  ],
+  "pretrend_mean_abs": 0.09779970101587993,
+  "post_mean": -0.04988194041399319,
+  "implied_kappa": [
+    {
+      "beta": 0.5,
+      "rho_hat": -0.03951100457527287,
+      "kappa_hat": -0.019755502287636437,
+      "runaway": false
+    },
+    {
+      "beta": 1.0,
+      "rho_hat": -0.03951100457527287,
+      "kappa_hat": -0.03951100457527287,
+      "runaway": false
+    },
+    {
+      "beta": 1.5,
+      "rho_hat": -0.03951100457527287,
+      "kappa_hat": -0.05926650686290931,
+      "runaway": false
+    },
+    {
+      "beta": 2.0,
+      "rho_hat": -0.03951100457527287,
+      "kappa_hat": -0.07902200915054575,
+      "runaway": false
+    }
+  ],
+  "caveats": [
+    "tau/rho_hat is point-identified; kappa depends on the UNIDENTIFIED policy elasticity beta.",
+    "Treated set is a documented default; verify against official CPD ShotSpotter deployment records.",
+    "Flat pre-trends validate the design; a pre-jump indicates treatment mis-specification."
+  ]
+}
