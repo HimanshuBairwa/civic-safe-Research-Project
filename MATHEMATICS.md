@@ -2,6 +2,18 @@
 
 This document provides the formal mathematical specification for the CIVIC-SAFE architecture, including the distributional loss functions, spatial attention mechanisms, bias-mitigation regularisation, and evaluation metrics.
 
+> **Contribution note.** The distributional/GNN/conformal machinery below (§§1–13) is *applied* — it builds on published methods (ZINB-GNN: Zhuang et al. KDD 2022, STZINB-GNN; Wang et al. 2024, STMGNN-ZINB; conformal: Gibbs & Candès 2021; CQR: Romano et al. 2019; EMOS: Gneiting et al. 2005). **The genuinely novel contribution is §0 below**: the Feedback Amplification Law, the passive/active identification duality, and — the part no prior work provides — a *feedback-corrected conformal predictor* that recovers coverage of the true latent process from a biased record. Positioning against the nearest prior art (Ensign 2018; Glaeser–Sacerdote–Scheinkman 2003; Algometrics 2026; van Amsterdam 2025) is in `docs/NOVELTY_AND_POSITIONING.md`; formal proofs in `docs/PROOFS_feedback_law.md`.
+
+## 0. The Contribution: Feedback Amplification and Latent-Coverage Correction
+
+**Model (Allocation under Observation-Biased Feedback).** Latent incidence $\lambda_s>0$ (unobserved); a policy allocates attention $a_s=\pi(\mu_s)$ from the recorded-rate estimate $\mu_s$; recording is observation-biased, $y_s\sim\mathrm{Poisson}(\lambda_s\, g(a_s))$ with $g$ increasing; a consistent learner reaches the fixed point $\mu_s=\lambda_s\,g(\pi(\mu_s))$. Define the feedback gain $\kappa=\bigl(\tfrac{d\log a}{d\log\mu}\bigr)\bigl(\tfrac{d\log g}{d\log a}\bigr)$.
+
+**§0.1 Amplification elasticity (Thm 1).** $\dfrac{d\log\mu_s}{d\log\lambda_s}=\dfrac{1}{1-\kappa}$, so recorded disparity $=$ true disparity$^{1/(1-\kappa)}$, with a pole at $\kappa^\*=1$. *This closed form is the social multiplier (Glaeser–Sacerdote–Scheinkman 2003) / control-theoretic loop gain; our contribution is the coordinate-free elasticity decomposition and the disparity power-law corollary, a quantitative sharpening of Ensign et al. (2018).* Verified: `tests/test_feedback_law.py`.
+
+**§0.2 Passive/active duality (Thms 2–3).** The "confidently wrong" state — observed coverage maintained while latent coverage collapses — is **not identifiable from passive data** (biased and honest worlds are observationally identical), but $\kappa$ is **point-identified by a difference-in-differences** on log recorded rates after an exogenous detection-sensitivity shock (staggered ShotSpotter/patrol rollout). *The duality principle is known (Mendler-Dünner 2022; Algometrics 2026); our contribution is its DiD instantiation for a recording-loop elasticity.*
+
+**§0.3 Feedback-corrected latent conformal prediction (the novel constructive step).** Given the identified $\kappa$, deflate the record by the recording multiplier $m_s=(\mu_s/M)^\kappa$ to recover $\hat\lambda_s=\mu_s/m_s$ and issue prediction intervals valid for the **latent** process, with **abstention** as $\kappa\to1$. **Prior work (Ensign 2018; van Amsterdam 2025; Algometrics 2026) diagnoses the pathology; this corrects it.** Implementation: `src/civicsafe/theory/latent_correction.py`; experiment: `scripts/latent_correction_experiment.py`.
+
 ## 1. Output Distribution: Zero-Inflated Negative Binomial (ZINB)
 
 CIVIC-SAFE forecasts crime counts as a full probability distribution rather than a point estimate. Crime data is typically extremely sparse (many structural and reporting zeros) and overdispersed (variance > mean). The ZINB distribution is the statistically correct choice for this domain.
@@ -85,7 +97,7 @@ $$\rho_e = f(\mu_e, r_e, \pi_e) = (1 - \pi_e) \cdot \mu_e + \lambda_{\text{unc}}
 
 The Tsinghua SSSP algorithm is used to find the optimal path. If the peak uncertainty along the optimal path exceeds a critical threshold, the engine executes an **Abstention Protocol** and refuses to return a route, preventing false assurances of safety.
 
-## 6. CRPS-Direct Training (Novel Contribution)
+## 6. CRPS-Direct Training (Applied method; closed-form CRPS for NB after Wei & Held 2014)
 
 ### 6.1 The Train-Eval Mismatch Problem
 
@@ -140,7 +152,7 @@ $$M[(s_1, t_1), (s_2, t_2)] = \begin{cases} 0 & \text{if } s_1 = s_2 \text{ and 
 
 **Complexity**: $O(S^2T + ST^2)$ per layer with the structured mask (sparse attention), compared to $O(S^2T^2)$ for dense attention. For $S=77, T=52$, this is $\approx 5.2\text{M}$ attention entries vs. $16.1\text{M}$ for dense — feasible on standard hardware.
 
-## 8. Adaptive Temporal ECRC (Novel Contribution)
+## 8. Adaptive Temporal ECRC (Applied: per-group Adaptive Conformal Inference, Gibbs & Candès 2021)
 
 ### 8.1 Conformal Prediction Background
 
@@ -172,7 +184,7 @@ $$\limsup_{T \to \infty} \left| \frac{1}{T} \sum_{t=1}^T \mathbb{1}[Y_t \notin \
 
 Note: This provides a long-run asymptotic average coverage guarantee, not an exact per-step marginal guarantee.
 
-## 9. r-Collapse Diagnosis and Regularization (Novel Contribution)
+## 9. r-Collapse Diagnosis and Regularization (Optimization regularizer; diagnostic)
 
 ### 9.1 The r-Collapse Failure Mode
 
@@ -193,7 +205,7 @@ where $r_{\text{reg}} = 0.5$ (regularization floor, distinct from the hard floor
 
 **Why per-cell, not batch-mean**: A batch-mean penalty $\text{ReLU}(r_{\text{reg}} - \bar{r})$ allows some cells to collapse to near-zero while others compensate by staying high. The per-cell formulation prevents any individual cell from collapsing.
 
-## 10. Sharpness-Aware Calibration Loss (Novel Contribution)
+## 10. Sharpness-Aware Calibration Loss (Ablation only — disabled by default; see §10.3)
 
 ### 10.1 Motivation
 
