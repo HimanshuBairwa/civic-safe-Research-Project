@@ -143,19 +143,26 @@ class TestCrosswalks:
 
 
 class TestACS:
-    """Verify resilient Census ACS fallback."""
+    """Verify the rigorous population-weighted ACS loader.
 
-    def test_fallback_returns_dataframe(self) -> None:
-        df = load_acs_features("chicago", ["median_income", "poverty_rate"])
+    ``load_acs_features`` reads the areal-interpolation output
+    (``data/processed/{city}_demographics.csv``), keyed by ``spatial_unit`` with
+    one row per unit — the current, non-simulated data path.
+    """
+
+    def test_returns_dataframe_keyed_by_spatial_unit(self) -> None:
+        df = load_acs_features("chicago", ["median_household_income", "poverty_rate"])
         assert isinstance(df, pd.DataFrame)
-        assert "tract_id" in df.columns
-        assert "median_income" in df.columns
+        assert "spatial_unit" in df.columns
+        assert "median_household_income" in df.columns
         assert "poverty_rate" in df.columns
         assert not df.empty
+        # One row per spatial unit (Chicago community areas).
+        assert df["spatial_unit"].is_unique
 
-    def test_fallback_values_positive(self) -> None:
-        df = load_acs_features("chicago", ["pop_total"])
-        assert (df["pop_total"] >= 0).all()
+    def test_population_values_positive(self) -> None:
+        df = load_acs_features("chicago", ["total_population"])
+        assert (df["total_population"] >= 0).all()
 
 
 # ===================================================================
@@ -168,7 +175,12 @@ class TestPanelBuilder:
 
     @pytest.fixture
     def mini_inputs(self):
-        """Create minimal valid inputs for the panel builder."""
+        """Minimal valid inputs for the current panel-builder API.
+
+        ``acs_df`` is keyed by ``spatial_unit`` with one row per unit (the
+        areal-interpolation output format); no separate crosswalk is needed at
+        panel-build time.
+        """
         crime_df = pd.DataFrame(
             {
                 "id": ["1", "2", "3"],
@@ -181,22 +193,15 @@ class TestPanelBuilder:
         )
         acs_df = pd.DataFrame(
             {
-                "tract_id": ["T1", "T2", "T3", "T4"],
-                "income": [50.0, 60.0, 40.0, 55.0],
+                "spatial_unit": [1, 2],
+                "income": [50.0, 40.0],  # one ACS feature column
             }
         )
-        crosswalk_df = pd.DataFrame(
-            {
-                "spatial_unit": [1, 1, 2, 2],
-                "tract_id": ["T1", "T2", "T3", "T4"],
-                "weight": [0.6, 0.4, 0.5, 0.5],
-            }
-        )
-        return crime_df, acs_df, crosswalk_df
+        return crime_df, acs_df
 
     def test_panel_shapes(self, mini_inputs) -> None:
-        crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        crime_df, acs_df = mini_inputs
+        panel = build_spatiotemporal_panel(crime_df, acs_df, 2020, 2020)
         S = 2  # spatial units
         C = 3  # categories
 
@@ -206,31 +211,31 @@ class TestPanelBuilder:
         assert panel["features"].shape[2] == 1  # one ACS variable
 
     def test_panel_counts_nonnegative(self, mini_inputs) -> None:
-        crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        crime_df, acs_df = mini_inputs
+        panel = build_spatiotemporal_panel(crime_df, acs_df, 2020, 2020)
         assert (panel["counts"] >= 0).all()
 
     def test_panel_total_matches_input(self, mini_inputs) -> None:
-        crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        crime_df, acs_df = mini_inputs
+        panel = build_spatiotemporal_panel(crime_df, acs_df, 2020, 2020)
         assert panel["counts"].sum().item() == 3  # 3 input records
 
     def test_panel_does_not_mutate_input(self, mini_inputs) -> None:
-        crime_df, acs_df, crosswalk_df = mini_inputs
+        crime_df, acs_df = mini_inputs
         cols_before = list(crime_df.columns)
-        build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        build_spatiotemporal_panel(crime_df, acs_df, 2020, 2020)
         assert list(crime_df.columns) == cols_before
 
     def test_panel_empty_crime_df(self, mini_inputs) -> None:
-        _, acs_df, crosswalk_df = mini_inputs
+        _, acs_df = mini_inputs
         empty_df = pd.DataFrame(
             columns=["id", "date", "spatial_unit", "category", "latitude", "longitude"]
         )
-        panel = build_spatiotemporal_panel(empty_df, acs_df, crosswalk_df, 2020, 2020)
+        panel = build_spatiotemporal_panel(empty_df, acs_df, 2020, 2020)
         assert panel["counts"].sum().item() == 0
 
     def test_metadata_correct(self, mini_inputs) -> None:
-        crime_df, acs_df, crosswalk_df = mini_inputs
-        panel = build_spatiotemporal_panel(crime_df, acs_df, crosswalk_df, 2020, 2020)
+        crime_df, acs_df = mini_inputs
+        panel = build_spatiotemporal_panel(crime_df, acs_df, 2020, 2020)
         assert panel["metadata"]["categories"] == ["violent", "property", "drug"]
         assert panel["metadata"]["time_range"] == [2020, 2020]
