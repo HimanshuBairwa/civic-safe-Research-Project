@@ -1,0 +1,33 @@
+name: oicc-ci
+
+on:
+  push:
+    paths:
+      - "src/oicc/**"
+      - "tests_oicc/**"
+      - ".github/workflows/oicc-ci.yml"
+  pull_request:
+    paths:
+      - "src/oicc/**"
+      - "tests_oicc/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pytest
+      - name: Run OICC test suite
+        run: PYTHONPATH=src python -m pytest tests_oicc -q -k "not realdata and not ncrb and not us_"
+      - name: Reproduce headline results (synthetic only)
+        run: PYTHONPATH=src python experiments/oicc_runs/reproduce_all.py --quick

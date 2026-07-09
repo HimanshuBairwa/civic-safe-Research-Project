@@ -1,0 +1,978 @@
+% !TEX program = pdflatex
+% ============================================================================
+%  OICC: Over-Identification-Calibrated Conformal Deconvolution
+%  PART I --- IDENTIFICATION AND SPECIFICATION-TEST THEORY
+%
+%  Self-contained, LaTeX-ready theorem+proof document.
+%  Compile: pdflatex OICC_identification_theorems.tex  (twice for refs)
+%
+%  Scope of THIS file: nonparametric identification of the latent-rate law
+%  from >= 2 mechanism-independent channels (Kotlarski / Hu--Schennach),
+%  the over-identifying restriction and its consistent specification test
+%  T_n (with asymptotic null), the detectable/undetectable decomposition,
+%  and an honest catalogue of what remains assumed-and-untestable at K=3.
+%  The conformal wrapper (coverage theorem) is Part II, a separate file.
+% ============================================================================
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize]{cleveref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+\renewcommand{\theassumption}{A\arabic{assumption}}
+
+% ---- notation ----
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\ind}{\perp\!\!\!\perp}
+\newcommand{\ecf}{\widehat{\varphi}}
+\newcommand{\eqd}{\overset{d}{=}}
+\newcommand{\wto}{\Rightarrow}
+\newcommand{\cyto}{\overset{p}{\to}}
+\newcommand{\ii}{\mathrm{i}}          % imaginary unit
+\newcommand{\Th}{\theta}
+\newcommand{\lat}{\Th}
+\newcommand{\dperp}{\delta_{\perp}}
+\newcommand{\Gcm}{\Gamma_{\mathrm{cm}}}
+\newcommand{\Dperp}{\Delta_{\perp}}
+\newcommand{\Dpar}{\Delta_{\parallel}}
+\newcommand{\TV}{\mathrm{TV}}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\Real}{Re}
+\DeclareMathOperator{\Imag}{Im}
+\DeclareMathOperator{\sgn}{sgn}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\diag}{diag}
+
+\title{\textbf{Over-Identification-Calibrated Conformal Deconvolution (OICC)}\\[2pt]
+\large Part I: Identification of the Latent Crime-Rate Law and a\\
+Consistent Over-Identification Specification Test\\[4pt]
+\normalsize\emph{Theorem--proof document; hostile-referee--hardened}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We observe $K\ge 2$ mechanism-independent noisy channels of one latent
+log-victimization-rate field $\lat_{at}$ (police records, calls-for-service,
+victimization survey; cross-nationally, Indian state-violence and
+distress-call channels). We (i) give the exact conditions under which the
+latent-rate distribution $f_{\lat}$ is \emph{nonparametrically point-identified}
+from $K\ge 2$ channels --- classically (Kotlarski--Li--Vuong) when channel
+error is independent of the latent, and via Hu--Schennach operator
+diagonalization in the \emph{nonclassical} regime that police under-recording
+actually inhabits; (ii) show that with $K\ge 3$ channels the model implies
+\emph{over-identifying restrictions}, construct a consistent specification test
+$T_n$, derive its asymptotic null law, and state precisely what its rejection
+does and does not falsify; and (iii) prove the \textbf{matched impossibility}:
+the component of any conditional-independence violation that loads on the
+channels proportionally to the true-rate loadings (\emph{factor-aligned
+common mode}) is observationally equivalent to a relabeling of the latent
+factor and is therefore \emph{unidentifiable at every $K$}. The specification
+test has power \emph{proportional to} the detectable violation component and
+\emph{exactly zero} power against the common-mode component; we prove this and
+explain why no finite number of same-latent channels can repair it. We give
+codeable estimator equations throughout and pre-empt the standard
+econometric attacks (shared confounder, zero-inflation, spatial dependence).
+\end{abstract}
+
+\tableofcontents
+
+% ============================================================================
+\section{Setup, estimand, and notation}
+% ============================================================================
+
+Index areas $a\in\{1,\dots,A\}$ and periods $t$. The scientific target is the
+\emph{latent true victimization rate} $\lambda(a,t)>0$; we work on the log
+scale
+\[
+  \lat_{at} \;\coloneqq\; \log\lambda(a,t)\in\R .
+\]
+We observe $K\ge 2$ channels indexed $c=1,\dots,K$. After a variance-stabilizing
+/ log transform of each channel's rate (Section~\ref{sec:zip} treats the raw
+count/zero-inflation layer explicitly), the \textbf{measurement model} is the
+one-factor system
+\begin{equation}\label{eq:model}
+  Y^{c}_{at} \;=\; \alpha_c \;+\; \beta_c\,\lat_{at} \;+\; \varepsilon^{c}_{at},
+  \qquad c=1,\dots,K,
+\end{equation}
+where $\alpha_c\in\R$ is a channel offset (systematic level bias),
+$\beta_c>0$ a channel loading (systematic scale/elasticity bias), and
+$\varepsilon^c_{at}$ the channel's idiosyncratic error. The
+\emph{estimand} is the marginal law $f_{\lat}$ of $\lat_{at}$ over the
+population of cells (and, downstream in Part II, the per-cell conformal set for
+$\lat_{a,T+1}$).
+
+\paragraph{Characteristic-function (CF) notation.}
+For a random variable $W$, $\varphi_W(t)=\E[e^{\ii t W}]$; for a pair,
+$\varphi_{W,V}(s,t)=\E[e^{\ii s W+\ii t V}]$. $\partial_1,\partial_2$ denote
+partial derivatives in the first/second CF argument. For a function of one
+cell we suppress the $(a,t)$ subscript; cells are the sampling units.
+
+\paragraph{Resolution ceiling (buildability constraint, declared up front).}
+Channels must measure the \emph{same} latent unit. In the US spine the common
+resolution is metro-month; in the India spine every mechanism-independent
+channel (complaints-against-police, custodial-death, human-rights-violation,
+PC3 distress-calls) is published at \emph{state-year} resolution, so the Indian
+estimand is a state-year field ($\sim$34--36 areas $\times$ 14 years
+$\approx 480$ cells) and the district IPC series enters only as a downscaling
+covariate, never as a channel. All asymptotics below are in the number of
+cells $n=A\cdot T$ at the common resolution, with the spatial/temporal
+dependence caveats of Section~\ref{sec:spatial}.
+
+% ============================================================================
+\section{Assumptions}\label{sec:assump}
+% ============================================================================
+
+Throughout, ``$\ind$'' is statistical independence and ``$\ind\,\mid\,$''
+conditional independence. Covariates $X$ (population, urbanization, a
+downscaling proxy) may be conditioned on everywhere; we suppress $X$ except
+where it is load-bearing.
+
+\begin{assumption}[Conditional independence given the latent]\label{A1}
+$\varepsilon^{1},\dots,\varepsilon^{K}$ are mutually independent conditional
+on $(\lat,X)$. Equivalently, the channels are mutually independent given the
+latent rate: $Y^{1}\ind\cdots\ind Y^{K}\mid(\lat,X)$.
+\end{assumption}
+
+\noindent\emph{This is the assumption that was untestable last round with a
+single anchor.} OICC does not assume it away; \Cref{sec:decomp} splits it into
+a data-testable part and a provably-irreducible part.
+
+\begin{assumption}[Non-vanishing CFs / completeness]\label{A2}
+\emph{(Classical case)} $\varphi_{\lat}$ and each $\varphi_{\varepsilon^c}$ are
+non-vanishing on $\R$ (Kotlarski regularity), and $\varphi_{\lat}$, each
+$\varphi_{\varepsilon^c}$ are continuously differentiable with an integrable
+first derivative.\;
+\emph{(Nonclassical case)} the conditional-density integral operators
+$L_{Y^j\mid\lat}$ and $L_{\lat\mid Y^k}$ (defined in \Cref{sec:HS}) are
+bounded and injective (bounded completeness of the relevant operator), and the
+eigenvalues $f_{Y^\ell\mid\lat}(y\mid\cdot)$ used for diagonalization are
+distinct for a chosen $y$.
+\end{assumption}
+
+\begin{assumption}[Normalization]\label{A3}
+Scale and location of the latent are fixed by
+$\beta_1=1$ and either \emph{(classical)} $\E[\varepsilon^c\mid X]=0$ for all
+$c$, or \emph{(nonclassical, Hu--Schennach)}
+$\operatorname{Med}(\varepsilon^{c}\mid\lat,X)=0$ (or mode-zero) for a
+designated anchor channel. Offsets $\alpha_c$ are absorbed by centering.
+\end{assumption}
+
+\noindent Police under-recording is \emph{nonclassical}: the recording error
+correlates with the true rate (worse recording where crime is higher and trust
+lower). Hence \textbf{Hu--Schennach, not classical Kotlarski, is the operative
+backbone}; the classical result is retained because the survey and
+calls-for-service channels are plausibly closer to classical and because it
+delivers the cleanest over-ID statistic.
+
+\begin{assumption}[One latent factor]\label{A4factor}
+Model \eqref{eq:model} holds with a \emph{single} scalar latent $\lat$ common
+to all $K$ channels (no channel-specific or subset-specific second latent
+factor). Equivalently, conditional on $(\lat,X)$ the channels carry no shared
+signal.
+\end{assumption}
+
+\begin{assumption}[Sampling / weak dependence]\label{A5samp}
+Cells $\{(Y^1_i,\dots,Y^K_i,X_i)\}_{i=1}^n$ are identically distributed and
+either i.i.d.\ or $\alpha$-mixing with a spatial/temporal mixing coefficient
+decaying fast enough for a CLT for the empirical CF (made precise in
+\Cref{sec:spatial}). Point identification (Theorems~\ref{thm:kotlarski},
+\ref{thm:HS}) uses only the population marginals and needs no independence
+across cells; \emph{only inference} (the null law of $T_n$) uses \Cref{A5samp}.
+\end{assumption}
+
+\begin{remark}[What is \emph{not} assumed]
+We do \emph{not} assume any channel is unbiased, that $\lat$ is Gaussian, that
+errors are homoskedastic, or that any gold-standard label $\lat$ is ever
+observed. The absence of a label is the defining hardship and is confronted
+in Part II.
+\end{remark}
+
+% ============================================================================
+\section{Identification from two channels: the classical ladder}
+\label{sec:kotlarski}
+% ============================================================================
+
+We first fix loadings at $\beta_c=1$ (pure additive measurement of the same
+log-rate unit; the natural model when channels count the same events under
+multiplicative reporting noise). Then \eqref{eq:model} reads
+$Y^c=\lat+\varepsilon^c$ after centering.
+
+\begin{theorem}[Kotlarski identification, classical regime]
+\label{thm:kotlarski}
+Assume \Cref{A1}, the classical part of \Cref{A2}, and the classical part of
+\Cref{A3} ($\E[\varepsilon^c]=0$), with $K\ge 2$ and $\beta_c=1$. Then the law
+of $\lat$ is identified from the joint law of any single pair $(Y^j,Y^k)$
+through
+\begin{equation}\label{eq:kotlarski-id}
+  \varphi_{\lat}(u)
+  \;=\;
+  \exp\!\left(\int_0^{u}
+  \frac{\partial_1 \varphi_{Y^j,Y^k}(0,v)}{\varphi_{Y^j,Y^k}(0,v)}\,\mathrm{d}v
+  \right),
+  \qquad u\in\R,
+\end{equation}
+and consequently the error CFs by
+$\varphi_{\varepsilon^j}(u)=\varphi_{Y^j}(u)/\varphi_{\lat}(u)$ and
+$\varphi_{\varepsilon^k}(u)=\varphi_{Y^k}(u)/\varphi_{\lat}(u)$, all densities
+following by Fourier inversion. The representation is unique given
+$\E[\varepsilon^j]=0$.
+\end{theorem}
+
+\begin{proof}
+By \Cref{A1} with $\beta=1$ and independence of $(\lat,\varepsilon^j,
+\varepsilon^k)$,
+\begin{equation}\label{eq:factorize}
+  \varphi_{Y^j,Y^k}(s,v)
+  =\E\!\big[e^{\ii s(\lat+\varepsilon^j)+\ii v(\lat+\varepsilon^k)}\big]
+  =\varphi_{\lat}(s+v)\,\varphi_{\varepsilon^j}(s)\,\varphi_{\varepsilon^k}(v).
+\end{equation}
+Differentiate \eqref{eq:factorize} in the first argument:
+\[
+  \partial_1\varphi_{Y^j,Y^k}(s,v)
+  =\varphi_{\lat}'(s+v)\,\varphi_{\varepsilon^j}(s)\,\varphi_{\varepsilon^k}(v)
+  +\varphi_{\lat}(s+v)\,\varphi_{\varepsilon^j}'(s)\,\varphi_{\varepsilon^k}(v).
+\]
+Evaluate at $s=0$. Since $\varphi_{\varepsilon^j}(0)=1$ and
+$\varphi_{\varepsilon^j}'(0)=\ii\,\E[\varepsilon^j]=0$ by \Cref{A3},
+\[
+  \partial_1\varphi_{Y^j,Y^k}(0,v)
+  =\varphi_{\lat}'(v)\,\varphi_{\varepsilon^k}(v),
+  \qquad
+  \varphi_{Y^j,Y^k}(0,v)=\varphi_{\lat}(v)\,\varphi_{\varepsilon^k}(v).
+\]
+By \Cref{A2} the denominator is non-vanishing, so
+\[
+  \frac{\partial_1\varphi_{Y^j,Y^k}(0,v)}{\varphi_{Y^j,Y^k}(0,v)}
+  =\frac{\varphi_{\lat}'(v)}{\varphi_{\lat}(v)}
+  =\frac{\mathrm d}{\mathrm dv}\log\varphi_{\lat}(v).
+\]
+Integrating from $0$ to $u$ and using $\varphi_{\lat}(0)=1$ gives
+\eqref{eq:kotlarski-id}. The error CFs follow by dividing marginal CFs by
+$\varphi_{\lat}$ (non-vanishing), and densities by inversion. Uniqueness is the
+uniqueness of the logarithm's continuous branch pinned by
+$\varphi_\lat(0)=1$ together with the mean-zero normalization of the anchor.
+\end{proof}
+
+\begin{remark}[Two channels do \emph{not} identify unknown loadings]
+\label{rem:loadings}
+If $\beta_c$ is unknown, a single pair is insufficient: the second-moment
+relation $\Cov(Y^j,Y^k)=\beta_j\beta_k\sigma_\lat^2$ is one equation in three
+unknowns $(\beta_j\text{-scaled},\beta_k,\sigma_\lat^2)$ and \emph{no} pairwise
+functional recovers $\varphi_\lat$ without fixing the scale. Loadings require
+$K\ge3$ and higher-order information (\Cref{sec:overid}); this is why the
+loadings-free classical statement above carries the explicit $\beta_c=1$
+hypothesis.
+\end{remark}
+
+% ============================================================================
+\section{Identification under nonclassical error: Hu--Schennach}
+\label{sec:HS}
+% ============================================================================
+
+Classical Kotlarski fails when $\varepsilon^c\not\ind\lat$, which is exactly the
+crime case. We invoke Hu--Schennach (2008) operator diagonalization, which
+tolerates error that depends on the latent, at the price of a completeness
+assumption and a monotone normalization.
+
+Fix three channels $(Y,W,Z)\coloneqq(Y^{c_1},Y^{c_2},Y^{c_3})$ measuring the
+same latent $\lat$. For densities $f_{\cdot\mid\cdot}$ define integral operators
+acting on $L^2$: for $g$,
+\[
+  (L_{A\mid B}\,g)(a)=\int f_{A\mid B}(a\mid b)\,g(b)\,\mathrm db,
+  \qquad
+  (D_{y\mid\lat}\,g)(\ell)=f_{Y\mid\lat}(y\mid \ell)\,g(\ell),
+\]
+the latter a diagonal (multiplication) operator indexed by a fixed point $y$.
+
+\begin{theorem}[Hu--Schennach identification, nonclassical regime]
+\label{thm:HS}
+Assume $K\ge 3$; the three channels satisfy $Y\ind W\ind Z\mid\lat$
+(\Cref{A1}); the operators $L_{W\mid\lat}$, $L_{\lat\mid Z}$ are bounded and
+injective (\Cref{A2}, bounded completeness); a monotone normalization pins the
+latent index (\Cref{A3}, e.g.\ $\operatorname{Med}(Y\mid\lat=\ell)=\ell$ or a
+mode/mean normalization making $\ell\mapsto$ some functional of
+$f_{Y\mid\lat}(\cdot\mid\ell)$ strictly monotone); and for the chosen $y$ the
+eigenvalues $\ell\mapsto f_{Y\mid\lat}(y\mid\ell)$ are distinct and bounded.
+Then $f_{Y\mid\lat}$, $f_{W\mid\lat}$, $f_{Z\mid\lat}$ and the latent marginal
+$f_{\lat}$ are all identified.
+\end{theorem}
+
+\begin{proof}[Proof sketch (the diagonalization identity)]
+By conditional independence, for any fixed $y$,
+\[
+  f_{W,\,y,\,Z}(w,y,z)\coloneqq\!\int\! f_{W\mid\lat}(w\mid\ell)\,
+  f_{Y\mid\lat}(y\mid\ell)\,f_{\lat\mid Z}(\ell\mid z)\,f_Z(z)\,\mathrm d\ell,
+\]
+which in operator form (absorbing $f_Z$) reads
+$L_{W,y\mid Z}=L_{W\mid\lat}\,D_{y\mid\lat}\,L_{\lat\mid Z}$, while the
+$y$-marginalized version is $L_{W\mid Z}=L_{W\mid\lat}\,L_{\lat\mid Z}$. Under
+injectivity $L_{\lat\mid Z}$ is invertible on its range, so
+\begin{equation}\label{eq:HSdiag}
+  L_{W,y\mid Z}\,\big(L_{W\mid Z}\big)^{-1}
+  \;=\;
+  L_{W\mid\lat}\;D_{y\mid\lat}\;\big(L_{W\mid\lat}\big)^{-1}.
+\end{equation}
+The left side is built entirely from observed densities. Equation
+\eqref{eq:HSdiag} is an eigenvalue--eigenfunction decomposition of a known
+operator: its eigenfunctions are the columns $f_{W\mid\lat}(\cdot\mid\ell)$
+(identifying the error kernel up to a labeling of $\ell$) and its eigenvalues
+are $f_{Y\mid\lat}(y\mid\ell)$. Distinct eigenvalues give a unique
+decomposition up to scaling and ordering of eigenfunctions; the monotone
+normalization \Cref{A3} fixes the labeling $\ell$ and the eigenfunction scale
+(each is a density, hence integrates to one). Recovering $f_{W\mid\lat}$ and
+$f_{Y\mid\lat}$ this way, $f_\lat$ follows from
+$f_{W}(w)=\int f_{W\mid\lat}(w\mid\ell)f_\lat(\ell)\mathrm d\ell$ by inverting
+the now-known injective operator $L_{W\mid\lat}$. See Hu--Schennach (2008,
+Econometrica) for the full argument.
+\end{proof}
+
+\begin{remark}[Why the nonclassical route is the honest one]
+\Cref{thm:HS} identifies $f_\lat$ \emph{even though} the recording error
+depends on the true rate --- the failure mode that made the single-anchor
+program's independence hypothesis both essential and untestable. It buys this
+with (i) a third channel, (ii) completeness (untestable; \Cref{sec:untestable}),
+and (iii) a monotone normalization that fixes the \emph{level} of the latent
+(also untestable; it shifts $f_\lat$'s location but not its shape or the
+cross-area ranking). We flag all three as maintained.
+\end{remark}
+
+% ============================================================================
+\section{Over-identifying restrictions with $K\ge 3$}\label{sec:overid}
+% ============================================================================
+
+\subsection{What is and is not over-identified at $K=3$ --- the load-bearing
+correction}
+
+With \emph{exactly} three channels and \emph{unknown} loadings, the one-factor
+model is \textbf{just-identified in second moments}. Writing
+$\sigma_\lat^2=\Var(\lat)$ and $\beta_1=1$,
+\begin{equation}\label{eq:tetrad-just}
+  \Cov(Y^1,Y^2)=\beta_2\sigma_\lat^2,\quad
+  \Cov(Y^1,Y^3)=\beta_3\sigma_\lat^2,\quad
+  \Cov(Y^2,Y^3)=\beta_2\beta_3\sigma_\lat^2,
+\end{equation}
+three equations in three unknowns $(\beta_2,\beta_3,\sigma_\lat^2)$ with the
+explicit solution
+\begin{equation}\label{eq:tetrad-solve}
+  \sigma_\lat^2=\frac{\Cov(Y^1,Y^2)\,\Cov(Y^1,Y^3)}{\Cov(Y^2,Y^3)},\qquad
+  \beta_2=\frac{\Cov(Y^2,Y^3)}{\Cov(Y^1,Y^3)},\qquad
+  \beta_3=\frac{\Cov(Y^2,Y^3)}{\Cov(Y^1,Y^2)}.
+\end{equation}
+There are \textbf{zero} covariance degrees of freedom left, hence \emph{no}
+tetrad-type over-ID restriction from second moments. \textbf{The classical
+Spearman tetrad test needs $K\ge 4$}, where
+$\Cov(Y^j,Y^k)\Cov(Y^l,Y^m)=\Cov(Y^j,Y^l)\Cov(Y^k,Y^m)$ becomes a nontrivial
+restriction. \emph{State this explicitly or a factor-analysis referee sinks
+the test.}
+
+The over-identifying content at $K=3$ therefore lives \emph{not} in the
+covariance matrix but in the \textbf{full joint characteristic function} (all
+higher cumulants). Two complementary handles:
+
+\paragraph{(i) Pairwise-recovery consistency (functional, works at $K=3$
+under $\beta_c=1$).} If loadings are fixed at $1$ (classical scale
+normalization, \Cref{thm:kotlarski}), each unordered pair $(j,k)$ yields a
+Kotlarski recovery $\varphi_\lat^{(jk)}$ via \eqref{eq:kotlarski-id}. Under the
+maintained one-factor$+$CI model \emph{all three recoveries are the same
+function}:
+\begin{equation}\label{eq:pairwise-eq}
+  \varphi_\lat^{(12)}(u)=\varphi_\lat^{(13)}(u)=\varphi_\lat^{(23)}(u)
+  \quad\text{for all }u.
+\end{equation}
+This is an \emph{infinite-dimensional} over-ID restriction available already at
+$K=3$; it is the object our test targets.
+
+\paragraph{(ii) Higher-cumulant restrictions (loadings free).} With loadings
+unknown, third and higher \emph{all-distinct-index} joint cumulants satisfy,
+under \Cref{A1,A4factor},
+\begin{equation}\label{eq:cumulant}
+  \kappa(Y^{c_1},\dots,Y^{c_r})=\Big(\textstyle\prod_{q=1}^r\beta_{c_q}\Big)\,
+  \kappa_r(\lat)
+  \qquad\text{for distinct }c_1,\dots,c_r,
+\end{equation}
+because cross-cumulants of independent summands vanish. At $K=3$ the only
+all-distinct cumulants are $(1,2,3)$ at each order $r=3,4,\dots$; combined with
+\eqref{eq:tetrad-just} these over-determine $(\beta_2,\beta_3)$ across orders
+and give scalar over-ID restrictions such as
+\begin{equation}\label{eq:overid-scalar}
+  \frac{\kappa(Y^1,Y^2,Y^3)}{\Cov(Y^2,Y^3)}
+  \;=\;
+  \frac{\kappa_3(\lat)}{\sigma_\lat^2}\,\beta_1
+  \quad\text{(and analogous ratios permuting the fixed index),}
+\end{equation}
+whose equality across the three index-choices is a testable constraint. These
+are finite-dimensional and give the clean $\chi^2$ GMM test of
+\Cref{sec:testGMM}.
+
+% ----------------------------------------------------------------------------
+\subsection{The specification test $T_n$: functional (CF) form}
+\label{sec:testCF}
+% ----------------------------------------------------------------------------
+
+\paragraph{Empirical objects.} With $n$ cells, the empirical joint CF of a pair
+and its first partial are
+\[
+  \ecf_{jk}(s,v)=\frac1n\sum_{i=1}^n e^{\ii s Y^j_i+\ii v Y^k_i},
+  \qquad
+  \partial_1\ecf_{jk}(0,v)=\frac1n\sum_{i=1}^n \ii\,Y^j_i\,e^{\ii v Y^k_i}.
+\]
+The regularized empirical Kotlarski recovery on a frequency grid, with a
+spectral cutoff $U_n\uparrow\infty$ and a denominator floor $\rho_n\downarrow0$
+that tames the well-known deconvolution instability where $|\varphi|$ is small,
+is
+\begin{equation}\label{eq:emp-kotlarski}
+  \widehat{\varphi}_\lat^{(jk)}(u)
+  =\exp\!\left(\int_0^{u}
+  \frac{\partial_1\ecf_{jk}(0,v)}
+       {\ecf_{jk}(0,v)\vee_{\rho_n}}\,
+  \mathbf 1\{|v|\le U_n\}\,\mathrm dv\right),
+\end{equation}
+where $z\vee_{\rho_n}\coloneqq z$ if $|z|\ge\rho_n$ and
+$\rho_n\,z/|z|$ otherwise (radial flooring; keeps the ratio bounded). In code
+the integral is a trapezoidal sum over the same grid used below.
+
+\paragraph{Statistic.} With a bounded, positive, integrable weight $w$
+(Gaussian $w(u)=e^{-u^2/(2h^2)}$ recommended; $h$ set by the smallest error
+bandwidth), define the pairwise-discrepancy statistic
+\begin{equation}\label{eq:Tn-CF}
+  T_n^{\mathrm{CF}}
+  \;=\; n \!\!\sum_{\{(jk),(lm)\}}\!\!
+  \int_{\R}\big|\,\widehat{\varphi}_\lat^{(jk)}(u)
+                 -\widehat{\varphi}_\lat^{(lm)}(u)\,\big|^2\,w(u)\,\mathrm du,
+\end{equation}
+the sum over the $\binom{\binom K2}{2}$ unordered pairs of channel-pairs (three
+terms at $K=3$).
+
+\begin{theorem}[Asymptotic null and consistency of $T_n^{\mathrm{CF}}$]
+\label{thm:TnCF}
+Assume \Cref{A1,A2,A3,A4factor,A5samp} with $\beta_c=1$, $U_n\to\infty$,
+$\rho_n\to0$ slowly enough that $\sqrt n\,\sup_{|v|\le U_n}
+|\ecf_{jk}(0,v)-\varphi_{Y^j,Y^k}(0,v)|=O_P(1)$ on the weighted support of $w$
+(this holds for $U_n=o(\log n)$ under sub-Gaussian channels; adapt to tails as
+in Neumann--Reiss and Kato--Sasaki--Ura). Then, under the null $H_0$ that
+model \eqref{eq:model} with \Cref{A1} holds,
+\begin{equation}\label{eq:null-CF}
+  T_n^{\mathrm{CF}}\;\wto\; \sum_{r\ge1}\lambda_r\,\chi^2_{1,r},
+\end{equation}
+a weighted sum of independent $\chi^2_1$ variables, where $\{\lambda_r\}$ are
+the eigenvalues of the covariance operator of the Gaussian limit process
+$\mathbb G$ of $\sqrt n\,(\widehat\varphi_\lat^{(jk)}-\widehat\varphi_\lat^{(lm)})$
+in $L^2(w)$. Under any fixed alternative in which \eqref{eq:pairwise-eq} fails
+on a $w$-positive set, $T_n^{\mathrm{CF}}\to\infty$ in probability at rate $n$;
+hence any test rejecting for large $T_n^{\mathrm{CF}}$ is consistent.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The empirical CF process $\sqrt n(\ecf_{jk}-\varphi_{Y^j,Y^k})$ converges to a
+mean-zero complex Gaussian process in $\ell^\infty$ on compacts under
+\Cref{A5samp} (Cs\"org\H o 1981; Feuerverger--Mureika; extended to
+$\alpha$-mixing arrays, \Cref{sec:spatial}). The map from the joint ecf to the
+Kotlarski recovery \eqref{eq:emp-kotlarski} is Hadamard-differentiable in
+$L^2(w)$ on the domain where $|\varphi_{Y^j,Y^k}(0,\cdot)|\ge\rho>0$ (guaranteed
+by \Cref{A2} on the $w$-effective support), because it is a composition of
+division by a bounded-below quantity, integration, and $\exp$, each Hadamard
+differentiable there. The functional delta method gives
+$\sqrt n(\widehat\varphi_\lat^{(jk)}-\varphi_\lat)\wto\mathbb G_{jk}$, a Gaussian
+process; under $H_0$ all pairwise limits share the same mean $\varphi_\lat$, so
+each difference $\sqrt n(\widehat\varphi_\lat^{(jk)}-\widehat\varphi_\lat^{(lm)})
+\wto\mathbb G_{jk}-\mathbb G_{lm}$, mean zero. The continuous mapping theorem
+applied to the squared $L^2(w)$ norm gives \eqref{eq:null-CF} via the
+Karhunen--Lo\`eve expansion of the limit process (integral of a squared
+Gaussian process $=\sum\lambda_r\chi^2_{1,r}$). Under a fixed alternative the
+population discrepancy $\int|\varphi_\lat^{(jk)}-\varphi_\lat^{(lm)}|^2w>0$, so
+the un-normalized statistic converges to a positive constant and $T_n^{\mathrm{CF}}
+=n\cdot(\text{const}+o_P(1))\to\infty$.
+\end{proof}
+
+The eigenvalues $\lambda_r$ are unknown and dependence inflates them, so
+critical values come from a \textbf{multiplier / spatial-block bootstrap}
+(\Cref{sec:spatial}), not from a table.
+
+% ----------------------------------------------------------------------------
+\subsection{The specification test $T_n$: GMM / minimum-distance form
+(clean $\chi^2$, codeable)}\label{sec:testGMM}
+% ----------------------------------------------------------------------------
+
+For a referee who wants a pivotal null and for the loadings-free case, recast
+over-ID as GMM on cumulant moments. Let $\tilde Y^c=Y^c-\bar Y^c$ be centered
+channels. Collect the moment functions (for $K=3$; extend by adding
+all-distinct index tuples for $K\ge4$, which \emph{also} activates the
+second-order tetrads)
+\[
+  g_i(\vartheta)=
+  \begin{pmatrix}
+   \tilde Y^1_i\tilde Y^2_i-\beta_2\sigma^2\\
+   \tilde Y^1_i\tilde Y^3_i-\beta_3\sigma^2\\
+   \tilde Y^2_i\tilde Y^3_i-\beta_2\beta_3\sigma^2\\
+   \tilde Y^1_i\tilde Y^2_i\tilde Y^3_i-\beta_2\beta_3\,\kappa_3\\
+   \tilde Y^1_i\tilde Y^2_i\tilde Y^3_i\,(\text{4th-order all-distinct at }K\ge4)\\
+   \vdots
+  \end{pmatrix},
+  \qquad
+  \vartheta=(\beta_2,\beta_3,\sigma^2,\kappa_3,\dots),
+\]
+where $\sigma^2=\sigma_\lat^2$ and $\kappa_3=\kappa_3(\lat)$. Let
+$\bar g(\vartheta)=\frac1n\sum_i g_i(\vartheta)$ and let $\widehat W$ be a
+consistent (spatial-HAC, \Cref{sec:spatial}) estimator of the inverse
+long-run variance of $g_i(\vartheta_0)$. The GMM estimator and Hansen--Sargan
+statistic are
+\begin{equation}\label{eq:GMM}
+  \widehat\vartheta=\arg\min_{\vartheta}\;
+     \bar g(\vartheta)^\top\widehat W\,\bar g(\vartheta),
+  \qquad
+  T_n^{\mathrm J}=n\,\bar g(\widehat\vartheta)^\top\widehat W\,
+                  \bar g(\widehat\vartheta).
+\end{equation}
+
+\begin{proposition}[$J$-test null and consistency]\label{prop:J}
+Under \Cref{A1,A3,A4factor,A5samp}, finite moments through the highest order
+used, a rank condition on $\E[\partial_\vartheta g]$, and $\widehat W\cyto W_0$
+the efficient weight, $T_n^{\mathrm J}\wto\chi^2_{q-p}$ where $q$ is the number
+of moments and $p=\dim\vartheta$. \emph{At $K=3$ using only second moments,
+$q=p=3$ and $q-p=0$ (no test) --- consistent with \eqref{eq:tetrad-just}.}
+Adding the third-order all-distinct moment gives $q-p=1$; each further
+all-distinct cumulant adds one degree of freedom. For $K\ge4$ the tetrads add
+$\binom K2-(2K-3)$ second-order degrees of freedom. Under any fixed alternative
+violating a used moment, $T_n^{\mathrm J}\to\infty$; the test is consistent
+against those directions.
+\end{proposition}
+
+\begin{proof}
+Standard over-identified GMM asymptotics (Hansen 1982): under $H_0$,
+$\sqrt n\,\bar g(\vartheta_0)\wto N(0,\Omega)$ with $\Omega=W_0^{-1}$ by
+efficiency, and $\sqrt n\,\bar g(\widehat\vartheta)
+=(I-P)\sqrt n\,\bar g(\vartheta_0)+o_P(1)$ where $P$ is the projection onto the
+column space of $G=\E[\partial_\vartheta g]$ in the $\widehat W$ metric. Then
+$T_n^{\mathrm J}\wto Z^\top(I-P)^\top W_0(I-P)Z$ with $Z\sim N(0,W_0^{-1})$,
+which is $\chi^2$ with degrees of freedom $=\rank(I-P)=q-p$. The count
+$q-p=0$ at $K=3$/2nd-moments reproduces the just-identification of
+\eqref{eq:tetrad-just}. Consistency under fixed alternatives follows because
+$\bar g(\widehat\vartheta)\cyto \bar g^*\neq0$ when no $\vartheta$ solves the
+moments, so $T_n^{\mathrm J}=n(\bar g^{*\top}W_0\bar g^*+o_P(1))\to\infty$.
+\end{proof}
+
+\begin{remark}[Which test to report]
+Report \emph{both}, per area-cluster: $T_n^{\mathrm J}$ for a pivotal
+$p$-value and interpretability (which moment/order fails), and
+$T_n^{\mathrm{CF}}$ as the more powerful functional check that uses the whole
+error law. Their \emph{per-area} values are the first-class tripwire of Part II:
+the statistic fires precisely in high-disparity cells and enters the conformal
+width.
+\end{remark}
+
+% ============================================================================
+\section{Exactly what rejection means --- and the matched impossibility}
+\label{sec:decomp}
+% ============================================================================
+
+\subsection{Meaning of rejection (stated to disarm over-claiming)}
+
+\begin{proposition}[Rejection falsifies a conjunction, not \Cref{A1} alone]
+\label{prop:meaning}
+Let $H_0=\{\text{\eqref{eq:model} holds}\}\cap\Cref{A1}\cap\Cref{A3}\cap
+\Cref{A4factor}$. Then:
+\begin{enumerate}[label=(\alph*),leftmargin=2.2em]
+\item Rejection by $T_n$ falsifies the \emph{conjunction} $H_0$; it does
+\textbf{not} isolate \Cref{A1}. A rejection is equally consistent with a
+violated one-factor structure (\Cref{A4factor}), a misspecified normalization
+(\Cref{A3}), or a genuine dependence (\Cref{A1}). At $K=3$ these alternatives
+are \emph{not} separated.
+\item Non-rejection does \textbf{not} verify \Cref{A1}: the test has finite
+power (and, by Shah--Peters 2020, no conditional-independence test has
+nontrivial uniform power over all alternatives), and --- crucially ---
+\textbf{zero} power against the factor-aligned direction (\Cref{thm:impossible}).
+\item Therefore the honest contribution is not ``conditional independence is
+testable.'' It is: the data-driven test \emph{exhausts the identifiable
+directions} of the assumption, and the un-testable remainder is proven
+irreducible (below).
+\end{enumerate}
+\end{proposition}
+
+\subsection{The detectable / undetectable decomposition}
+
+Write the error vector $U=(\varepsilon^1,\dots,\varepsilon^K)^\top$ and, at the
+second-moment level, its cross-covariance perturbation away from the
+CI-implied diagonal:
+\[
+  \Cov(U)=D+\Delta,\qquad D=\diag(\Var\varepsilon^1,\dots,\Var\varepsilon^K),
+  \quad \Delta=\Delta^\top,\ \ \diag(\Delta)=0 .
+\]
+Under \Cref{A1}, $\Delta=0$. The observed second moments are
+$\Cov(Y)=\sigma_\lat^2\,\beta\beta^\top+D+\Delta$ with $\beta=(\beta_1,\dots,
+\beta_K)^\top$. Decompose $\Delta$ orthogonally (in the trace inner product on
+symmetric matrices) into its component along the rank-one factor direction and
+the rest:
+\begin{equation}\label{eq:decomp}
+  \Delta=\Dpar\oplus\Dperp,
+  \qquad
+  \Dpar=c_\Delta\,\beta\beta^\top\ (\text{factor-aligned, rank one}),
+  \quad
+  \langle\Dperp,\beta\beta^\top\rangle=0 ,
+\end{equation}
+with $c_\Delta=\langle\Delta,\beta\beta^\top\rangle/\|\beta\beta^\top\|_F^2$.
+
+\begin{lemma}[Common-mode is absorbed into the factor --- impossibility]
+\label{thm:impossible}
+Consider two data-generating laws that agree in all one-factor parameters and
+in $D$, and differ only through $\Dpar=c\,\beta\beta^\top$ for some scalar $c$
+with $\sigma_\lat^2+c>0$. Then:
+\begin{enumerate}[label=(\roman*),leftmargin=2.2em]
+\item \emph{(Second order)} the two laws induce \emph{identical} observed
+covariance matrices $\Cov(Y)$, because
+$\sigma_\lat^2\beta\beta^\top+D+c\beta\beta^\top
+=(\sigma_\lat^2+c)\beta\beta^\top+D$: the common mode is reabsorbed as a
+change of factor variance.
+\item \emph{(All orders)} if the common mode is generated by a shared latent
+component $U=\gamma\,g+\tilde U$ with $g\ind\tilde U$, $\tilde U$ having
+independent coordinates, and loading $\gamma\propto\beta$, then $g$ is
+observationally indistinguishable from a rescaling of $\lat$: replacing
+$(\lat,g)$ by the single factor $\lat'=\lat+(\gamma_1/\beta_1)g$ reproduces the
+\emph{entire joint law} of $(Y^1,\dots,Y^K)$ for \emph{every} $K$.
+\item Consequently \textbf{no estimator and no specification test, at any number
+of same-latent channels, can identify or bound $\|\Dpar\|$ from the observed
+data.} $T_n$ has exactly zero power against pure-$\Dpar$ alternatives.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) is the displayed identity. For (ii), with $\gamma=\eta\beta$,
+\[
+ Y^c=\alpha_c+\beta_c\lat+\eta\beta_c\,g+\tilde\varepsilon^c
+    =\alpha_c+\beta_c(\lat+\eta g)+\tilde\varepsilon^c
+    =\alpha_c+\beta_c\,\lat'+\tilde\varepsilon^c,
+\]
+with $\lat'=\lat+\eta g$ and $\{\tilde\varepsilon^c\}$ independent given
+$\lat'$ (since $\tilde U$ has independent coordinates and $g$ has been folded
+into $\lat'$). This is again a one-factor CI model with the \emph{same} loadings
+$\beta$ and error laws $\tilde\varepsilon^c$; its joint law of $Y$ equals that
+of the original for all $K$. Hence the family indexed by $\eta$ (equivalently by
+$c=\eta^2\Var g$ at second order) is a curve of observationally equivalent
+models. (iii) follows: any statistic is a functional of the observed joint law,
+which is constant along this curve, so it cannot separate its members; in
+particular the population version of $T_n$ is identically zero along the curve,
+giving asymptotic power equal to size.
+\end{proof}
+
+\begin{theorem}[Over-ID power is carried by $\Dperp$ only]
+\label{thm:power}
+Under the local sequence $\Delta_n=\delta/\sqrt n$ with fixed direction
+$\Delta$, decomposed as in \eqref{eq:decomp}, the noncentrality of $T_n$
+(either form) depends on $\Delta$ \emph{only through $\Dperp$}: it is a strictly
+increasing function of $\|\Dperp\|$ and is invariant to $\Dpar$. In particular
+the $J$-statistic has local noncentrality
+$\mu(\Delta)=\|(I-P)\,W_0^{1/2}\,J_\perp\,\Dperp\|^2$ for the moment Jacobian
+map $J_\perp$, with $\partial\mu/\partial\Dpar\equiv0$. Hence the one-sided
+bound $\widehat\delta_\perp$ read off from $T_n$ is a consistent estimator of a
+monotone functional of $\|\Dperp\|$ and says \emph{nothing} about $\|\Dpar\|$.
+\end{theorem}
+
+\begin{proof}
+By \Cref{thm:impossible}(i)--(ii) the moment vector $\bar g$ and the CF
+recoveries are invariant to $\Dpar$ (it reparametrizes $\sigma_\lat^2$, an
+estimated nuisance absorbed by $\widehat\vartheta$), so their population values
+under $\Delta$ equal their values under $\Dperp$ alone. Standard local-power
+GMM analysis gives, under $\Delta_n=\Delta/\sqrt n$,
+$T_n^{\mathrm J}\wto\chi^2_{q-p}(\mu)$ with
+$\mu=\|(I-P)W_0^{1/2}G_\perp\Dperp\|^2$ where $G_\perp$ is the derivative of the
+over-ID moments in the $\Dperp$ direction; the $\Dpar$ direction lies in the
+column space projected out by $(I-P)$ (it moves only the just-identified
+$\sigma_\lat^2$ coordinate), giving zero contribution. The map
+$\|\Dperp\|\mapsto\mu$ is strictly increasing on directions with $G_\perp\Dperp
+\notin\ker$. Inverting the (monotone) relation between the realized statistic
+and $\mu$ gives the one-sided budget $\widehat\delta_\perp$; consistency is the
+consistency of $T_n$ for its noncentrality.
+\end{proof}
+
+\begin{remark}[The exact deliverable, stated without inflation]
+\Cref{thm:power} + \Cref{thm:impossible} are the ``matched pair.'' The data
+\emph{exhaust} the identifiable directions of \Cref{A1} (upper/constructive:
+$\widehat\delta_\perp$ estimated and tested), and the residual $\Dpar$ is
+\emph{provably} beyond the reach of any estimator at any $K$ (lower/impossibility).
+The single surviving user knob is the common-mode budget
+$\Gcm\ge\|\Dpar\|$ (\Cref{A5samp}'s companion, used in Part II); the lower
+bound certifies it cannot be shrunk by more data or more channels. We therefore
+never write ``conditional independence is testable''; we write ``provably
+minimal residual assumption.''
+\end{remark}
+
+% ============================================================================
+\section{What remains assumed and untestable even with three channels}
+\label{sec:untestable}
+% ============================================================================
+
+We enumerate the maintained hypotheses that \textbf{no amount of same-latent
+data} removes, so a referee cannot surface one we hid.
+
+\begin{enumerate}[leftmargin=1.6em,label=\textbf{U\arabic*.}]
+\item \textbf{Factor-aligned common mode $\Dpar$.} Systematic under-recording
+that co-loads on every channel proportionally to $\beta$ --- e.g.\ a
+jurisdiction-wide culture of non-reporting that depresses \emph{all} channels
+in lockstep with the true rate --- is absorbed into the estimated latent
+(\Cref{thm:impossible}) and is unfalsifiable at every $K$. This is the prior
+fatal objection surviving in precise new clothing; OICC bounds it by the user
+knob $\Gcm$ and makes coverage degrade visibly in it (Part II), rather than
+dissolving it.
+\item \textbf{The one-factor structure (\Cref{A4factor}).} That the channels
+share \emph{one} latent, not two. A second factor loading on a strict subset of
+channels is not separated from a CI violation at $K=3$; a rejection of $T_n$
+cannot attribute blame between \Cref{A1} and \Cref{A4factor}. Distinguishing
+$m$ factors requires roughly $K\ge 2m+1$ channels (Anderson--Rubin /
+Ledermann bound), which the mechanism-independence budget rarely affords.
+\item \textbf{Completeness / bounded completeness (\Cref{A2}, nonclassical).}
+Completeness is generically \emph{untestable} (Canay--Santos--Shaikh 2013): no
+test has power against incompleteness uniformly. We maintain it; we do not test
+it.
+\item \textbf{The monotone normalization (\Cref{A3}).} Median/mode-zero of the
+anchor error fixes the \emph{level} of $\lat$. It is a labeling choice, not a
+refutable fact; it shifts $f_\lat$'s location (hence absolute rate levels) but
+not its shape or cross-area ranking. All downstream disparity claims are
+therefore stated as \emph{relative} unless an external level anchor (e.g.\ an
+NCVS point estimate) is imported, which is then itself an assumption.
+\item \textbf{Exchangeability for the conformal step (Part II's \Cref{A4samp}
+analogue).} The calibration/test exchangeability underlying conformal coverage
+is only weakly testable and is handled by spatial/clustered conformal, not by
+$T_n$.
+\end{enumerate}
+
+\begin{remark}[The honest one-paragraph limitation]
+OICC does \emph{not} dissolve the untestable-anchor objection; it quarantines
+and bounds it. The killer assumption goes from \emph{untestable in principle}
+(one anchor) to \emph{falsifiable-in-identifiable-directions with a
+proven-minimal residual $\Gcm$} (three-plus channels). The residual is worst in
+exactly the sparse, high-disparity cells where $T_n$ is least powered --- the
+continuous analogue of the LCMCR non-identifiability degeneracy
+(Jones--Johndrow--Manrique-Vallier 2020), which we cite and differentiate. We
+claim precisely this and nothing more.
+\end{remark}
+
+% ============================================================================
+\section{Pre-empting the hostile econometrics referee}\label{sec:referee}
+% ============================================================================
+
+\subsection{``A common confounder violates \Cref{A1} in a way three channels
+cannot see --- how many channels to test \emph{that}?''}\label{sec:confounder}
+
+This is the sharpest attack; we answer it exactly.
+
+\begin{proposition}[Channel budget for confounder detection]\label{prop:budget}
+Let a shared confounder induce error dependence $\Delta$ with decomposition
+\eqref{eq:decomp}.
+\begin{enumerate}[label=(\alph*),leftmargin=2.2em]
+\item \emph{(Detectable component grows with $K$.)} The space of symmetric
+off-diagonal perturbations has dimension $\binom K2$; the number of over-ID
+restrictions the model imposes on it grows like $\binom K2-(2K-3)$ (second
+order) plus higher-cumulant restrictions. Thus \textbf{each additional channel
+strictly enlarges the subspace of \Cref{A1}-violations the data can detect},
+including confounders that load \emph{non-proportionally} to $\beta$ (any
+$\Dperp\neq0$).
+\item \emph{(Undetectable core never shrinks.)} A confounder loading
+\emph{proportionally} to $\beta$ contributes only $\Dpar$ and is, by
+\Cref{thm:impossible}, invisible at \emph{every} $K$. \textbf{No finite number
+of same-latent channels tests it.}
+\item \emph{(The only escape leaves the paradigm.)} To test the
+factor-aligned confounder one needs a channel with a \emph{known differential
+loading} --- an instrument or negative control obeying an a priori exclusion
+restriction that the confounder is known \emph{not} to load on (proximal-causal
+style). That is a strictly stronger, external assumption, not more of the same
+data. We do not claim it; we flag its absence.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(a) is the dimension count of \Cref{sec:overid} extended to $K$: the one-factor
+model has $2K-1$ free second-order parameters ($K$ error variances, $K-1$
+loadings, $\sigma_\lat^2$; total $2K$, minus the $\beta_1=1$ normalization),
+against $\binom{K+1}{2}$ observed second moments, leaving
+$\binom{K+1}{2}-(2K)=\binom K2-(K-1)=\binom K2-(2K-3)-\dots$ over-ID counts
+(the tetrads), positive for $K\ge4$; higher cumulants add strictly more for
+$K\ge3$. Any $\Dperp\neq0$ shifts at least one such restriction, hence is
+detectable in the limit. (b),(c) are \Cref{thm:impossible} restated: the
+observed law is constant on the $\Dpar$ curve, so no functional of it --- for
+any $K$ --- separates the curve; separation requires an object outside the
+observed same-latent law, i.e.\ an external exclusion restriction.
+\end{proof}
+
+\noindent\textbf{The blunt answer to ``how many channels?'':} for a
+\emph{non-proportional} confounder, $K=4$ already gives second-order power and
+more channels give more; for the \emph{proportional} (factor-aligned)
+confounder, the answer is \textbf{$\infty$ is not enough} --- it is a
+fundamental non-identification identical to separating two perfectly collinear
+regressors, and only an external instrument breaks it. Stating this pre-empts
+the attack instead of absorbing it.
+
+\subsection{Zero-inflation and the count layer}\label{sec:zip}
+
+Crime counts are zero-inflated and discrete, so the log-rate $\lat$ is not
+directly observed and the additive CF factorization \eqref{eq:factorize} does
+\emph{not} apply to raw counts. We treat this honestly.
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Classical Kotlarski is invalid on zero-inflated counts.} The
+observation law is a mixture (structural zeros $+$ a count kernel), so
+$Y^c=\lat+\varepsilon^c$ with independent additive $\varepsilon^c$ is false at
+the count level.
+\item \textbf{Correct route: nonclassical (\Cref{thm:HS}) on the count kernel.}
+Model $N^c_{at}\mid\lat_{at}\sim\text{ZINB}(\mu=e^{\alpha_c+\beta_c\lat_{at}},
+\ r_c,\ \pi_c)$, where the zero-inflation probability $\pi_c$ \emph{is} a
+channel-specific reporting filter --- exactly the bias of interest --- entering
+as nonclassical error. Identification of $f_\lat$ then holds under
+\Cref{thm:HS} \emph{iff} the count conditional-density operator
+$L_{N^c\mid\lat}$ is complete (injective). Completeness of a ZINB kernel
+requires sufficient variation of the mean and overdispersion across the latent
+support (a genuine, flagged assumption; fails if a channel is nearly always
+zero).
+\item \textbf{Aggregation mitigates structural zeros.} At the declared
+resolution ceiling (state-year / metro-month) aggregate rates are bounded away
+from zero, so the log transform is well-defined and the continuous one-factor
+model is a good approximation --- a substantive reason the estimand is
+aggregate, not merely a data-availability accident.
+\item \textbf{Practical estimator.} Fit the ZINB measurement kernels by
+composite likelihood, form the implied conditional densities
+$\widehat f_{N^c\mid\lat}$, and plug into the discretized HS diagonalization
+\eqref{eq:HSdiag} (a finite-matrix eigenproblem on the latent grid). Over-ID
+$T_n^{\mathrm J}$ then uses \emph{count} cumulants with the ZINB-implied
+moment structure substituted into $g_i(\vartheta)$.
+\end{itemize}
+
+\subsection{Spatial / temporal dependence breaking i.i.d.}\label{sec:spatial}
+
+Crime is spatially autocorrelated, so cells are \emph{not} i.i.d. This does not
+touch identification (population functionals), but it does change inference.
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Identification is unaffected.} Theorems~\ref{thm:kotlarski},
+\ref{thm:HS} are relations among population marginals; dependence across cells
+is irrelevant to them.
+\item \textbf{Null laws must use a dependence-robust variance.} The empirical-CF
+CLT and the GMM $J$ both require $\widehat W$ / the limit covariance operator to
+be estimated by a \emph{spatial HAC} (Conley 1999) or a \emph{spatial block
+bootstrap}: resample contiguous spatial blocks (or entire states/metros as
+clusters, Kluger-style clustered PPI) so that within-cluster dependence is
+preserved. The effective sample size $n_{\mathrm{eff}}<n$; test power scales
+with $n_{\mathrm{eff}}$, so high-autocorrelation regions have weaker over-ID
+power --- reported honestly per cluster.
+\item \textbf{Multiplier bootstrap for $T_n^{\mathrm{CF}}$.} Draw cluster-level
+multipliers $\{\xi_b\}$ (mean 0, variance 1), form
+$\ecf^{*}_{jk}(s,v)=\frac1n\sum_b\xi_b\sum_{i\in b}
+(e^{\ii sY^j_i+\ii vY^k_i}-\ecf_{jk}(s,v))$, propagate through the
+Hadamard-differentiable Kotlarski map, and recompute $T_n^{\mathrm{CF},*}$; the
+$(1-\alpha)$ quantile of $\{T_n^{\mathrm{CF},*}\}$ is the critical value. This
+is valid under the $\alpha$-mixing array conditions of \Cref{A5samp}.
+\item \textbf{Temporal correlation} within a cell's series is handled the same
+way by blocking on time or by cluster $=$ (area) across years.
+\end{itemize}
+
+\subsection{Miscellaneous anticipated objections (brief)}
+\begin{itemize}[leftmargin=1.4em]
+\item \emph{``Heteroskedastic errors.''} Permitted: neither Kotlarski (given the
+pairwise CF) nor HS assumes homoskedasticity; $\Var\varepsilon^c$ varies by
+cell through $X$, conditioned on throughout.
+\item \emph{``Deconvolution is ill-posed / rates are slow.''} True; the density
+$\widehat f_\lat$ converges at logarithmic rates for supersmooth errors. But the
+over-ID test $T_n$ and the Part II coverage guarantee are stated at the level of
+CFs and the estimable TV-gap, \emph{not} the density, and inherit
+$\sqrt n_{\mathrm{eff}}$ inference for the test; density smoothness only affects
+set \emph{width}, not coverage validity.
+\item \emph{``Support mismatch across channels.''} Channels observed on
+different supports are aligned by the shared latent grid; non-overlapping
+support violates \Cref{A2} completeness and is flagged as a data-quality gate.
+\item \emph{``Selection into which cells report which channels.''} Modeled as
+missingness on $X$; MAR-given-$X$ maintained and stated (MNAR would be another
+$\Dpar$-type unidentified confounder).
+\end{itemize}
+
+% ============================================================================
+\section{Estimation recipe (codeable summary)}\label{sec:recipe}
+% ============================================================================
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Build channels} at the common resolution; log-rate transform;
+regress out $X$ (population, urbanization) to work with residualized
+$Y^c$. Select channels by \emph{generating mechanism}: police records/arrests/
+cases collapse to one institutional filter (one channel); the independent triad
+must cross institutions (records; survey or distress-call PC3; state-violence /
+complaints).
+\item \textbf{Classical recovery} (survey/calls channels, $\beta=1$): compute
+$\ecf_{jk}$, the floored ratio \eqref{eq:emp-kotlarski}, trapezoidal integral,
+$\exp$; Fourier-invert with a flat-top kernel for $\widehat f_\lat^{(jk)}$.
+\item \textbf{Nonclassical recovery} (police channel): discretize the latent
+grid, estimate conditional densities (ZINB kernels), assemble
+$L_{W,y\mid Z}(L_{W\mid Z})^{-1}$, eigendecompose \eqref{eq:HSdiag}, order/scale
+eigenpairs by the monotone normalization, invert $L_{W\mid\lat}$ for
+$\widehat f_\lat$.
+\item \textbf{Over-ID test} per area-cluster: compute $T_n^{\mathrm J}$
+\eqref{eq:GMM} (pivotal, reports which order fails) and $T_n^{\mathrm{CF}}$
+\eqref{eq:Tn-CF}; critical values by spatial-block multiplier bootstrap
+(\Cref{sec:spatial}). Record the per-cluster statistic as the tripwire
+$\widehat\delta_\perp$.
+\item \textbf{Report} the decomposition: $\widehat\delta_\perp$ (data-driven,
+tested) and the surviving user knob $\Gcm\ge\|\Dpar\|$ (declared, provably
+minimal). Pass both to the Part II conformal wrapper.
+\end{enumerate}
+
+% ============================================================================
+\section*{References (short, load-bearing)}
+\addcontentsline{toc}{section}{References}
+% ============================================================================
+\small
+\begin{itemize}[leftmargin=1.2em,itemsep=1pt]
+\item Kotlarski, I.\ (1967). On characterizing the gamma and normal
+distribution. \emph{Pacific J.\ Math.}
+\item Li, T.\ \& Vuong, Q.\ (1998). Nonparametric estimation of the measurement
+error model using multiple indicators. \emph{J.\ Multivariate Anal.}
+\item Schennach, S.\ (2004). Estimation of nonlinear models with measurement
+error. \emph{Econometrica}.
+\item Hu, Y.\ \& Schennach, S.\ (2008). Instrumental variable treatment of
+nonclassical measurement error models. \emph{Econometrica}.
+\item Bonhomme, S.\ \& Robin, J.-M.\ (2010). Generalized non-parametric
+deconvolution with an application to earnings dynamics. \emph{REStud}.
+\item Cunha, F., Heckman, J.\ \& Schennach, S.\ (2010). Estimating the
+technology of cognitive and noncognitive skill formation. \emph{Econometrica}.
+\item Evdokimov, K.\ \& White, H.\ (2012). An extension of a lemma of
+Kotlarski. \emph{Econometric Theory}.
+\item Kato, K., Sasaki, Y.\ \& Ura, T.\ (2021). Robust inference in
+deconvolution. \emph{Quantitative Economics}.
+\item Canay, I., Santos, A.\ \& Shaikh, A.\ (2013). On the testability of
+identification in some nonparametric models with endogeneity.
+\emph{Econometrica}.
+\item Shah, R.\ \& Peters, J.\ (2020). The hardness of conditional independence
+testing and the generalised covariance measure. \emph{Ann.\ Statist.}
+\item Hansen, L.\ (1982). Large sample properties of GMM estimators.
+\emph{Econometrica}.
+\item Conley, T.\ (1999). GMM estimation with cross-sectional dependence.
+\emph{J.\ Econometrics}.
+\item Jones, H., Johndrow, J.\ \& Manrique-Vallier, D.\ (2020). Improving
+population size estimation with latent-class capture--recapture.
+(non-identifiability degeneracy). \emph{arXiv:2008.09865}.
+\item Csörgő, S.\ (1981). Limit behaviour of the empirical characteristic
+function. \emph{Ann.\ Probab.}
+\end{itemize}
+
+\normalsize
+\vspace{1em}
+\noindent\rule{\linewidth}{0.4pt}\\[2pt]
+\textbf{Companion (Part II, separate file).} The conformal coverage theorem
+(deconvolved latent target; no label; cost localized in the estimable
+$\TV(\widehat f_{\varepsilon^1},f_{\varepsilon^1})$ gap; width inflation
+$D(\widehat\delta_\perp,\Gcm)$; visible degradation of coverage in the residual
+$\Gcm$) builds directly on \Cref{thm:kotlarski,thm:HS,thm:power,thm:impossible}
+of this file.
+
+\end{document}

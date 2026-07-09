@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use OICC, please cite it as below."
+title: "OICC: Over-Identification-Calibrated Conformal Deconvolution for latent-rate estimation from multiple biased measurement channels"
+abstract: >-
+  A dependency-light method and reference implementation for estimating a
+  never-observed latent rate (e.g. true crime/victimization) from three or more
+  mechanism-independent, biased measurement channels. Combines one-factor moment
+  identification, a loading-invariant over-identification specification test, a
+  two-interval leave-pivot-out conformal predictor (an exact finite-sample
+  interval for the observed pivot value plus a model-assisted latent interval),
+  proximal / negative-control point-identification of a common-mode confounder
+  that the specification test is provably blind to, bootstrap uncertainty
+  quantification, and an anytime-valid deployment monitor. Ships with a proved
+  impossibility result, an honest escape via negative controls, synthetic
+  ground-truth validation, and real-data demonstrations (India NCRB; US
+  Chicago/NYC).
+type: software
+version: 0.4.0
+license: MIT
+keywords:
+  - conformal prediction
+  - measurement error
+  - deconvolution
+  - negative controls
+  - proximal causal inference
+  - anytime-valid inference
+  - latent variable models
+  - crime statistics
+  - algorithmic fairness
+authors:
+  - family-names: Bairwa
+    given-names: Himanshu
