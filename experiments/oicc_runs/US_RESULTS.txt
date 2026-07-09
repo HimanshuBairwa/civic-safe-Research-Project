@@ -1,0 +1,37 @@
+========================================================================
+OICC on REAL US data (Chicago + NYC) -- crime-category channels
+========================================================================
+NOTE: categories share ONE police filter -> NOT mechanism-independent.
+      The over-ID test is EXPECTED to reject here (contrast vs India).
+
+[CHICAGO]  channels=['violent', 'property', 'drug']  units=6006 (areas=77 x periods=78)
+    channel correlation:
+      [[1.   0.86 0.7 ]
+       [0.86 1.   0.57]
+       [0.7  0.57 1.  ]]
+    loadings beta = [1.0, 0.73, 0.82]   Var(latent) = 0.957
+    over-ID test: kind=cumulant  p=0.0000  underpowered=True
+    verdict: REJECT one-factor+CI  <-- EXPECTED (shared police filter)
+
+[NYC]  channels=['violent', 'property', 'drug']  units=6084 (areas=78 x periods=78)
+    channel correlation:
+      [[1.   0.73 0.53]
+       [0.73 1.   0.36]
+       [0.53 0.36 1.  ]]
+    loadings beta = [1.0, 0.66, 0.62]   Var(latent) = 0.707
+    over-ID test: kind=cumulant  p=0.0000  underpowered=True
+    verdict: REJECT one-factor+CI  <-- EXPECTED (shared police filter)
+
+[Contrast summary]
+    India NCRB (cross-institution channels): over-ID p ~ 0.088 (no reject)
+    US chicago (same-filter categories):        over-ID p = 0.0000 (reject)
+    US nyc (same-filter categories):        over-ID p = 0.0000 (reject)
+    -> the specification test correctly separates genuinely-independent
+       channels from shared-filter pseudo-channels. This is validation,
+       not proof: it supports the modelling assumption where it holds and
+       flags it where it does not.
+
+[Honest limitation] Crime categories are NOT a latent-victimization
+    channel set; this run is a specification-test demonstration, not a
+    latent-rate estimate for the US. A real US latent run needs
+    mechanism-independent channels (records + 911 CFS + NCVS).
