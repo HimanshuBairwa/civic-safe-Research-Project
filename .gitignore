@@ -70,3 +70,7 @@ unpushed_changes.patch
 
 # arXiv build artifacts (regenerate with make_arxiv.py)
 paper/arxiv/build/
+
+# campaign outputs + archived old outputs (local only)
+results_campaign_*/
+archive/
