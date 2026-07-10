@@ -1,37 +1,33 @@
-"""Tsinghua SSSP router — frontier-reduction shortest path algorithm.
+"""Shortest-path routers for advisory safe routing.
 
-Implements an adaptation of the Duan, Mao, Mao, Shu & Yin (2025)
-Single-Source Shortest Path algorithm that broke the 40-year Dijkstra
-sorting barrier.  Won **Best Paper at STOC 2025**.
+We route on conformal-interval edge costs over a city-scale graph (~100 nodes).
+The correct, fastest tool at this scale is **exact Dijkstra** (`DijkstraRouter`),
+which we use throughout.
 
-Classical Dijkstra: O(m + n log n)  — limited by priority-queue sorting.
-Tsinghua SSSP:     O(m · log^{2/3} n) — bypasses sorting via frontier
-                   reduction and bounded multi-source exploration.
+`BatchedFrontierRouter` (kept for backward compatibility, exported also under the
+legacy name `TsinghuaRouter`) is a Bellman-Ford-seeded, batched-frontier
+shortest-path heuristic. It returns the same shortest-path costs as Dijkstra on
+our graphs (verified in tests), but it is NOT the Duan et al. (2025) algorithm
+and it is NOT faster than Dijkstra -- it re-sorts the frontier each iteration, so
+it does not "break the sorting barrier." Prefer `DijkstraRouter`.
 
-Core Ideas
-----------
-1. **Frontier Reduction**: Instead of maintaining a fully-sorted priority
-   queue, the algorithm partitions the frontier into distance bands and
-   selects pivot nodes that dominate other frontier vertices.
+HONEST NOTE ON PRIOR CLAIMS. Earlier versions described this file as an
+implementation of the Duan, Mao, Mao, Shu & Yin (2025, STOC best paper) SSSP
+algorithm that achieves O(m log^{2/3} n). That was incorrect: the real algorithm
+uses a recursive bounded-multi-source routine (BMSSP) with a pivot-finding step
+and a block-based partial-sorting structure that AVOIDS sorting the frontier;
+this code does the opposite (it sorts the frontier). Faithful implementations of
+Duan et al. are also 3-25x SLOWER than Dijkstra at any practical graph size (the
+theoretical crossover is ~10^60 vertices), so there is no benefit at city scale.
+We therefore use exact Dijkstra and do not claim the sorting-barrier result. For
+metropolitan-to-national road networks, Duan et al. (2025) is a promising
+theoretical direction, but current implementations do not beat Dijkstra.
 
-2. **Bounded Multi-Source Shortest Path (BMSSP)**: A recursive routine
-   that solves SSSP within restricted distance bands [B_lo, B_hi],
-   combining Dijkstra-like greedy exploration with Bellman-Ford-like
-   relaxation.
-
-3. **Pivot-based Recursion**: Pivots are selected so that every
-   un-settled vertex is within one edge of a pivot. Processing pivots
-   first allows us to settle clusters of nearby vertices without
-   globally sorting the entire frontier.
-
-This implementation faithfully captures the algorithmic paradigm while
-remaining practical for CIVIC-SAFE's city-scale graphs (~100 nodes).
-
-Reference
----------
+Reference (for the forward-looking note only, not implemented here)
+------------------------------------------------------------------
 Duan, R., Mao, J., Mao, X., Shu, X., & Yin, L. (2025).
 *Breaking the Sorting Barrier for Directed Single-Source Shortest Paths.*
-In Proceedings of STOC 2025 (Best Paper Award).
+STOC 2025 (Best Paper). arXiv:2504.17033.
 """
 
 from __future__ import annotations
@@ -62,14 +58,14 @@ class PathResult:
     frontier_reductions: int = 0
 
 
-class TsinghuaRouter:
-    """Frontier-reduction SSSP router (Duan et al. 2025).
+class BatchedFrontierRouter:
+    """Bellman-Ford-seeded, batched-frontier shortest-path router.
 
-    This router uses the frontier-reduction paradigm to find shortest
-    paths without maintaining a globally-sorted priority queue.  For
-    CIVIC-SAFE's city-scale graphs (~77–100 nodes), this provides
-    correct shortest paths using the state-of-the-art algorithmic
-    pattern.
+    Returns the same shortest-path costs as Dijkstra on our city-scale graphs
+    (~77-100 nodes; verified in tests), but it re-sorts the frontier each
+    iteration and is NOT faster than Dijkstra and NOT the Duan et al. (2025)
+    algorithm. Prefer ``DijkstraRouter`` for production; this class is retained
+    for backward compatibility and testing.
 
     Args:
         graph: The routing graph.
@@ -87,7 +83,8 @@ class TsinghuaRouter:
     def shortest_path(self, source: int, target: int) -> PathResult:
         """Find the shortest path from source to target.
 
-        Uses the frontier-reduction BMSSP algorithm.
+        Bellman-Ford seeding + batched-frontier settling. Returns the same
+        shortest-path cost as Dijkstra on our graphs; not faster than Dijkstra.
 
         Args:
             source: Start node index.
@@ -160,14 +157,14 @@ class TsinghuaRouter:
             if settled[target]:
                 break
 
-            # === PIVOT SELECTION (Duan et al. core technique) ===
-            # Sort frontier by current distance estimate (partial sort).
+            # === BATCH SELECTION ===
+            # Sort the frontier by current distance and settle a batch of the
+            # closest nodes. NOTE: this full re-sort is exactly what a real
+            # sorting-barrier algorithm avoids; it is why this router is not
+            # faster than Dijkstra. Kept for backward compatibility only.
             frontier.sort(key=lambda v: dist[v])
 
-            # Select pivots: the closest vertices in the frontier.
-            # The Tsinghua approach settles a batch of the frontier's
-            # minimum-distance nodes per iteration, avoiding per-element
-            # priority-queue operations.
+            # Select the closest vertices in the frontier as the batch.
             pivot_stride = max(1, k)
             batch_size = max(1, (len(frontier) + pivot_stride - 1) // pivot_stride)
             pivots = frontier[:batch_size]
@@ -337,3 +334,9 @@ class DijkstraRouter:
             edges=edges,
             settled_count=settled_count,
         )
+
+
+# Backward-compatibility alias. The old name implied a false connection to the
+# Duan et al. (2025) SSSP algorithm; the honest name is BatchedFrontierRouter.
+# Prefer DijkstraRouter in production.
+TsinghuaRouter = BatchedFrontierRouter

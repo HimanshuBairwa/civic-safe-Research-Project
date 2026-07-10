@@ -225,7 +225,8 @@ and correct), describe it honestly, and add a **one-sentence forward citation**:
 reduce routing cost, though current implementations do not beat Dijkstra below
 ~10^60 vertices." A false claim about a marquee STOC result is an instant
 desk-reject and would poison the credibility of the genuine contribution.
-**Status: TODO — rename/redescribe the router honestly (see §9).**
+**Status: DONE — router renamed `BatchedFrontierRouter` (legacy alias kept),
+engine defaults to exact Dijkstra, all docs corrected + forward citation.**
 
 ---
 
@@ -256,13 +257,22 @@ over-identification — the one result that strengthens the empirical section.
 ## 9. What is LEFT (prioritized TODO)
 
 **In progress / next:**
-1. ⏳ **World-class figures** — DONE for the core 7 (`paper/figures/pub/`); may add
-   a K=3 cumulant-power panel and polish the schematic. *(current focus)*
-2. ☐ **Routing honesty fix (§7)** — redescribe `tsinghua.py` as honest Dijkstra +
-   forward citation; drop the false complexity claim from any doc/paper text.
-3. ☐ **Wire the new pub figures into `paper/oicc_paper.tex`** (replace/augment the
-   existing 5 with the vector PDFs; add the heatmaps + choropleth).
-4. ☐ **Finalize the plain-text arXiv abstract** in `paper/arxiv/metadata.txt`.
+1. ✅ **World-class figures** — DONE (`paper/figures/pub/`, 7 vector PDFs, Okabe–Ito).
+2. ✅ **Routing honesty fix (§7)** — DONE. `tsinghua.py` → honest
+   `BatchedFrontierRouter` (alias kept), engine defaults to exact Dijkstra, all
+   docs (README, MATHEMATICS, METHODOLOGY, PAPER_OUTLINE) corrected + forward
+   citation. No false sorting-barrier claim remains.
+3. ✅ **Whole-repo false-claim audit** — DONE. Corrected the false DiD
+   "point-identifies κ" claim (PROOFS/MATHEMATICS retracted + corrected; legacy
+   `docs/paper.tex` and `docs/AUDIT_2026-07.md` banner-superseded), demoted the
+   ZINB-GNN forecaster to "applied baseline (does not beat seasonal-naive)" with a
+   README banner pointing at OICC, removed "novel" tags from standard methods,
+   fixed stale test counts (264→387) and the arXiv-coming-soon badge.
+4. ✅ **A100 sync tooling** — DONE (`A100_SYNC.md` + `scripts/a100_sync.py`):
+   data-preserving update from `main` (data is gitignored → never overwritten).
+5. ☐ **Wire the new pub figures into `paper/oicc_paper.tex`** (add heatmaps +
+   choropleth; the 5 older figs are already referenced).
+6. ☐ **Finalize the plain-text arXiv abstract** in `paper/arxiv/metadata.txt`.
 
 **Optional / higher-effort:**
 5. ☐ Runnable external baselines (MSE/LCMCR, reporting-rate scale-up) as a

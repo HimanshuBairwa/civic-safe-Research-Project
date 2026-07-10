@@ -455,12 +455,19 @@ where:
 - $(1 - \pi_e) \frac{\mu_e(\mu_e + r_e)}{r_e}$ is proportional to $\text{Var}(Y_e)$
 - $\lambda_\text{unc}$ controls the risk-averseness of routing
 
-### 9.3  Tsinghua 2025 SSSP Algorithm
+### 9.3  Shortest-path routing (exact Dijkstra)
 
-The engine uses the frontier-reduction SSSP algorithm from Duan et al. (STOC 2025, Best Paper), which breaks the 40-year Dijkstra sorting barrier:
+The engine finds the optimal path over the conformal-interval edge costs using
+**exact Dijkstra** ($O(m + n \log n)$ with a binary/Fibonacci heap), which is the
+correct and fastest choice at city scale (~77–100 nodes).
 
-- **Dijkstra:** $O(m + n \log n)$ with Fibonacci heaps
-- **Tsinghua SSSP:** $O(m + n \log n / \log \log n)$ expected time
+> *Forward-looking note (not used here).* Duan, Mao, Mao, Shu & Yin (2025, STOC
+> Best Paper) give a deterministic $O(m \log^{2/3} n)$ SSSP algorithm that breaks
+> the sorting barrier asymptotically. Faithful implementations are, however,
+> 3–25× **slower** than Dijkstra at practical sizes (the crossover is ~$10^{60}$
+> vertices), so it offers no benefit at city scale. We note it only as a
+> potential direction for metropolitan-to-national road networks. Our code does
+> **not** implement it and makes no sorting-barrier claim.
 
 ### 9.4  Abstention Protocol
 
