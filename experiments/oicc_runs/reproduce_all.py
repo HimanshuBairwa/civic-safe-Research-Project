@@ -124,6 +124,38 @@ def main(quick: bool = False) -> int:
           abs(np.mean(cv) - np.mean(tv)) / np.mean(tv) < 0.12,
           f"clean={np.mean(cv):.3f} true={np.mean(tv):.3f}")
 
+    # ---- 4b. baseline comparison (empirical defensibility) ----
+    print("\n[4b] Baselines")
+    from oicc.baselines import compare_baselines, compare_baselines_confounded
+    nt = 8 if quick else 20
+    bc = compare_baselines(n=4000, K=4, n_trials=nt)
+    check("OICC BLUP wins under valid assumptions", bc.winner == "oicc_blup",
+          f"rmse oicc={bc.rmse['oicc_blup']:.3f} single={bc.rmse['best_single']:.3f}")
+    bcc = compare_baselines_confounded(n=6000, K=4, Q=2, n_trials=nt, cm_strength=1.0)
+    naive_best = min(bcc.rmse['best_single'], bcc.rmse['naive_average'],
+                     bcc.rmse['oicc_blup_naive'])
+    check("proximal beats naive by >30% under confounding",
+          bcc.rmse['oicc_proximal'] < 0.7 * naive_best,
+          f"prox={bcc.rmse['oicc_proximal']:.3f} naive={naive_best:.3f}")
+
+    # ---- 4c. third-cumulant over-ID power at K=3 ----
+    print("\n[4c] Third-cumulant over-ID (power at K=3)")
+    from oicc.spec_test import overid_cumulant_test
+
+    def _ng3(seed, confound=0.0):
+        r = np.random.default_rng(seed)
+        th = r.standard_exponential(4000); th -= th.mean()
+        b = np.array([1.0, 1.2, 1.4]); pr = r.standard_exponential(4000) * confound
+        return np.vstack([b[c] * th + (pr if c < 2 else 0) + r.normal(0, 0.4, 4000)
+                          for c in range(3)])
+    size3 = np.mean([overid_cumulant_test(_ng3(s), seed=s).pvalue < 0.05
+                     for s in range(nt)])
+    powr3 = np.mean([overid_cumulant_test(_ng3(s, 0.5), seed=s).pvalue < 0.05
+                     for s in range(nt)])
+    check("cumulant test size <= 0.15 at K=3", size3 <= 0.15, f"size={size3:.3f}")
+    check("cumulant test power >= 0.8 at K=3 (2nd-moment has df=0)",
+          powr3 >= 0.8, f"power={powr3:.3f}")
+
     # ---- 5. anytime-valid monitor ----
     print("\n[5] Anytime-valid monitor")
     rng = np.random.default_rng(0)
