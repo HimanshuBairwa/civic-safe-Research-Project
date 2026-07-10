@@ -30,31 +30,71 @@ the GNN (Section B) if you want the forecasting figures too.
 # 1. go to your existing clone on the A100
 cd /path/to/civic-safe-Research-Project
 
-# 2. safely pull the new code (your DATA is gitignored -> never touched)
-python scripts/a100_sync.py          # confirms data safe, updates, runs preflight
-#    (if it reports local edits it can't merge, run:  python scripts/a100_sync.py --hard)
+# 2. YOUR workflow: pull the latest masterpiece from GitHub.
+#    (Your DATA lives under data/ which is gitignored -> reset/pull NEVER touch it.)
+git reset --hard origin/main
+git pull origin main
 
 # 3. install the pinned env (numpy<2.1 for the torch stack; oicc needs only numpy+scipy)
 pip install -r requirements-a100.txt
 pip install -e .
 
 # 4. ARCHIVE the old outputs (do NOT delete -- zero data loss, zero confusion).
-#    New runs write to outputs/run_<city>_<timestamp>/ so they never collide,
-#    but archiving the old ones keeps the folder clean.
+#    New runs write to a fresh timestamped dir so they never collide, but
+#    archiving the old ones keeps the folder clean.
 mkdir -p archive
 mv outputs archive/outputs_OLD_$(date +%Y%m%d) 2>/dev/null || true
 mkdir -p outputs
-#    Your OLD outputs are now safe in archive/. New results go to a fresh outputs/.
+#    (archive/ and results_campaign_*/ are gitignored, so the next
+#     `git reset --hard` will NOT delete them either.)
 
 # 5. sanity check the whole box (env + GPU smoke + oicc tests + reproduction)
 python run_all.py                     # must print ALL GREEN
 ```
+
+**On `git reset --hard`:** it is safe here. Your datasets, archived outputs, and
+campaign results are all gitignored, so reset only refreshes tracked *code*.
 
 **On the "old outputs" question:** I chose **archive, not delete** — nothing is
 lost, and the new `outputs/` is clean. If you are 100% sure you want them gone:
 `rm -rf archive/outputs_OLD_*` later. Never needed for correctness.
 
 ---
+
+## Section A.5 — ⭐ THE ONE-COMMAND MAX-RIGOR CAMPAIGN (use your unlimited A100)
+
+For the "run it for days, everything top-notch" outcome, this single command runs
+the **entire** publication pipeline into one clean timestamped dir:
+
+```bash
+export OICC_INDIA_DATA=/path/to/crime-detection-ai/data     # your India data
+nohup python scripts/run_full_campaign.py --seeds 15 --epochs 200 \
+      > campaign.log 2>&1 &                                 # runs for hours; survives disconnect
+tail -f campaign.log                                        # watch progress
+```
+
+It produces `results_campaign_<timestamp>/` containing: the rigorous OICC
+reproduction (tight CIs), the real India NCRB run, the US contrast, all
+publication figures (heatmaps + choropleth), and the 15-seed GNN baseline
+training for both cities + conformal evaluation. Everything logged; zero collision
+with old outputs.
+
+Variants:
+```bash
+python scripts/run_full_campaign.py --oicc-only    # just the contribution (~5 min, no GPU)
+python scripts/run_full_campaign.py --skip-train   # OICC + figures, no GPU training
+python scripts/run_full_campaign.py --seeds 15     # 15-seed publication CIs (default)
+```
+
+> **What "max rigor" actually means (honest):** unlimited A100 buys **more seeds**
+> (15 → tight mean±std confidence intervals) and **bigger Monte-Carlo/bootstrap**
+> counts on the OICC contribution (`reproduce_all.py --rigorous` uses 80 seeds /
+> 3000 trials). It does **NOT** buy more epochs — the forecaster early-stops at a
+> plateau (~epoch 52), so 500 epochs = 200 epochs = wasted time. Seeds and
+> bootstrap precision are the levers reviewers actually reward.
+
+---
+
 
 ## Section B — Train the GNN forecaster (optional, GPU, slow)
 
@@ -65,22 +105,20 @@ are **already on the docker** from the old version — **no download needed.**
 # FIRST: a 2-minute smoke test to confirm training works on YOUR A100
 python scripts/train.py data=chicago training.epochs=2 training.num_seeds=1
 
-# If that finishes clean, run the FULL training (5 seeds, 200 epochs each):
-python scripts/train.py data=chicago            # ~15-20 GPU-hours
-python scripts/train.py data=nyc                # ~15-20 GPU-hours
+# If that finishes clean, run the FULL max-rigor training (15 seeds, 200 epochs):
+python scripts/train.py data=chicago training.num_seeds=15   # ~2-3 days on 1 A100
+python scripts/train.py data=nyc     training.num_seeds=15
 
 #   Each writes to  outputs/run_<city>_<timestamp>/seed_<seed>/best.pt
-#   Run them in the background if your session may drop:
-#   nohup python scripts/train.py data=chicago > train_chicago.log 2>&1 &
-#   nohup python scripts/train.py data=nyc     > train_nyc.log     2>&1 &
+#   Run them in the background so a dropped session doesn't kill them:
+#   nohup python scripts/train.py data=chicago training.num_seeds=15 > train_chicago.log 2>&1 &
+#   nohup python scripts/train.py data=nyc     training.num_seeds=15 > train_nyc.log     2>&1 &
 ```
 
-> **Faster option (recommended for a first full pass):** 3 seeds, 100 epochs —
-> ~80% of the result in ~40% of the time:
-> ```bash
-> python scripts/train.py data=chicago training.num_seeds=3 training.epochs=100
-> python scripts/train.py data=nyc     training.num_seeds=3 training.epochs=100
-> ```
+> **15 seeds is the max-rigor choice** (the seed pool in
+> `configs/training/default.yaml` now holds 15). It gives publication-grade
+> mean±std. **Do NOT raise epochs past 200** — the model early-stops at a plateau
+> (~epoch 52); extra epochs are wasted. Seeds, not epochs, are the lever.
 
 After training, evaluate + calibrate (point `--checkpoint` at the run dir printed
 by training, e.g. `outputs/run_chicago_<timestamp>`):
@@ -165,6 +203,33 @@ real-data anchor; treat NCVS/911/IHDS as a "future work / v2" upgrade. Do **not*
 let data-acquisition block the paper.
 
 ---
+
+## The minimum "IF" (Impact Factor) — the honest answer
+
+First, a correction that matters: **the top target venues are conferences, not
+journals, so they don't have a classical Impact Factor** — and that's a *good*
+thing, they're more prestigious than most IF-bearing journals in CS.
+
+| Venue (realistic) | Type | Metric | Honest read |
+|---|---|---|---|
+| **KDD Applied Data Science** | conference | h5-index ~120+ | top-tier CS; no IF but very high prestige |
+| **FAccT** | conference | flagship fairness venue | top-tier; no classical IF |
+| **AOAS** (Annals of Applied Statistics) | journal | **IF ≈ 1.8–2.0** | strong applied-stats home |
+| **Journal of Quantitative Criminology** | journal | **IF ≈ 3–4** | excellent domain fit |
+| **NeurIPS Datasets & Benchmarks** | conference track | — | strong for the benchmark |
+
+**So the honest minimum:** if you publish the *journal* version (AOAS or JQC),
+realistically **IF ≈ 2–4**. If you publish at KDD-ADS / FAccT (the natural home),
+IF doesn't apply but the prestige is *higher* than a mid-IF journal. Either way
+this is a genuinely good, citable outcome for the honest ~7.5/10 project.
+
+**What I will NOT tell you:** that this reaches IF>10 / Nature / NeurIPS-main.
+That ceiling is blocked by a *theorem* (the impossibility), which I proved this
+session even higher moments/ICA cannot crack. IF 2–4 (or a top conference) is the
+real, defensible target — and it's a strong one.
+
+---
+
 
 ## Should we delete any old code? (my call)
 

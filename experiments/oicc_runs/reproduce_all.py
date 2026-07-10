@@ -62,10 +62,16 @@ def _theta_rmse(Y, theta):
     return float(np.sqrt(np.mean((A @ c - theta) ** 2)))
 
 
-def main(quick: bool = False) -> int:
+def main(quick: bool = False, rigorous: bool = False) -> int:
     t0 = time.time()
-    seeds = range(10 if quick else 25)
+    # rigorous mode: many more Monte-Carlo trials for tight, publication-grade
+    # estimates (uses your unlimited A100 time where it genuinely helps -- on the
+    # CONTRIBUTION, not the baseline forecaster).
+    n_seeds = 10 if quick else (80 if rigorous else 25)
+    seeds = range(n_seeds)
+    mode = "QUICK" if quick else ("RIGOROUS" if rigorous else "STANDARD")
     print("=" * 72)
+    print(f"[mode: {mode}  |  Monte-Carlo seeds: {n_seeds}]")
     print("OICC full reproduction  (oicc v%s)" % oicc.__version__)
     print("=" * 72)
 
@@ -127,7 +133,7 @@ def main(quick: bool = False) -> int:
     # ---- 4b. baseline comparison (empirical defensibility) ----
     print("\n[4b] Baselines")
     from oicc.baselines import compare_baselines, compare_baselines_confounded
-    nt = 8 if quick else 20
+    nt = 8 if quick else (60 if rigorous else 20)
     bc = compare_baselines(n=4000, K=4, n_trials=nt)
     check("OICC BLUP wins under valid assumptions", bc.winner == "oicc_blup",
           f"rmse oicc={bc.rmse['oicc_blup']:.3f} single={bc.rmse['best_single']:.3f}")
@@ -159,7 +165,7 @@ def main(quick: bool = False) -> int:
     # ---- 5. anytime-valid monitor ----
     print("\n[5] Anytime-valid monitor")
     rng = np.random.default_rng(0)
-    trials = 300 if quick else 800
+    trials = 300 if quick else (3000 if rigorous else 800)
     fa = sum(EProcessMonitor(alpha=0.05).run(rng.uniform(0, 1, 150)).alarm
              for _ in range(trials)) / trials
     powr_m = sum(EProcessMonitor(alpha=0.05).run(
@@ -210,5 +216,7 @@ def main(quick: bool = False) -> int:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true", help="fewer seeds/boots")
+    ap.add_argument("--rigorous", action="store_true",
+                    help="many more Monte-Carlo trials for tight CIs (A100)")
     args = ap.parse_args()
-    sys.exit(main(quick=args.quick))
+    sys.exit(main(quick=args.quick, rigorous=args.rigorous))

@@ -16,9 +16,12 @@ training:
   # 3 is underpowered per the analysis plan.
   num_seeds: 5
 
-  # Explicit seed list (length must equal num_seeds).
-  # Chosen as widely-spaced, commonly used seeds for easy reproducibility.
-  seeds: [42, 137, 256, 512, 1024]
+  # Explicit seed list. `seeds[:num_seeds]` is used, so this list must be at
+  # least as long as num_seeds. Extended to 15 widely-spaced seeds so a max-rigor
+  # A100 campaign can set `training.num_seeds=15` from the CLI (publication-grade
+  # mean +/- std). Default num_seeds stays 5 for a normal run.
+  seeds: [42, 137, 256, 512, 1024, 2048, 7, 91, 314, 1618,
+          2718, 4096, 55, 888, 12345]
 
   # --- Optimiser ---
   optimizer:
