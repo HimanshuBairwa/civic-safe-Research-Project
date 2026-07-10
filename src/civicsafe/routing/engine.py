@@ -1,8 +1,8 @@
 """Advisory routing engine — the public-facing facade.
 
 ``AdvisoryRoutingEngine`` is the single entry-point for the routing
-subsystem.  It wires together the routing graph, Tsinghua SSSP router,
-Pareto cost functions, and the abstention monitor into one cohesive
+subsystem.  It wires together the routing graph, exact Dijkstra shortest-path
+router, Pareto cost functions, and the abstention monitor into one cohesive
 pipeline.
 
 Usage::
@@ -38,7 +38,7 @@ class SafeRouteResult:
         total_cost: Total Pareto cost along the path.
         abstention_verdict: Full abstention evaluation details.
         path_result: The raw ``PathResult`` from the routing algorithm.
-        algorithm: Which algorithm was used ('tsinghua' or 'dijkstra').
+        algorithm: Which algorithm was used ('dijkstra').
     """
 
     path: list[int]
@@ -49,14 +49,14 @@ class SafeRouteResult:
 
 
 class AdvisoryRoutingEngine:
-    """Facade wiring graph + Tsinghua router + cost + abstention.
+    """Facade wiring graph + exact Dijkstra router + cost + abstention.
 
     Args:
         graph: The routing graph with injected predictions.
         cost_fn: Edge cost function (default: ``ParetoCost``).
         abstention_monitor: Uncertainty monitor (default: standard).
-        use_dijkstra_fallback: If True, fall back to classic Dijkstra
-            if TsinghuaRouter fails. Default True.
+        use_dijkstra_fallback: retained for backward compatibility; Dijkstra is
+            now the primary (and exact) router at this graph scale.
     """
 
     def __init__(
@@ -86,8 +86,8 @@ class AdvisoryRoutingEngine:
     ) -> SafeRouteResult:
         """Find the safest route from source to target.
 
-        Uses the Tsinghua SSSP algorithm for pathfinding, then evaluates
-        the result through the abstention monitor.
+        Uses exact Dijkstra shortest paths over the conformal-interval edge
+        costs, then evaluates the result through the abstention monitor.
 
         Args:
             source: Start node index.
@@ -99,9 +99,9 @@ class AdvisoryRoutingEngine:
         Returns:
             ``SafeRouteResult`` with path, cost, and abstention verdict.
         """
-        # Primary: Tsinghua router
-        path_result = self.tsinghua.shortest_path(source, target)
-        algorithm = "tsinghua"
+        # Exact Dijkstra shortest path over the conformal-interval edge costs.
+        path_result = self.dijkstra.shortest_path(source, target)
+        algorithm = "dijkstra"
 
         # Abstention evaluation
         verdict = self.monitor.evaluate(path_result)

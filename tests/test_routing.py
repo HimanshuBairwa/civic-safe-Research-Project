@@ -375,7 +375,7 @@ class TestAdvisoryRoutingEngine:
         assert isinstance(result, SafeRouteResult)
         assert result.path[0] == 0
         assert result.path[-1] == 2
-        assert result.algorithm == "tsinghua"
+        assert result.algorithm == "dijkstra"  # exact router is now primary
 
     def test_from_adjacency_factory(self) -> None:
         edge_index = torch.tensor([

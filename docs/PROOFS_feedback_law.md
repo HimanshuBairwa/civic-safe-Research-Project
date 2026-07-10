@@ -101,9 +101,31 @@ Then (i) the observable laws coincide, $\mathcal{L}_A(y_{1:S})=\mathcal{L}_B(y_{
 
 ---
 
-## Theorem 3 (Active Identification)
+## Theorem 3 (Active Identification) — RETRACTED / CORRECTED
 
-**Statement.** Suppose an exogenous intervention multiplies the detection elasticity in a treated subset $\mathcal{T}$ by $(1+\delta)$ for known $\delta>0$ (a staggered ShotSpotter / patrol-policy shock), with the policy elasticity $\beta$ known to the operator. Then $\kappa=\beta\rho$ is point-identified from a difference-in-differences on **log recorded rates**,
+> **CORRECTION (supersedes the statement below).** The claim that a
+> difference-in-differences on log recorded rates **point-identifies** the loop
+> gain $\kappa$ "without ever observing $\lambda$" is **incorrect**. Differencing
+> removes the common shock $\Delta c_s$ but leaves a term
+> $\big[\tfrac{1}{1-\beta\rho(1+\delta)}-\tfrac{1}{1-\beta\rho}\big]\cdot\log\lambda_s$
+> weighted by the **unobserved latent level** $\log\lambda_s$ over the treated
+> set, which does **not** cancel. So DiD is not a function of $\kappa$ alone.
+> The simulation "recovery to $\pm0.02$" works only because $\lambda$ is drawn
+> from a *known* distribution there; it does **not** carry over to real data. On
+> real Chicago data the identification DiD returns a **null** under the current
+> treatment (see `RESULTS_field_identification.md`, $\hat\tau=-0.040$, $p=0.069$).
+>
+> **What is actually identified:** the *recording response* $\tau$ to the
+> detection shock — i.e. the detection elasticity $\rho$ — under a parallel-trends
+> assumption. The full loop gain $\kappa=\beta\rho$ additionally requires a
+> **separately assumed** policy elasticity $\beta$ and is reported only as a
+> $\beta$-sensitivity table, not a point estimate. The genuine, honest position is
+> the OICC impossibility result (a common-mode confounder is unidentifiable);
+> see `paper/oicc_paper.tex` and `paper/OICC_THEOREMS.md`.
+
+*The original (incorrect) statement is retained below for the record only.*
+
+**Statement (INCORRECT — see correction above).** Suppose an exogenous intervention multiplies the detection elasticity in a treated subset $\mathcal{T}$ by $(1+\delta)$ for known $\delta>0$ (a staggered ShotSpotter / patrol-policy shock), with the policy elasticity $\beta$ known to the operator. Then $\kappa=\beta\rho$ is point-identified from a difference-in-differences on **log recorded rates**,
 $$
 \mathrm{DiD} := \big(\overline{\Delta\log\mu}_{\mathcal T}\big) - \big(\overline{\Delta\log\mu}_{\mathcal T^c}\big),
 $$

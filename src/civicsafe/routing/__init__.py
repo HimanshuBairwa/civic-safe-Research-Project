@@ -1,4 +1,10 @@
-"""Advisory safe-route reference using the Tsinghua 2025 SSSP algorithm.
+"""Advisory safe-route reference using exact Dijkstra shortest paths.
+
+Routing runs on conformal-interval edge costs over a city-scale graph. We use
+`DijkstraRouter` (exact, fastest at this scale). `BatchedFrontierRouter` (aliased
+as `TsinghuaRouter` for backward compatibility) is a batched-frontier heuristic
+that returns identical costs but is not faster and is NOT the Duan et al. (2025)
+algorithm -- see routing/tsinghua.py for the honest note.
 
 Public API
 ----------
@@ -6,8 +12,8 @@ Public API
 
    RoutingGraph
    Edge
-   TsinghuaRouter
    DijkstraRouter
+   BatchedFrontierRouter
    PathResult
    ParetoCost
    DistanceOnlyCost
@@ -40,13 +46,19 @@ from civicsafe.routing.feedback_aware import (
     correct_node_risk,
 )
 from civicsafe.routing.graph import Edge, RoutingGraph
-from civicsafe.routing.tsinghua import DijkstraRouter, PathResult, TsinghuaRouter
+from civicsafe.routing.tsinghua import (
+    BatchedFrontierRouter,
+    DijkstraRouter,
+    PathResult,
+    TsinghuaRouter,
+)
 
 __all__ = [
     "AbstentionError",
     "AbstentionMonitor",
     "AbstentionVerdict",
     "AdvisoryRoutingEngine",
+    "BatchedFrontierRouter",
     "DijkstraRouter",
     "DistanceOnlyCost",
     "Edge",

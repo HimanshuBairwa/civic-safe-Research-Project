@@ -4,12 +4,11 @@
 
 ### Honest Uncertainty Under Observation Bias: Online Conformal Prediction for Count Forecasting with Closed-Loop Feedback Evaluation
 
-[![Tests](https://img.shields.io/badge/tests-264%20passed-brightgreen?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-387%20passed-brightgreen?style=for-the-badge)](tests/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![PyTorch 2.2+](https://img.shields.io/badge/pytorch-2.2%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 [![Params](https://img.shields.io/badge/params-688K-blue?style=for-the-badge)]()
-[![arXiv](https://img.shields.io/badge/arXiv-coming%20soon-b31b1b?style=for-the-badge&logo=arxiv)](https://arxiv.org/)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue?style=for-the-badge)](http://mypy-lang.org/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=for-the-badge)](https://docs.astral.sh/ruff/)
 
@@ -21,18 +20,41 @@
 
 ---
 
-## 🔑 Key Innovations
+> ## 📌 What this repository actually contributes (read first)
+>
+> The research contribution is **OICC — Over-Identification-Calibrated Conformal
+> Deconvolution** (`src/oicc/`): honest latent-rate estimation from ≥3 biased
+> measurement channels, with a **proved impossibility theorem** and an honest
+> negative-control escape. See **[`RESEARCH_ROADMAP.md`](RESEARCH_ROADMAP.md)**
+> (full story + honest ceiling), **[`OICC.md`](OICC.md)**, and
+> **[`paper/oicc_paper.tex`](paper/oicc_paper.tex)**.
+>
+> The **CIVIC-SAFE ZINB-GNN forecaster** described below is **applied prior art /
+> a baseline** (building on STZINB-GNN, Zhuang KDD'22; STMGNN-ZINB, Wang'24). It
+> is **not** claimed as a forecasting contribution: on these data it does **not**
+> beat a seasonal-naive baseline (CRPSS vs seasonal-naive is not positive). Treat
+> the sections below as documentation of the applied pipeline, not the headline.
+>
+> **Honest ratings:** novelty ~6.5, publication ~7.5 (KDD-ADS / FAccT). Not
+> "beyond NeurIPS" — and that ceiling is a *theorem*, not a to-do (see roadmap §3).
 
-| # | Innovation | Method | Why It Matters |
+---
+
+## 🔑 Applied Pipeline Components (the CIVIC-SAFE baseline; standard methods, cited)
+
+*These are correct implementations of **established** methods, not novel
+contributions. The novelty of this repository is OICC (see banner above).*
+
+| # | Component | Method (prior art) | Role |
 |---|-----------|--------|---------------|
-| 1 | **ZINB Distributional Forecaster** | GATv2 → Causal Transformer → MFFM → ZINB Head (688K params) | Full count distributions, not just point predictions |
-| 2 | **6 Conformal Calibrators** | Split CP, Weighted CP, Mondrian, Equalized, ECRC, **Rolling Adaptive ECRC** | Distribution-free coverage with per-group fairness + temporal adaptation |
-| 3 | **EMOS Learned Ensemble** | CRPS-minimized weights on calibration set (Gneiting et al., 2005) | Optimal combination — not naive equal-weight averaging |
-| 4 | **Post-Hoc Recalibration** | Affine ZINB correction minimizing CRPS | 5-15% CRPS improvement with zero retraining cost |
-| 5 | **CRPS Decomposition** | Reliability–Resolution–Uncertainty (Hersbach, 2000) | Shows WHERE forecast skill comes from |
-| 6 | **Statistical Significance** | Diebold-Mariano + temporal block bootstrap | Formal p-values that account for temporal dependence |
-| 7 | **Anomaly Skill Coefficient** | ASC metrics per demographic group | Quantifies deployment risk and anomaly predictive skill |
-| 8 | **Advisory Safe Routing** | Tsinghua 2025 SSSP (Duan et al., STOC Best Paper) + abstention protocol | Refuses to route when model uncertainty is too high |
+| 1 | **ZINB Distributional Forecaster** | GATv2 → Causal Transformer → MFFM → ZINB Head (688K params); cf. STZINB-GNN Zhuang KDD'22 | Full count distributions (baseline; does not beat seasonal-naive) |
+| 2 | **6 Conformal Calibrators** | Split CP, Weighted CP (Barber 2023), Mondrian, Equalized (Romano 2020), ECRC, Rolling Adaptive ECRC (= per-group ACI, Gibbs–Candès 2021) | Distribution-free coverage + per-group audit |
+| 3 | **EMOS Learned Ensemble** | CRPS-minimized weights (Gneiting et al., 2005) | Optimal combination vs equal-weight |
+| 4 | **Post-Hoc Recalibration** | Affine ZINB correction minimizing CRPS | CRPS improvement with zero retraining |
+| 5 | **CRPS Decomposition** | Reliability–Resolution–Uncertainty (Hersbach, 2000) | Where forecast skill comes from |
+| 6 | **Statistical Significance** | Diebold-Mariano + temporal block bootstrap | Formal p-values under temporal dependence |
+| 7 | **Anomaly Skill Coefficient** | ASC diagnostic per demographic group | A skill diagnostic (not a fairness guarantee) |
+| 8 | **Advisory Safe Routing** | Exact Dijkstra over conformal edge-costs + abstention protocol | Refuses to route when uncertainty is too high |
 
 ---
 
@@ -78,7 +100,7 @@
             ║   ┌────────────────────┐  ┌─────────────────┐  ┌──────────────────┐  ║
             ║   │ Conformal          │  │ 7-Component      │  │ Advisory Safe    │  ║
             ║   │ Calibration        │→ │ Equity Audit     │→ │ Routing          │  ║
-            ║   │ (5 methods)        │  │ (BH-FDR)         │  │ (Tsinghua SSSP)  │  ║
+            ║   │ (5 methods)        │  │ (BH-FDR)         │  │ (Dijkstra)       │  ║
             ║   └────────────────────┘  └─────────────────┘  └──────────────────┘  ║
             ║                                                                      ║
             ╚══════════════════════════════════════════════════════════════════════╝
@@ -108,6 +130,11 @@
 | Metric | Value |
 |--------|-------|
 | **CRPS** (↓) | 16.90 |
+
+> ⚠️ **Honest disclosure:** this CRPS is not a skill claim. The ZINB-GNN's
+> **CRPSS vs seasonal-naive is not positive** — it does not beat a seasonal-naive
+> baseline. This forecaster is applied prior art, not the contribution (see
+> `docs/ANALYSIS_LOG_2026-06-13.md` and the banner above). The contribution is OICC.
 | **MAE** (↓) | 22.17 |
 | **RMSE** (↓) | 36.00 |
 
@@ -138,7 +165,7 @@ cd civic-safe-Research-Project
 # Install with dev dependencies
 pip install -e ".[dev]"
 
-# Verify installation (264 tests, no GPU required)
+# Verify installation (387 tests (301 civicsafe + 86 OICC), no GPU required)
 pytest -v
 ```
 
@@ -221,11 +248,11 @@ civic-safe-Research-Project/
 │   │   ├── statistical.py            # Bootstrap, permutation, BH-FDR
 │   │   ├── stratification.py         # Demographic stratification
 │   │   └── feedback_loop.py          # Closed-loop and anomaly metrics
-│   ├── routing/                      # Tsinghua SSSP + abstention engine
+│   ├── routing/                      # Dijkstra + abstention engine
 │   ├── training/                     # Trainer, scheduler, early stopping
 │   ├── synthetic/                    # ZINB/Poisson data generators
 │   └── utils/                        # Seeding, numerics, checkpointing
-├── tests/                            # 264 tests across 12 files
+├── tests/                            # 387 tests (civicsafe + OICC)
 ├── MATHEMATICS.md                    # Legacy math spec
 ├── REPRODUCIBILITY.md                # NeurIPS reproducibility checklist
 ├── pyproject.toml                    # Project metadata + tool configs
@@ -236,7 +263,7 @@ civic-safe-Research-Project/
 
 ## 🧪 Test Suite
 
-264 tests across 12 files — **no GPU required**.
+387 tests (civicsafe + OICC) — **no GPU required**.
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -246,15 +273,15 @@ civic-safe-Research-Project/
 | `test_data.py` | 26 | Taxonomies, crosswalks, ACS, panel builder |
 | `test_models.py` | 34 | ZINB loss, spatial/temporal encoders, full model |
 | `test_numerics.py` | 13 | safe_log, safe_divide, log_sum_exp, clamp_probs |
-| `test_routing.py` | 33 | Tsinghua vs Dijkstra, cost functions, abstention, 77-node stress |
+| `test_routing.py` | 33 | Batched-frontier vs Dijkstra (identical costs), cost functions, abstention, 77-node stress |
 | `test_seeding.py` | 7 | Deterministic torch/numpy/python seeding |
 | `test_smoke.py` | 1 | Full pipeline smoke test |
 | `test_synthetic.py` | 10 | ZINB/Poisson sampling, panel generation |
 | `test_training.py` | 46 | CRPS, point metrics, PIT, early stopping, scheduler, trainer |
-| **Total** | **264** | **100% module coverage** |
+| **Total** | **387** | **unit tests across all core modules** |
 
 ```bash
-pytest -v                         # Run all 264 tests
+pytest -v                         # Run all 387 tests
 pytest tests/test_routing.py -v   # Run routing tests only
 pytest tests/test_audit.py -v     # Run audit tests only
 mypy src/civicsafe/               # Type checking (strict mode)
@@ -277,7 +304,7 @@ mypy src/civicsafe/               # Type checking (strict mode)
 git clone https://github.com/HimanshuBairwa/civic-safe-Research-Project.git
 cd civic-safe-Research-Project
 pip install -e ".[dev]"
-pytest -v                    # 264 passed
+pytest -v                    # 387 passed
 python scripts/train.py      # 5-seed training
 python scripts/reproduce.py  # Generate paper tables
 ```
@@ -308,7 +335,7 @@ See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the full NeurIPS checklist.
   url       = {https://github.com/HimanshuBairwa/civic-safe-Research-Project},
   note      = {GATv2 + Causal Transformer + ZINB distributional head
                with 5 conformal calibrators, 7-component equity audit,
-               and Tsinghua 2025 SSSP advisory routing}
+               and Dijkstra-based advisory routing}
 }
 ```
 

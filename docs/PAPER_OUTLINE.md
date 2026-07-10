@@ -9,7 +9,7 @@
 
 > **Template — fill in concrete numbers after 5-seed evaluation completes.**
 
-Urban crime forecasting models deployed in public-safety contexts demand three properties that current systems lack: *calibrated uncertainty*, *audited equity*, and *actionable abstention*.  We present **CIVIC-SAFE**, a probabilistic spatiotemporal framework that unifies graph neural networks, conformal prediction, and fairness auditing into a single end-to-end pipeline.  Our architecture pairs a **GATv2 spatial encoder** operating over dual adjacency graphs with a **causal Transformer temporal encoder**, feeding a **Zero-Inflated Negative Binomial (ZINB)** distributional head that explicitly models the zero-inflation and overdispersion inherent in administrative crime data.  We calibrate the resulting predictive distributions using **five conformal prediction strategies** — including a novel Equalized Conditional Risk Control (ECRC) method with Hoeffding-based per-group coverage guarantees — and subject every forecast to a **7-component equity audit** with Benjamini–Hochberg FDR correction.  On two large-scale urban datasets — **Chicago** (77 community areas, 1.33M incidents) and **New York City** (78 precincts, 1.51M incidents) across 2018–2023 — CIVIC-SAFE achieves a CRPS of `[X.XX ± X.XX]`, MAE of `[X.XX ± X.XX]`, and RMSE of `[X.XX ± X.XX]` while maintaining `[XX.X]`% marginal conformal coverage at the α = 0.10 level across all demographic strata.  A downstream **advisory safe-routing engine** built on the Tsinghua 2025 SSSP algorithm (Duan et al., STOC 2025 Best Paper) translates forecasts into civilian-facing route advisories and implements an *abstention protocol* that refuses to recommend routes when prediction uncertainty exceeds calibrated thresholds.  To our knowledge, CIVIC-SAFE is the first crime-forecasting system to simultaneously provide distribution-free coverage guarantees, audited cross-group equity, and principled abstention — all enforced as hard constraints rather than post-hoc checks.  Code and data are available at `https://github.com/HimanshuBairwa/civic-safe-Research-Project`.
+Urban crime forecasting models deployed in public-safety contexts demand three properties that current systems lack: *calibrated uncertainty*, *audited equity*, and *actionable abstention*.  We present **CIVIC-SAFE**, a probabilistic spatiotemporal framework that unifies graph neural networks, conformal prediction, and fairness auditing into a single end-to-end pipeline.  Our architecture pairs a **GATv2 spatial encoder** operating over dual adjacency graphs with a **causal Transformer temporal encoder**, feeding a **Zero-Inflated Negative Binomial (ZINB)** distributional head that explicitly models the zero-inflation and overdispersion inherent in administrative crime data.  We calibrate the resulting predictive distributions using **five conformal prediction strategies** — including a novel Equalized Conditional Risk Control (ECRC) method with Hoeffding-based per-group coverage guarantees — and subject every forecast to a **7-component equity audit** with Benjamini–Hochberg FDR correction.  On two large-scale urban datasets — **Chicago** (77 community areas, 1.33M incidents) and **New York City** (78 precincts, 1.51M incidents) across 2018–2023 — CIVIC-SAFE achieves a CRPS of `[X.XX ± X.XX]`, MAE of `[X.XX ± X.XX]`, and RMSE of `[X.XX ± X.XX]` while maintaining `[XX.X]`% marginal conformal coverage at the α = 0.10 level across all demographic strata.  A downstream **advisory safe-routing engine** built on exact Dijkstra shortest paths over conformal-interval edge costs translates forecasts into civilian-facing route advisories and implements an *abstention protocol* that refuses to recommend routes when prediction uncertainty exceeds calibrated thresholds.  To our knowledge, CIVIC-SAFE is the first crime-forecasting system to simultaneously provide distribution-free coverage guarantees, audited cross-group equity, and principled abstention — all enforced as hard constraints rather than post-hoc checks.  Code and data are available at `https://github.com/HimanshuBairwa/civic-safe-Research-Project`.
 
 ---
 
@@ -38,7 +38,7 @@ We make the following four contributions:
 > We design a comprehensive equity audit harness evaluating coverage parity, interval-width disparity, point-forecast bias, calibration deviation, Winkler score gap, abstention disparity, and reporting-bias sensitivity — all corrected for multiple comparisons via Benjamini–Hochberg FDR control.
 
 > **C4 — Advisory Safe-Routing with Audited Abstention.**  
-> We couple probabilistic forecasts with a Pareto-optimal advisory routing engine using the Tsinghua 2025 SSSP algorithm. The engine implements an abstention protocol that refuses to recommend routes when conformal interval widths exceed calibrated safety thresholds, preventing false assurances.
+> We couple probabilistic forecasts with a Pareto-optimal advisory routing engine using exact Dijkstra shortest paths. The engine implements an abstention protocol that refuses to recommend routes when conformal interval widths exceed calibrated safety thresholds, preventing false assurances.
 
 ### 1.3  Paper Organisation
 
@@ -220,7 +220,7 @@ All tests use bootstrap CIs and permutation tests, corrected via Benjamini–Hoc
 
 - Pareto-optimal routing: $\min_{P} \bigl(\sum_{e \in P} d_e, \; \sum_{e \in P} \rho_e\bigr)$
 - Risk: $\rho_e = (1 - \pi_e)\mu_e + \lambda_\text{unc}(1-\pi_e)\frac{\mu_e(\mu_e + r_e)}{r_e}$
-- Tsinghua 2025 SSSP algorithm (Duan et al., STOC 2025 Best Paper)
+- Exact Dijkstra shortest paths (Duan et al. 2025 noted as future large-scale direction only)
 - **Abstention protocol:** refuses routes when peak conformal interval width exceeds threshold
 
 ### 4.9  Training Procedure
@@ -488,7 +488,7 @@ Key references to include:
 4. Tibshirani, R. J., et al. (2019). Conformal Prediction Under Covariate Shift. NeurIPS.
 5. Feldman, S., et al. (2021). Improving Conditional Coverage via Orthogonal Quantile Regression.
 6. Benjamini, Y. & Hochberg, Y. (1995). Controlling the False Discovery Rate. JRSS-B.
-7. Duan, R., et al. (2025). Breaking the Dijkstra Barrier. STOC (Best Paper).
+7. Duan, R., et al. (2025). Breaking the Sorting Barrier for Directed SSSP. STOC (Best Paper). [cited as future large-scale direction; NOT used at city scale, where Dijkstra is exact and faster]
 8. Vaswani, A., et al. (2017). Attention Is All You Need. NeurIPS.
 9. Mohler, G. O., et al. (2011). Self-Exciting Point Process Modeling of Crime. JASA.
 10. Lum, K. & Isaac, W. (2016). To Predict and Serve? Significance.

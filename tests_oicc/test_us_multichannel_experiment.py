@@ -11,9 +11,9 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "experiments" / "oicc_runs"))
 
 
-def test_us_multichannel_experiment_demo_runs():
+def test_us_multichannel_experiment_demo_runs(tmp_path):
     from run_us_multichannel_experiment import run
-    res = run()                       # no data dir -> demo mode
+    res = run(data_dir=tmp_path)       # empty dir -> deterministic demo mode
     assert res["is_demo"] is True
     assert "lines" in res and len(res["lines"]) > 5
     assert res["moments"].var_theta > 0
