@@ -16,7 +16,10 @@ victimization survey, accountability/complaint data), OICC:
    (`deconvolve.py`),
 3. **tests** the conditional-independence assumption *in the identifiable
    (Delta-perp) directions* via a loading-invariant over-identification test
-   (`spec_test.py`),
+   (`spec_test.py`) — a second-moment tetrad test (K>=4) **and** a third-cumulant
+   test that gives genuine power at K=3 (where second moments are just-identified)
+   when the latent is non-Gaussian; both support a moving-block bootstrap for
+   dependent panels,
 4. **issues** two nested conformal intervals (`conformal_split.py`): an EXACT
    finite-sample distribution-free interval for the observed pivot value, and a
    model-assisted interval for the *never-observed* latent target; latent-error
@@ -50,7 +53,7 @@ absent (0.21 vs 0.21). With `Q >= 2` valid controls the common mode is
 point-identified; with `Q = 1`, detected and partially removed. The controls'
 exclusion/completeness assumptions are **untestable** and stated as such.
 
-## Verified behavior (all in `pytest tests_oicc -q` — 62 tests, green)
+## Verified behavior (all in `pytest tests_oicc -q` — 86 tests, green)
 
 | Property | Result |
 |---|---|

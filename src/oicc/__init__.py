@@ -43,6 +43,8 @@ from oicc.deconvolve import (
 from oicc.spec_test import (
     SpecTestResult,
     overid_wald_test,
+    CumulantTestResult,
+    overid_cumulant_test,
 )
 from oicc.cf_deconv import (
     DeconvDensity,
@@ -72,6 +74,11 @@ from oicc.uncertainty import (
     bootstrap_moments,
     bootstrap_point_id,
 )
+from oicc.baselines import (
+    BaselineComparison,
+    compare_baselines,
+    compare_baselines_confounded,
+)
 
 __all__ = [
     "Channels",
@@ -87,6 +94,8 @@ __all__ = [
     "blup_from_subset",
     "SpecTestResult",
     "overid_wald_test",
+    "CumulantTestResult",
+    "overid_cumulant_test",
     "DeconvDensity",
     "deconvolve_error_law",
     "ConformalResult",
@@ -103,6 +112,9 @@ __all__ = [
     "BootstrapCI",
     "bootstrap_moments",
     "bootstrap_point_id",
+    "BaselineComparison",
+    "compare_baselines",
+    "compare_baselines_confounded",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

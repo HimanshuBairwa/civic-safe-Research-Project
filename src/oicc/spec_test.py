@@ -202,3 +202,165 @@ def overid_wald_test(
         kind=kind,
         underpowered=underpowered,
     )
+
+
+# =========================================================================== #
+# Third-cumulant over-identification test (power at K=3; all-order impossibility)
+# =========================================================================== #
+#
+# Under the one-factor model Y^c = alpha_c + beta_c*theta + eps^c with mutually
+# independent errors, the THIRD cross-cumulants inherit the same rank-1 loading
+# structure as the covariances:
+#
+#     Cum(Y^a, Y^b, Y^c) = kappa3(theta) * beta_a beta_b beta_c   (a,b,c distinct)
+#     Cum(Y^a, Y^a, Y^b) = kappa3(theta) * beta_a^2 beta_b
+#
+# So log|Cum(Y^a,Y^b,Y^c)| = a_a + a_b + a_c + const_3 is an ADDITIVE model in the
+# log-loadings (a_j = log|beta_j|) -- exactly analogous to the covariance tetrad
+# test, but on third cumulants. Its residuals are over-identifying restrictions
+# that exist even at K=3 (where the second-moment test has df=0), giving GENUINE
+# power there. And -- crucially -- a common-mode confounder W proportional to beta
+# leaves these third-cumulant restrictions satisfied too (it merges into the
+# single factor at every order), so this test is ALSO blind to Delta-parallel:
+# an empirical demonstration that the impossibility holds at every moment order,
+# not just the second. This pre-empts the "just use higher moments / ICA"
+# objection.
+#
+# The test is only meaningful when theta is detectably non-Gaussian (kappa3 != 0);
+# we gate on that and report `usable`.
+
+
+@dataclass
+class CumulantTestResult:
+    """Result of the third-cumulant over-identification test.
+
+    stat : float, Wald statistic on the third-cumulant rank-1 residuals.
+    pvalue : float.
+    df : int, number of over-identifying restrictions (residual dimension).
+    theta_skew : float, standardized third cumulant of the recovered factor
+        (near 0 => theta is ~Gaussian and the test has no leverage).
+    usable : bool, True if theta is detectably non-Gaussian (|theta_skew| above a
+        small threshold) so the test carries information.
+    """
+
+    stat: float
+    pvalue: float
+    df: int
+    theta_skew: float
+    usable: bool
+
+
+def _third_cumulants(Y: ArrayF) -> tuple[ArrayF, list]:
+    """Return (log|cumulant| vector, index-multiset list) over triples with <=2
+    distinct channels repeated, capturing the rank-1 third-order structure."""
+    K, n = Y.shape
+    Yc = Y - Y.mean(axis=1, keepdims=True)
+    triples = []
+    # distinct triples (need K>=3)
+    for a in range(K):
+        for b in range(a + 1, K):
+            for c in range(b + 1, K):
+                triples.append((a, b, c))
+    # repeated-pair triples (a,a,b) give extra restrictions at small K
+    for a in range(K):
+        for b in range(K):
+            if b != a:
+                triples.append((a, a, b))
+    vals = []
+    for (a, b, c) in triples:
+        cum = float(np.mean(Yc[a] * Yc[b] * Yc[c]))
+        vals.append(cum)
+    return np.array(vals), triples
+
+
+def _cumulant_design(triples: list, K: int) -> ArrayF:
+    """Design matrix for log|Cum| = sum_j (count of j in triple) * a_j + const."""
+    m = len(triples)
+    X = np.zeros((m, K + 1))
+    X[:, 0] = 1.0
+    for r, tri in enumerate(triples):
+        for j in tri:
+            X[r, 1 + j] += 1.0
+    return X
+
+
+def _cumulant_residual(Y: ArrayF) -> ArrayF:
+    vals, triples = _third_cumulants(Y)
+    K = Y.shape[0]
+    y = np.log(np.clip(np.abs(vals), 1e-12, None))
+    X = _cumulant_design(triples, K)
+    coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+    return y - X @ coef
+
+
+def _factor_skew(Y: ArrayF) -> float:
+    """Standardized skew of the recovered common factor (mean of standardized
+    channels), a scale-free proxy for kappa3(theta) != 0."""
+    Yc = Y - Y.mean(axis=1, keepdims=True)
+    sd = Yc.std(axis=1, keepdims=True)
+    sd = np.where(sd > 1e-9, sd, 1.0)
+    f = (Yc / sd).mean(axis=0)
+    fs = f.std()
+    if fs < 1e-9:
+        return 0.0
+    fz = (f - f.mean()) / fs
+    return float(np.mean(fz ** 3))
+
+
+def overid_cumulant_test(
+    log_channels: ArrayF,
+    n_boot: int = 400,
+    seed: int = 0,
+    block: int = 1,
+    skew_threshold: float = 0.15,
+) -> CumulantTestResult:
+    """Third-cumulant over-identification test (loading-invariant).
+
+    Provides genuine over-ID power at K=3 (where the second-moment tetrad test has
+    df=0) whenever the latent factor is detectably non-Gaussian. Blind to a
+    common-mode confounder proportional to beta -- demonstrating the impossibility
+    holds at third order too.
+
+    Parameters
+    ----------
+    log_channels : (K, n) array, K >= 3.
+    n_boot : int, bootstrap replications for the residual covariance.
+    seed : int, RNG seed.
+    block : int, moving-block length for dependent panels (1 = i.i.d.).
+    skew_threshold : float, |factor skew| below which theta is treated as
+        Gaussian and the test is flagged `usable=False`.
+
+    Returns
+    -------
+    CumulantTestResult
+    """
+    Y = _as_2d_channels(log_channels)
+    K, n = Y.shape
+    if K < 3:
+        raise ValueError(f"third-cumulant test needs K >= 3; got {K}")
+    rng = np.random.default_rng(seed)
+
+    r0 = _cumulant_residual(Y)
+    df = int(r0.size - K)
+    if df < 1:
+        df = 1
+    boot = np.empty((n_boot, r0.size))
+    for b in range(n_boot):
+        boot[b] = _cumulant_residual(Y[:, _boot_indices(n, block, rng)])
+    V = np.cov(boot.T)
+    V = np.atleast_2d(V)
+    ridge = 1e-10 * (np.trace(V) / max(V.shape[0], 1) + 1e-12)
+    Vr = V + ridge * np.eye(V.shape[0])
+    stat = float(r0 @ np.linalg.pinv(Vr) @ r0)
+    pvalue = float(stats.chi2.sf(stat, df))
+
+    skew = _factor_skew(Y)
+    usable = abs(skew) >= skew_threshold
+
+    return CumulantTestResult(
+        stat=stat,
+        pvalue=pvalue,
+        df=df,
+        theta_skew=skew,
+        usable=usable,
+    )
