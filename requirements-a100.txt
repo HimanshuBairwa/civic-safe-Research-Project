@@ -1,0 +1,49 @@
+# =============================================================================
+# Pinned environment for running the FULL CIVIC-SAFE + OICC codebase on an
+# NVIDIA A100 (CUDA 12.1). Reproducible, GPU-ready, no compiled PyG extensions
+# needed (the model uses only torch_geometric.nn.GATv2Conv, which is pure-Python).
+#
+# Install on the A100 (after CUDA drivers are present):
+#   pip install --index-url https://download.pytorch.org/whl/cu121 \
+#       torch==2.4.1
+#   pip install -r requirements-a100.txt
+#
+# Or just use the Dockerfile, which pins everything for you.
+#
+# numpy is held < 2.1 so the torch/torch_geometric/statsmodels stack is on the
+# exact major it was validated against; the OICC package is numpy-2-safe anyway.
+# =============================================================================
+
+# --- core scientific stack (validated versions) ---
+numpy==1.26.4
+scipy>=1.12,<1.16
+pandas==2.2.3
+statsmodels==0.14.6
+pyarrow>=15,<18
+
+# --- deep learning (torch installed separately from the cu121 index) ---
+# torch==2.4.1              # install via the pytorch cu121 wheel index (see above)
+torch-geometric==2.6.1
+
+# --- config / tracking / geospatial ---
+hydra-core==1.3.2
+omegaconf==2.3.0
+wandb>=0.16,<1.0
+geopandas>=0.14,<1.0
+shapely>=2.0,<3.0
+networkx>=3.0,<4.0
+
+# --- viz / utils ---
+matplotlib>=3.7,<4.0
+tqdm>=4.66
+rich>=13.7
+
+# --- optional baseline/analysis deps (scripts lazy-import these; listed so a
+#     full environment has them. The scripts run without them, skipping only
+#     the specific baseline/plot that needs the missing one) ---
+xgboost>=2.0
+scikit-learn>=1.3
+seaborn>=0.13
+
+# --- dev / test ---
+pytest>=8.0

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from oicc.measurement import generate_proximal
-from oicc.proximal import point_identify
+from oicc.proximal import point_identify, exclusion_sensitivity
 from oicc.monitor import EProcessMonitor
 
 
@@ -101,3 +101,44 @@ def test_monitor_validates_inputs():
     m = EProcessMonitor()
     with pytest.raises(ValueError):
         m.update(1.5)                                 # p out of [0,1]
+
+
+# --------------------------------------------------------------------------- #
+# Exclusion-sensitivity analysis (answers the reviewer's #1 objection)
+# --------------------------------------------------------------------------- #
+def test_exclusion_sensitivity_band_collapses_at_eps0():
+    """At eps=0 (valid exclusion) the band is exactly the point estimate."""
+    d = generate_proximal(n=6000, seed=0, K=4, Q=2, cm_strength=1.0,
+                          ctrl_theta_load=0.0)
+    es = exclusion_sensitivity(d.signal_channels, d.controls, eps_max=0.3)
+    assert es.var_theta_lo[0] == pytest.approx(es.var_theta_ref, rel=1e-6)
+    assert es.var_theta_hi[0] == pytest.approx(es.var_theta_ref, rel=1e-6)
+
+
+def test_exclusion_sensitivity_band_widens_with_eps():
+    d = generate_proximal(n=6000, seed=0, K=4, Q=2, cm_strength=1.0)
+    es = exclusion_sensitivity(d.signal_channels, d.controls, eps_max=0.3)
+    width0 = es.var_theta_hi[0] - es.var_theta_lo[0]
+    width_end = es.var_theta_hi[-1] - es.var_theta_lo[-1]
+    assert width_end > width0
+    assert 0.0 <= es.robustness_eps <= 1.0
+
+
+def test_exclusion_sensitivity_band_contains_truth_under_violation():
+    """KEY: with a KNOWN exclusion violation, the swept band brackets the true
+    Var(theta) that the naive point-ID misses."""
+    for dl in (0.0, 0.15, 0.30):
+        d = generate_proximal(n=8000, seed=1, K=4, Q=2, cm_strength=1.2,
+                              ctrl_theta_load=dl)
+        true = np.var(d.theta)
+        es = exclusion_sensitivity(d.signal_channels, d.controls,
+                                   eps_max=0.4, n_grid=17)
+        lo = float(es.var_theta_lo.min())
+        hi = float(es.var_theta_hi.max())
+        assert lo <= true <= hi, f"band [{lo},{hi}] missed true {true} at delta={dl}"
+
+
+def test_exclusion_sensitivity_requires_two_controls():
+    d = generate_proximal(n=2000, seed=0, K=4, Q=1, cm_strength=1.0)
+    with pytest.raises(ValueError):
+        exclusion_sensitivity(d.signal_channels, d.controls)

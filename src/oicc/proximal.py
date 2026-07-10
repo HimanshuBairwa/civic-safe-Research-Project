@@ -295,3 +295,164 @@ def point_identify(
         ctrl_load=m,
         identified=True,
     )
+
+
+def _var_theta_from_blocks(
+    Cyy: ArrayF, Cyn: ArrayF, Cnn: ArrayF, pivot: int
+) -> float:
+    """Naive proximal point-ID of Var(theta) from covariance BLOCKS (no gate).
+
+    Implements the deconfounding identities (m_q via cross-cov ratios, Var(W) via
+    control pairs, l_c, clean covariance, triad) directly on supplied blocks.
+    Shared by `point_identify` and the exclusion-sensitivity forward simulation.
+    """
+    K = Cyy.shape[0]
+    Q = Cnn.shape[0]
+    ref = Cyn[:, 0]
+    safe_ref = np.where(np.abs(ref) > 1e-9, ref, np.nan)
+    m = np.ones(Q)
+    for q in range(1, Q):
+        ratios = Cyn[:, q] / safe_ref
+        m[q] = float(np.nanmedian(ratios)) if np.any(np.isfinite(ratios)) else 1.0
+    m = np.where(np.isfinite(m), m, 1.0)
+    w_ests = [Cnn[q, r] / (m[q] * m[r])
+              for q in range(Q) for r in range(q + 1, Q)
+              if abs(m[q] * m[r]) > 1e-9]
+    var_W = max(float(np.median(w_ests)) if w_ests else _VAR_FLOOR, _VAR_FLOOR)
+    l = Cyn[:, 0] / var_W
+    l = np.where(np.isfinite(l), l, 0.0)
+    C_clean = Cyy - var_W * np.outer(l, l)
+    np.fill_diagonal(C_clean, np.diag(Cyy))
+    tetr = [C_clean[pivot, j] * C_clean[pivot, k] / C_clean[j, k]
+            for j in range(K) for k in range(j + 1, K)
+            if j != pivot and k != pivot and abs(C_clean[j, k]) > 1e-9]
+    if tetr:
+        return max(float(np.median(tetr)), _VAR_FLOOR)
+    others = [c for c in range(K) if c != pivot]
+    d = C_clean[others[0], others[1]]
+    if abs(d) > 1e-9:
+        return max(float(C_clean[pivot, others[0]] * C_clean[pivot, others[1]] / d),
+                   _VAR_FLOOR)
+    return _VAR_FLOOR
+
+
+@dataclass
+class ExclusionSensitivity:
+    """Sensitivity of the point-identified Var(theta) to an exclusion violation.
+
+    eps_grid : sensitivity levels swept (fraction of a control's systematic
+        variance explained by theta; 0 = valid exclusion).
+    var_theta_lo, var_theta_hi : (len eps_grid,) lower/upper implied Var(theta)
+        over both signs of the violation, at each eps.
+    var_theta_ref : Var(theta) under the exclusion (eps=0) -- the headline point.
+    robustness_eps : smallest eps at which the band deviates from the reference by
+        more than `rel_tol` (a Cinelli--Hazlett-style robustness value); 1.0 if
+        the conclusion never flips within the grid.
+    rel_tol : the relative-deviation threshold used.
+    """
+
+    eps_grid: ArrayF
+    var_theta_lo: ArrayF
+    var_theta_hi: ArrayF
+    var_theta_ref: float
+    robustness_eps: float
+    rel_tol: float
+
+
+def exclusion_sensitivity(
+    signal_channels: ArrayF,
+    controls: ArrayF,
+    pivot: int = 0,
+    eps_max: float = 0.3,
+    n_grid: int = 13,
+    rel_tol: float = 0.2,
+) -> ExclusionSensitivity:
+    """How much could Var(theta) move if the controls secretly carry theta?
+
+    The negative-control exclusion (controls carry the confounder W but NOT the
+    latent theta) is UNTESTABLE. This sweeps a bounded violation, parameterized by
+    eps = fraction of each control's systematic variance explained by theta
+    (Cinelli--Hazlett flavored), and reports the band of implied Var(theta) over
+    eps in [0, eps_max] and both violation signs -- a quantitative robustness
+    statement for the reviewer's sharpest objection.
+
+    Method (forward simulation from the eps=0 structural fit): fit (beta, l, m,
+    Var theta, Var W) assuming exclusion; for each (eps, sign) map to a control
+    theta-loading delta_q = sign * m_q * sqrt(VarW/VarTheta * eps/(1-eps)),
+    forward-simulate the covariance the analyst would then observe, and re-run the
+    naive point-ID to read the Var(theta) it would report.
+
+    HONEST SCOPE: eps_max is an expert prior, NOT estimable from data; the sign of
+    the violation is unidentified (hence both are swept). This is a bounded bias
+    analysis, not a repair -- it says "the estimate is robust up to eps_max," or,
+    if the band is wide, "the estimate is fragile to plausible exclusion
+    violations." It does not identify the true Var(theta).
+    """
+    Y = _as_2d_channels(signal_channels)
+    N = np.asarray(controls, dtype=float)
+    if N.ndim != 2 or N.shape[1] != Y.shape[1]:
+        raise ValueError("controls must be (Q, n) with n matching the channels")
+    K, n = Y.shape
+    Q = N.shape[0]
+    if Q < 2:
+        raise ValueError("exclusion_sensitivity needs Q >= 2 controls")
+    if not (0.0 <= eps_max < 1.0):
+        raise ValueError(f"eps_max must be in [0,1); got {eps_max}")
+
+    # reference structural fit under the exclusion (eps = 0)
+    ref = point_identify(Y, N, pivot=pivot)
+    var_theta_ref = float(ref.var_theta_clean)
+    var_W = max(float(ref.var_W), _VAR_FLOOR)
+    beta = np.asarray(ref.beta_clean, dtype=float)
+    l = np.asarray(ref.signal_cm_load, dtype=float)
+    m = np.asarray(ref.ctrl_load, dtype=float)
+    if not np.all(np.isfinite(m)) or m.size != Q:
+        m = np.ones(Q)
+
+    ratio = var_W / max(var_theta_ref, _VAR_FLOOR)
+    signs = list(_sign_combos(Q))
+    eps_grid = np.linspace(0.0, eps_max, n_grid)
+
+    lo = np.empty(n_grid)
+    hi = np.empty(n_grid)
+    for i, eps in enumerate(eps_grid):
+        reported = []
+        r_mag = np.sqrt(ratio * eps / (1.0 - eps)) if eps < 1.0 else np.inf
+        for sg in signs:
+            delta = np.array(sg, dtype=float) * m * r_mag  # (Q,)
+            # forward-simulate the observed covariance blocks under this delta
+            Cyy = beta[:, None] * beta[None, :] * var_theta_ref \
+                + l[:, None] * l[None, :] * var_W
+            np.fill_diagonal(Cyy, np.diag(Cyy) + 1.0)
+            Cyn = (l[:, None] * m[None, :] * var_W
+                   + beta[:, None] * delta[None, :] * var_theta_ref)  # (K,Q)
+            Cnn = m[:, None] * m[None, :] * var_W \
+                + delta[:, None] * delta[None, :] * var_theta_ref
+            np.fill_diagonal(Cnn, np.diag(Cnn) + 1.0)
+            reported.append(_var_theta_from_blocks(Cyy, Cyn, Cnn, pivot))
+        lo[i] = min(reported)
+        hi[i] = max(reported)
+
+    # robustness eps: first grid point whose band deviates from ref by > rel_tol
+    rob = 1.0
+    for i, eps in enumerate(eps_grid):
+        dev = max(abs(lo[i] - var_theta_ref), abs(hi[i] - var_theta_ref))
+        if dev > rel_tol * max(abs(var_theta_ref), _VAR_FLOOR):
+            rob = float(eps)
+            break
+
+    return ExclusionSensitivity(
+        eps_grid=eps_grid,
+        var_theta_lo=lo,
+        var_theta_hi=hi,
+        var_theta_ref=var_theta_ref,
+        robustness_eps=rob,
+        rel_tol=rel_tol,
+    )
+
+
+def _sign_combos(Q: int):
+    """Yield all +/-1 sign vectors of length Q (Q small)."""
+    from itertools import product
+    for combo in product((1.0, -1.0), repeat=Q):
+        yield combo

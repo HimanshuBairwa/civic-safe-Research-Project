@@ -257,15 +257,21 @@ def generate_proximal(
     cm_strength: float = 1.0,
     theta_sd: float = 0.6,
     theta_x_coef: float = 0.5,
+    ctrl_theta_load: float = 0.0,
 ) -> ProximalChannels:
     """Generate signal channels with a common-mode confounder W + negative controls.
 
     Signal:   Y^c = alpha_c + beta_c*theta + cm_load_c*W + eps^c   (c = 1..K)
-    Controls: N^q = a_q + ctrl_load_q*W + nu^q                     (q = 1..Q)
+    Controls: N^q = a_q + ctrl_load_q*W + delta_q*theta + nu^q     (q = 1..Q)
 
     W loads on the signal channels ALONG a direction correlated with beta (so the
     over-identification test is blind to it). The controls give an INDEPENDENT
-    handle on W: they respond to W but NOT to theta. `cm_strength` scales Var(W).
+    handle on W: they respond to W but (if the exclusion holds) NOT to theta.
+    `cm_strength` scales Var(W).
+
+    `ctrl_theta_load` (delta) injects an EXCLUSION VIOLATION: each control also
+    carries theta with this loading (0 = valid exclusion). Used to validate the
+    exclusion-sensitivity analysis against ground truth.
 
     Q >= 2 controls point-identify the W-contamination (see proximal.py);
     Q == 1 gives detection + partial correction only.
@@ -301,7 +307,9 @@ def generate_proximal(
     ctrl_alpha = np.linspace(-0.2, 0.2, Q)
     N = np.empty((Q, n))
     for q in range(Q):
-        N[q] = ctrl_alpha[q] + ctrl_load[q] * W + rng.normal(0.0, ctrl_noise[q], n)
+        N[q] = (ctrl_alpha[q] + ctrl_load[q] * W
+                + ctrl_theta_load * theta            # exclusion violation (delta)
+                + rng.normal(0.0, ctrl_noise[q], n))
 
     return ProximalChannels(
         signal_channels=Y,

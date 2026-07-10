@@ -61,6 +61,8 @@ from oicc.proximal import (
     proximal_deconfound,
     PointIDResult,
     point_identify,
+    ExclusionSensitivity,
+    exclusion_sensitivity,
 )
 from oicc.monitor import (
     EProcessMonitor,
@@ -95,10 +97,12 @@ __all__ = [
     "proximal_deconfound",
     "PointIDResult",
     "point_identify",
+    "ExclusionSensitivity",
+    "exclusion_sensitivity",
     "EProcessMonitor",
     "BootstrapCI",
     "bootstrap_moments",
     "bootstrap_point_id",
 ]
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"

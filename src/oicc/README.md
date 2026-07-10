@@ -24,8 +24,9 @@ victimization survey, accountability/complaint data), OICC:
    (`cf_deconv.py`),
 5. **escapes the fatal blind spot** with negative-control / proximal inference
    (`proximal.py`): `proximal_deconfound` removes a common-mode confounder the
-   over-ID test cannot see, and `point_identify` (Q>=2 controls) **point-
-   identifies** the true latent variance,
+   over-ID test cannot see, `point_identify` (Q>=2 controls) **point-identifies**
+   the true latent variance, and `exclusion_sensitivity` **quantifies** how much
+   the estimate could move if the controls' (untestable) exclusion is violated,
 6. **monitors deployment** with an anytime-valid e-process (`monitor.py`):
    time-uniform false-alarm control on a stream of over-ID p-values,
 7. **quantifies uncertainty** with (block) bootstrap CIs on every estimator
