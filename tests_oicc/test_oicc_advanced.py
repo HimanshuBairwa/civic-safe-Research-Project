@@ -142,3 +142,45 @@ def test_exclusion_sensitivity_requires_two_controls():
     d = generate_proximal(n=2000, seed=0, K=4, Q=1, cm_strength=1.0)
     with pytest.raises(ValueError):
         exclusion_sensitivity(d.signal_channels, d.controls)
+
+
+# --------------------------------------------------------------------------- #
+# Block bootstrap for the over-ID test (dependent-panel correctness)
+# --------------------------------------------------------------------------- #
+def test_block_bootstrap_backward_compatible():
+    """block=1 reproduces the i.i.d. behavior: size ~0 under H0, power ~1."""
+    import oicc
+    size = np.mean([oicc.overid_wald_test(
+        oicc.generate(n=3000, seed=s, K=4).log_channels, seed=s, block=1
+    ).pvalue < 0.05 for s in range(15)])
+    power = np.mean([oicc.overid_wald_test(
+        oicc.generate(n=3000, seed=s, K=4, confound_pair=0.6).log_channels,
+        seed=s, block=1).pvalue < 0.05 for s in range(15)])
+    assert size <= 0.15 and power >= 0.8
+
+
+def test_block_bootstrap_more_conservative_under_dependence():
+    """On a serially dependent panel, block>1 must not be MORE liberal than iid
+    (it should widen the null variance -> larger or equal p-value on average)."""
+    import oicc
+    rng = np.random.default_rng(0)
+    # build a one-factor panel with autocorrelated latent (dependence)
+    n, K = 400, 4
+    theta = np.zeros(n)
+    for t in range(1, n):
+        theta[t] = 0.8 * theta[t - 1] + rng.normal(0, 0.5)
+    beta = np.array([1.0, 1.1, 1.2, 1.3])
+    Y = np.vstack([beta[c] * theta + rng.normal(0, 0.4, n) for c in range(K)])
+    p_iid = np.mean([oicc.overid_wald_test(Y, seed=s, block=1).pvalue
+                     for s in range(8)])
+    p_blk = np.mean([oicc.overid_wald_test(Y, seed=s, block=20).pvalue
+                     for s in range(8)])
+    # block bootstrap should be at least as conservative (>= iid p on average)
+    assert p_blk >= p_iid - 0.05
+
+
+def test_bootstrap_pvalue_option_runs():
+    import oicc
+    c = oicc.generate(n=2000, seed=0, K=4)
+    r = oicc.overid_wald_test(c.log_channels, seed=0, bootstrap_pvalue=True)
+    assert 0.0 <= r.pvalue <= 1.0
