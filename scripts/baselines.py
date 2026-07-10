@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from xgboost import XGBRegressor
 
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
@@ -254,6 +253,7 @@ def run_zinb(train_ds, test_ds, adj) -> dict[str, float] | None:
 
 def run_xgboost(train_ds, test_ds, adj) -> dict[str, float]:
     """4. Spatiotemporal XGBoost baseline."""
+    from xgboost import XGBRegressor  # lazy import: optional dep
     X_train, y_train = extract_features(train_ds, adj)
     X_test, y_test = extract_features(test_ds, adj)
     

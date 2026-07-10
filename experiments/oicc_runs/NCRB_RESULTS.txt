@@ -1,0 +1,62 @@
+========================================================================
+OICC on REAL India NCRB data (state-year, 2001-2010)
+========================================================================
+channels (K=4): ['ipc', 'distress', 'cap', 'acct']
+aligned state-year cells: N=253  (states=28)
+
+[1] One-factor structure (pivot = recorded IPC crime)
+    loading beta[ipc     ] = +1.000   noise_var = 0.310
+    loading beta[distress] = +1.270   noise_var = 9.588
+    loading beta[cap     ] = +1.194   noise_var = 2.783
+    loading beta[acct    ] = +0.624   noise_var = 1.453
+    Var(latent) = 2.557
+
+[2] Over-identification specification test
+    kind=logcov-tetrad  df=2  stat=4.852  p=0.0884
+    verdict: do NOT reject one-factor+CI in detectable directions
+    (honest: this cannot see common-mode Delta-parallel violations; delta_perp_hat=0.1062)
+
+[3] Recovered latent (deconvolved) signal - top/bottom states (mean)
+    highest latent: ['maharashtra', 'madhya pradesh', 'andhra pradesh']
+    lowest  latent: ['nagaland', 'mizoram', 'meghalaya']
+
+[4b] Proximal negative-control probe (accountability channel as control)
+    control explains per-channel variance: [0.36, 0.12, 0.22]
+    identified (Q>=2)? False  (Q=1 here -> DETECTION + partial correction only)
+    (honest: with one control this only detects/partially removes a
+     common mode; point-ID needs a second independent control.)
+
+[4d] Proximal POINT-ID with TWO independent accountability controls
+    signals=['ipc', 'distress', 'cap']  controls=['custodial_deaths', 'hr_violations']  N=189
+    naive Var(latent)      = 2.385  CI[0.964, 3.411]
+    POINT-ID clean Var(lat)= 0.726  CI[0.000, 2.137]
+    estimated Var(common mode W) = 1.898
+    reading: the two controls reveal a sizeable common mode; removing
+    it lowers the latent variance. HONEST CAVEAT: custodial deaths /
+    HR violations plausibly carry real enforcement signal (exclusion
+    may fail), and N=189 gives wide CIs -- treat as illustrative of
+    the METHOD on real data, not a definitive Indian-crime estimate.
+
+[4c] Anytime-valid drift monitor (per-year over-ID p-value stream)
+    per-year over-ID p-values: [0.952, 0.883, 0.478, 0.914, 0.805, 0.998, 0.475, 0.724, 0.75, 0.439]
+    final e-process wealth=0.00  alarm=False  (alarm => structure drift detected, time-uniform 5% false-alarm)
+
+[5] Leave-pivot-out latent band; common-mode knob sweep (mean width)
+    gamma_cm=0.00  mean band width=3.274  data-driven infl=0.170  knob infl=0.000
+    gamma_cm=0.25  mean band width=4.073  data-driven infl=0.170  knob infl=0.400
+    gamma_cm=0.50  mean band width=4.873  data-driven infl=0.170  knob infl=0.800
+    gamma_cm=1.00  mean band width=6.472  data-driven infl=0.170  knob infl=1.599
+
+[6] Honest limitations
+    * No ground-truth latent on real data -> latent coverage is NOT
+      claimed here; it is validated on synthetic ground truth in tests.
+    * State-year, N~253: small; treat estimates as illustrative.
+    * Channels measure DIFFERENT constructs (offending vs mistreatment);
+      the shared-factor assumption is a modeling choice the over-ID test
+      partially checks (detectable directions only).
+    * Distress calls are police-logged -> partial shared filter with the
+      pivot; the strongest-independence channel is the accountability one.
+    * Common-mode (all-channel) bias is UNIDENTIFIABLE from the signal
+      channels alone; the negative-control probe ([4b]) and the gamma_cm
+      knob are the honest ways to detect/bound it -- point-ID needs two
+      valid controls, whose exclusion assumption is untestable.
