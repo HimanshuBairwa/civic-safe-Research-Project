@@ -78,13 +78,18 @@ def run(data_dir: Path | None = _DEFAULT_DATA) -> dict:
     out(f"    Var(latent) = {fm.var_theta:.3f}")
     out("")
 
-    # --- over-ID specification test ---
+    # --- over-ID specification test (i.i.d. AND dependence-robust block bootstrap) ---
     spec = overid_wald_test(Y, seed=0)
+    # state-year panels are serially dependent -> a moving-block bootstrap gives
+    # an honest (non-anticonservative) p-value; report it as the headline.
+    spec_blk = overid_wald_test(Y, seed=0, block=5, bootstrap_pvalue=True)
     out("[2] Over-identification specification test")
-    out(f"    kind={spec.kind}  df={spec.df}  stat={spec.stat:.3f}  "
-        f"p={spec.pvalue:.4f}")
+    out(f"    kind={spec.kind}  df={spec.df}  stat={spec.stat:.3f}")
+    out(f"    i.i.d. bootstrap p       = {spec.pvalue:.4f}")
+    out(f"    block bootstrap p (b=5)  = {spec_blk.pvalue:.4f}  "
+        f"<- dependence-robust headline")
     verdict = ("REJECT one-factor+CI (a DETECTABLE dependence violation exists)"
-               if spec.pvalue < 0.05 else
+               if spec_blk.pvalue < 0.05 else
                "do NOT reject one-factor+CI in detectable directions")
     out(f"    verdict: {verdict}")
     out(f"    (honest: this cannot see common-mode Delta-parallel violations; "

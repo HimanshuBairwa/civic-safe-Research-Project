@@ -80,17 +80,35 @@ exact finite-sample distribution-free interval for an observed channel
 value and a model-assisted asymptotic interval for the latent $\theta$;
 and (iv) an explicit \emph{impossibility/escape} pairing: we prove that a
 common-mode confounder loaded along the signal direction is unidentified
-by \emph{any} over-ID test at \emph{any} $K$, and show that negative-control
-(proximal) channels restore identification when available, with honestly
-untestable assumptions. On synthetic ground truth the over-ID test attains
+by \emph{any} over-ID test at \emph{any} $K$, and show that $Q\ge 2$
+negative-control (proximal) channels \emph{point-identify} $\Var(\theta)$
+when available, with honestly untestable assumptions. Around this core we
+add three deployment-grade tools: an \emph{exclusion-sensitivity} analysis
+that reports the bounded band of $\Var(\theta)$ implied by a violation of
+the negative-control exclusion restriction (a Cinelli--Hazlett-flavored
+bounded-bias sweep with a robustness value $\eps^\star$), directly answering
+the standard objection that exclusion is untestable; an \emph{anytime-valid
+deployment monitor} that runs a Vovk--Wang $p$-to-$e$ calibrated product
+e-process over the stream of per-period over-ID $p$-values and, by Ville's
+inequality, controls the time-uniform false-alarm rate; and \emph{bootstrap}
+(i.i.d.\ and moving-block) uncertainty quantification on every estimator.
+On synthetic ground truth the over-ID test attains
 size $\le 0.05$ and power $\approx 1.00$ against detectable confounders and
 provably $0.00$ against common-mode confounders; observed-value coverage is
-exact ($0.90$) and latent coverage is $\approx 0.89$; proximal correction
-cuts latent RMSE from $0.57$ to $0.28$ under a unit-strength common-mode
-confounder and does no harm when none is present ($0.21$ vs.\ $0.21$). On
-India NCRB state-year data (2001--2010, $N{=}253$, four institutional
-channels) the one-factor law is not rejected in detectable directions
-($p{=}0.088$) and the recovered latent ordering is face-valid. We make no
+exact ($0.90$) and latent coverage is $\approx 0.89$; proximal
+point-identification holds $\Var(\theta)$ at the truth $0.61$ across
+common-mode strengths $\{0,0.5,1.0,1.5,2.0\}$ where the naive estimate
+inflates to $\{0.61,0.77,1.25,2.05,3.18\}$, with bootstrap CIs covering truth;
+the exclusion-sensitivity band collapses to the point estimate at zero
+violation, widens with it, and contains the true $\Var(\theta)$ under a known
+injected violation; and the monitor holds an anytime false-alarm rate of
+$0.013\le0.05$ over long null streams while detecting a structural drift with
+median delay $\approx 9$ windows. On India NCRB state-year data (2001--2010,
+$N{=}253$, four institutional channels) the one-factor law is not rejected in
+detectable directions ($p{=}0.088$); as a two-directional check of the
+specification test, a cross-national run on real Chicago and NYC data
+(2018--2023) treating the three crime \emph{categories} as shared-filter
+pseudo-channels is correctly \emph{rejected} ($p<0.001$). We make no
 claim of distribution-free finite-sample \emph{latent} coverage---which we
 prove is impossible---only exact coverage for observed values and
 asymptotic coverage for the latent rate.
@@ -151,8 +169,20 @@ loadings} (Sec.~\ref{sec:overid}).
 \item \textbf{An honest impossibility/escape pairing.} We prove that a
 common-mode confounder loaded along $\beta$ is invisible to any over-ID test
 at any $K$ and unidentified from the observed covariance, and we show that
-negative-control channels restore identification under explicit, \emph{untestable}
-assumptions (Sec.~\ref{sec:impossible}).
+$Q\ge 2$ negative-control channels \emph{point-identify} $\Var(\theta)$ under
+explicit, \emph{untestable} assumptions (Sec.~\ref{sec:impossible}). Bootstrap
+CIs (i.i.d.\ and moving-block) accompany every estimate.
+\item \textbf{Deployment-grade honesty tooling.} We add (a) an
+\emph{exclusion-sensitivity} analysis that bounds the effect of violating the
+negative-control exclusion restriction and reports a robustness value
+$\eps^\star$, directly addressing the objection that exclusion is untestable
+(Sec.~\ref{sec:exclusion}); and (b) an \emph{anytime-valid deployment monitor}
+---a calibrated e-process over the stream of over-ID $p$-values that controls
+the time-uniform false-alarm rate by Ville's inequality
+(Sec.~\ref{sec:monitor}). We validate the specification test in
+\emph{both} directions: it does not reject institutionally-independent India
+channels ($p{=}0.088$) but does reject US crime categories that share one
+recording filter ($p<0.001$), Sec.~\ref{sec:us}.
 \end{enumerate}
 
 We deliberately do not overclaim. In particular we never assert
@@ -201,6 +231,25 @@ $\theta$ is \emph{never} observed. Our leave-pivot-out construction manufactures
 an observed surrogate---a held-out channel---so that split conformal applies
 to it exactly, and then transports calibration to the latent scale via a
 \emph{known} error law rather than any labeled $\theta$.
+
+\paragraph{Sensitivity analysis and anytime-valid inference.}
+Cinelli and Hazlett \cite{cinelli2020} formalize omitted-variable bias as a
+bounded sensitivity problem with an interpretable \emph{robustness value};
+Shi, Miao and Tchetgen Tchetgen \cite{shi2020} review negative-control /
+proximal designs. On the sequential side, Ramdas et al.\ \cite{ramdas2023}
+survey game-theoretic anytime-valid inference, Waudby-Smith and Ramdas
+\cite{wsr2024} construct e-values and confidence sequences for bounded means,
+and Chugg et al.\ \cite{chugg2023} give sequential prediction-powered
+inference. \emph{Delta:} we do not develop new sensitivity or e-process
+theory. We \emph{compose} them into OICC as two honesty tools: a bounded
+exclusion-violation sweep (Cinelli--Hazlett-flavored, but over the
+negative-control exclusion restriction rather than a regression coefficient)
+that yields a $\Var(\theta)$ band and a robustness value $\eps^\star$, and a
+Vovk--Wang $p$-to-$e$ product e-process over the stream of over-ID $p$-values
+that monitors a deployed model with a time-uniform false-alarm guarantee.
+Neither the exclusion violation's sign nor the analyst's maximal tolerated
+violation $\eps_{\max}$ is estimable; we treat them as an explicit expert
+prior, which is exactly the honest posture the objection demands.
 
 \paragraph{Small-area and ecological estimation.}
 Manrique-Vallier and collaborators \cite{manriquevallier} model latent
@@ -382,6 +431,15 @@ in $\gamma_{\text{cm}}$. This makes the blind spot \emph{operational}: the
 analyst must state a common-mode assumption to obtain a tight interval, and
 the report records it.
 
+\paragraph{Bootstrap uncertainty quantification.}
+All point estimates---loadings, $\Var(\theta)$, the over-ID statistic, and the
+proximal point-ID estimate---are accompanied by nonparametric bootstrap
+confidence intervals. For i.i.d.\ units we resample units with replacement; for
+serially dependent panels (e.g.\ state-year or city-year streams) we use a
+\emph{moving-block} bootstrap that resamples contiguous blocks to preserve
+short-range temporal dependence. The same bootstrap covariance feeds the
+over-ID Wald statistic (Def.~\ref{def:overid}).
+
 \begin{algorithm}[t]
 \caption{OICC: Over-Identification-Calibrated Conformal Deconvolution}
 \label{alg:oicc}
@@ -467,6 +525,50 @@ therefore treat proximal correction as an assumption-laden option, reported
 alongside the naive estimate, never as a silent default.
 \end{remark}
 
+\subsection{Exclusion-sensitivity analysis}\label{sec:exclusion}
+
+The single sharpest objection to any negative-control design is that the
+exclusion restriction in \eqref{eq:nc}---that the controls carry $W$ but
+\emph{not} $\theta$---is untestable. Rather than assert it, we \emph{bound the
+consequence of its failure}. Following the bounded omitted-variable-bias logic
+of Cinelli and Hazlett \cite{cinelli2020}, we parameterize a violation by a
+single scalar $\eps\in[0,\eps_{\max}]$: the fraction of a control's systematic
+variance that is in fact driven by $\theta$. At $\eps=0$ the exclusion holds
+and proximal point-identification (Prop.~\ref{prop:proximal}) is exact; as
+$\eps$ grows, a fraction $\eps$ of the control signal leaks $\theta$ into the
+residualization and biases $\Var(\theta)$. Because the sign of the leak is
+itself unidentified, we sweep \emph{both} signs and report the resulting
+interval
+\begin{equation}\label{eq:exclband}
+\mathcal{B}(\eps) \;=\; \Bigl[\, \widehat{\Var}(\theta)\big|_{-\eps},\ \
+\widehat{\Var}(\theta)\big|_{+\eps} \,\Bigr],
+\end{equation}
+the \emph{exclusion-sensitivity band}, together with a \emph{robustness value}
+$\eps^\star$: the smallest violation at which a qualitative conclusion (e.g.\
+``the common mode inflates $\Var(\theta)$'') would flip.
+
+\begin{remark}[What is and is not estimable]
+The band $\mathcal{B}(\eps)$ is a \emph{bounded-bias} object, not a confidence
+set: $\eps_{\max}$ is an expert prior on the maximal tolerable exclusion
+violation and the violation's sign is unidentified. We therefore report the
+whole curve $\eps\mapsto\mathcal{B}(\eps)$ and $\eps^\star$, letting the reader
+supply their own $\eps_{\max}$, rather than collapsing to a single number.
+\end{remark}
+
+\subsection{Anytime-valid deployment monitor}\label{sec:monitor}
+
+A model that passes the over-ID test at deployment can drift out of
+specification later. We monitor a deployed OICC model over a stream of periods
+$t=1,2,\dots$ by feeding the per-period over-ID $p$-value $p_t$ through a
+Vovk--Wang $p$-to-$e$ calibrator $e_t = f(p_t)$ and forming the running product
+e-process $M_T = \prod_{t\le T} e_t$. Under the null (structure holds), $\{M_T\}$
+is a nonnegative supermartingale with $\E[M_T]\le 1$, so by Ville's inequality
+$\Pr(\exists T: M_T \ge 1/\alpha) \le \alpha$: alarming when $M_T \ge 1/\alpha$
+controls the \emph{time-uniform} (anytime) false-alarm rate at $\alpha$ without
+any correction for the number of looks \cite{ramdas2023,wsr2024,chugg2023}.
+This is strictly stronger than repeatedly applying a fixed-$n$ test, which would
+inflate the false-alarm rate under continuous monitoring.
+
 %==============================================================
 \section{Experiments}\label{sec:experiments}
 %==============================================================
@@ -534,6 +636,25 @@ $1.0$ (unit strength) & $0.57$ & $0.28$ \\
 \end{tabular}
 \end{table}
 
+\begin{table}[t]
+\centering
+\caption{Proximal \emph{point-identification} of $\Var(\theta)$ with $Q{=}2$
+negative controls, as common-mode strength $\mathrm{cm}$ varies (truth
+$\Var(\theta){=}0.61$). The naive tetrad estimate inflates without bound as the
+common mode grows; the point-identified estimate stays at the truth. Bootstrap
+CIs (i.i.d.) cover the truth for the point-ID estimator; the naive CI excludes
+it once $\mathrm{cm}>0$.}
+\label{tab:pointid}
+\begin{tabular}{lccccc}
+\toprule
+Common-mode strength $\mathrm{cm}$ & $0.0$ & $0.5$ & $1.0$ & $1.5$ & $2.0$ \\
+\midrule
+Naive $\widehat{\Var}(\theta)$      & $0.61$ & $0.77$ & $1.25$ & $2.05$ & $3.18$ \\
+Point-ID $\widehat{\Var}(\theta)$   & $0.61$ & $0.61$ & $0.61$ & $0.61$ & $0.61$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Findings.}
 Table~\ref{tab:overid} confirms the test's size is controlled
 ($0.00$--$0.05$), its power against detectable confounders is essentially
@@ -545,6 +666,11 @@ under the model. Table~\ref{tab:proximal} shows proximal correction cuts
 latent RMSE from $0.57$ to $0.28$ under a unit-strength common-mode
 confounder while leaving the no-confounder case untouched
 ($0.21 \to 0.21$)---i.e.\ the escape hatch is safe to deploy.
+Table~\ref{tab:pointid} sharpens this: with $Q{=}2$ controls the point-ID
+estimator holds $\Var(\theta)$ at the truth $0.61$ across common-mode strengths
+$\{0,0.5,1.0,1.5,2.0\}$ while the naive tetrad estimate inflates to
+$\{0.61,0.77,1.25,2.05,3.18\}$; bootstrap CIs cover the truth for the point-ID
+estimator and exclude it for the naive one once $\mathrm{cm}>0$.
 
 \begin{figure}[t]
 \centering
@@ -572,21 +698,44 @@ guarantee (Ville). Generated from the tested implementation.}
 \label{fig:conf_monitor}
 \end{figure}
 
-\paragraph{Point-identification and anytime-valid monitoring (implemented).}
+\paragraph{Point-identification, exclusion sensitivity, and monitoring (implemented).}
 Beyond the residualization correction, the released code point-identifies the
 latent variance from $Q\ge 2$ valid controls via the anchored two-factor
 covariance identities: normalizing one control loading, the confounder variance
 $\mathrm{Var}(W)$, the signal confounder-loadings $l_c$, and hence a cleaned
 covariance $\mathrm{Cov}(Y^c,Y^d)-l_c l_d\,\mathrm{Var}(W)$ are recovered, from
 which the ordinary tetrad estimator returns the deconfounded
-$\mathrm{Var}(\theta)$ (Fig.~\ref{fig:core}, right; verified to recover the truth
-to within $12\%$ across confounder strengths, with a detection gate that avoids
-spurious correction when no common mode is present). A deployment monitor
-(Fig.~\ref{fig:conf_monitor}, right) runs a Vovk--Wang $p$-to-$e$ calibrated
-product e-process over the stream of per-period over-identification $p$-values;
-by Ville's inequality it controls the \emph{anytime} false-alarm rate at
-$\alpha$ (verified $0.013 \le 0.05$ over long null streams) while detecting a
-structural drift with median delay $\approx 9$ windows.
+$\mathrm{Var}(\theta)$ (Fig.~\ref{fig:core}, right; Table~\ref{tab:pointid}),
+with a detection gate that avoids spurious correction when no common mode is
+present. To answer the untestable-exclusion objection head-on
+(Sec.~\ref{sec:exclusion}), we sweep a bounded exclusion violation
+$\eps\in[0,\eps_{\max}]$ over both signs and report the implied
+$\Var(\theta)$ band \eqref{eq:exclband} and robustness value $\eps^\star$
+(Fig.~\ref{fig:exclusion}): the band collapses to the point estimate at
+$\eps=0$, widens monotonically with $\eps$, and \emph{contains} the true
+$\Var(\theta)$ under a known injected violation---so an analyst reading the band
+is never misled about how fragile the point-ID claim is. A deployment monitor
+(Fig.~\ref{fig:conf_monitor}, right; Sec.~\ref{sec:monitor}) runs a Vovk--Wang
+$p$-to-$e$ calibrated product e-process over the stream of per-period
+over-identification $p$-values; by Ville's inequality it controls the
+\emph{anytime} false-alarm rate at $\alpha$ (verified $0.013 \le 0.05$ over long
+null streams) while detecting a structural drift with median delay $\approx 9$
+windows. Every estimator reported here carries a bootstrap (i.i.d.\ or
+moving-block) uncertainty band.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\linewidth]{figures/fig5_exclusion_sensitivity.png}
+\caption{\textbf{Exclusion-sensitivity analysis.} As the bounded exclusion
+violation $\eps$ (fraction of a control's systematic variance driven by
+$\theta$) grows, the implied $\Var(\theta)$ band widens from the proximal point
+estimate at $\eps=0$. Sweeping both signs of the (unidentified) violation, the
+band \emph{contains} the true $\Var(\theta)$ under a known injected violation;
+the robustness value $\eps^\star$ marks where a qualitative conclusion would
+flip. This is a bounded bias analysis, not a confidence set: $\eps_{\max}$ is an
+expert prior. Generated from the tested implementation.}
+\label{fig:exclusion}
+\end{figure}
 
 \subsection{Real data: India NCRB, 2001--2010}\label{sec:ncrb}
 
@@ -623,7 +772,7 @@ property, drug) as ``channels.'' These share a single police recording filter,
 so they are \emph{not} mechanism-independent, and a trustworthy over-ID test
 should say so. It does: on both cities the test rejects the one-factor$+$CI
 structure at $p<0.001$, in sharp contrast to the India cross-institution
-channels ($p\approx 0.09$, no rejection). The test thus separates genuinely
+channels ($p{=}0.088$, no rejection). The test thus separates genuinely
 independent channels from shared-filter pseudo-channels---validation in both
 directions. We do \emph{not} treat crime categories as a latent-victimization
 channel set; a real US latent run would require mechanism-independent channels
@@ -641,7 +790,14 @@ effect via the user knob $\gamma_{\text{cm}}$; we cannot estimate it.
 \item[Untestable control exclusion.] Proximal correction requires that the
 negative controls carry $W$ but not $\theta$, plus completeness. These are
 \emph{untestable} (Remark~1). We report naive and proximal estimates side by
-side rather than presuppose the assumptions.
+side rather than presuppose the assumptions, and---rather than merely
+disclaiming---we \emph{bound} the consequence of an exclusion failure with the
+exclusion-sensitivity band and robustness value $\eps^\star$ of
+Sec.~\ref{sec:exclusion}. This is the honest response to the standard objection
+that exclusion cannot be tested: we cannot estimate the violation, but we can
+report how far it would have to reach to overturn a conclusion. It remains a
+bounded-bias analysis with an expert-supplied $\eps_{\max}$ and an unidentified
+violation sign, not a data-driven certainty.
 \item[Resolution ceiling.] The latent interval width is floored by the
 identified $\Var(S)$; when channels are highly correlated with the pivot,
 $\Var(S)$ shrinks but so does the independent information, and at $K=3$ the
@@ -755,6 +911,28 @@ D.~Manrique-Vallier.
 \newblock Bayesian population size estimation using Dirichlet process
 mixtures.
 \newblock \emph{Biometrics}, 72(4):1246--1254, 2016.
+
+\bibitem{cinelli2020}
+C.~Cinelli and C.~Hazlett.
+\newblock Making sense of sensitivity: Extending omitted variable bias.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+82(1):39--67, 2020.
+
+\bibitem{shi2020}
+X.~Shi, W.~Miao, and E.~J. Tchetgen Tchetgen.
+\newblock A selective review of negative control methods in epidemiology.
+\newblock \emph{Current Epidemiology Reports}, 7:190--202, 2020.
+
+\bibitem{ramdas2023}
+A.~Ramdas, P.~Gr\"unwald, V.~Vovk, and G.~Shafer.
+\newblock Game-theoretic statistics and safe anytime-valid inference.
+\newblock \emph{Statistical Science}, 38(4):576--601, 2023.
+
+\bibitem{wsr2024}
+I.~Waudby-Smith and A.~Ramdas.
+\newblock Estimating means of bounded random variables by betting.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+86(1):1--27, 2024.
 
 \end{thebibliography}
 

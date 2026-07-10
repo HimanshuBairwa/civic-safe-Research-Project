@@ -100,11 +100,29 @@ def _third_cumulant_scale(Y: ArrayF) -> ArrayF:
     return np.array([v2, v3])
 
 
+def _boot_indices(n: int, block: int, rng: np.random.Generator) -> ArrayF:
+    """Resample indices: i.i.d. if block<=1, else a moving-block bootstrap.
+
+    A moving-block bootstrap preserves within-block serial/spatial dependence, so
+    the residual covariance is not under-estimated on dependent panels (state-year
+    or spatial-area data) -- which would otherwise inflate the Wald statistic and
+    over-reject the one-factor null.
+    """
+    if block <= 1:
+        return rng.integers(0, n, n)
+    n_blocks = int(np.ceil(n / block))
+    starts = rng.integers(0, max(n - block + 1, 1), n_blocks)
+    idx = np.concatenate([np.arange(s, s + block) for s in starts])[:n]
+    return np.clip(idx, 0, n - 1)
+
+
 def overid_wald_test(
     log_channels: ArrayF,
     n_boot: int = 400,
     seed: int = 0,
     alpha_level: float = 0.05,
+    block: int = 1,
+    bootstrap_pvalue: bool = False,
 ) -> SpecTestResult:
     """Bootstrap Wald over-identification test (loading-invariant, correct size).
 
@@ -114,6 +132,12 @@ def overid_wald_test(
     n_boot : int, bootstrap replications for the residual covariance.
     seed : int, RNG seed for the bootstrap.
     alpha_level : float, nominal level (informational only).
+    block : int, moving-block length for the bootstrap (>1 preserves serial /
+        spatial dependence in a panel; 1 = i.i.d. resampling). Use block>1 for
+        dependent data (e.g. state-year or spatial-area panels).
+    bootstrap_pvalue : bool, if True the p-value is the bootstrap-null tail
+        probability of the Wald statistic instead of the chi-square reference
+        (more accurate at small df / small n, where chi-square over-rejects).
 
     Returns
     -------
@@ -129,8 +153,7 @@ def overid_wald_test(
         r0 = _residual_of(Y)
         boot = np.empty((n_boot, r0.size))
         for b in range(n_boot):
-            take = rng.integers(0, n, n)
-            boot[b] = _residual_of(Y[:, take])
+            boot[b] = _residual_of(Y[:, _boot_indices(n, block, rng)])
         V = np.cov(boot.T)
         moment = r0
         df = int(r0.size - K)  # residual df of the additive rank-1 model
@@ -142,8 +165,7 @@ def overid_wald_test(
         m0 = _third_cumulant_scale(Y)
         boot = np.empty((n_boot, m0.size))
         for b in range(n_boot):
-            take = rng.integers(0, n, n)
-            boot[b] = _third_cumulant_scale(Y[:, take])
+            boot[b] = _third_cumulant_scale(Y[:, _boot_indices(n, block, rng)])
         Vfull = np.cov(boot.T)
         R = np.array([[1.0, -1.0]])  # the two Var(theta) estimates must agree
         moment = R @ m0
@@ -154,8 +176,20 @@ def overid_wald_test(
     V = np.atleast_2d(V)
     ridge = 1e-10 * (np.trace(V) / max(V.shape[0], 1) + 1e-12)
     Vr = V + ridge * np.eye(V.shape[0])
-    stat = float(moment @ np.linalg.pinv(Vr) @ moment)
-    pvalue = float(stats.chi2.sf(stat, df))
+    Vr_inv = np.linalg.pinv(Vr)
+    stat = float(moment @ Vr_inv @ moment)
+
+    if bootstrap_pvalue:
+        # bootstrap-null reference: recenter each bootstrap moment and form its
+        # Wald stat against the same Vr; the p-value is the tail fraction. This
+        # avoids the chi-square small-df over-rejection.
+        centered = boot - boot.mean(axis=0, keepdims=True)
+        if K < 4:
+            centered = centered @ R.T  # apply the contrast used above
+        null_stats = np.einsum("bi,ij,bj->b", centered, Vr_inv, centered)
+        pvalue = float((null_stats >= stat).mean())
+    else:
+        pvalue = float(stats.chi2.sf(stat, df))
 
     # data-driven detectable-violation magnitude (concentrates at 0 under H0)
     delta_perp_hat = float(np.sqrt(max(stat - df, 0.0) / max(n, 1)))
