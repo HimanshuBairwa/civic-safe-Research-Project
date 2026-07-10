@@ -1,0 +1,18 @@
+# Reproducibility environment for the OICC package (lightweight core).
+# Core method needs only numpy + scipy. pandas/torch/matplotlib are for the
+# real-data loaders and figure generation. Versions are the exact ones the
+# results were produced and machine-verified with (python 3.11.3).
+#
+#   pip install -r requirements-oicc.txt
+#   PYTHONPATH=src python -m pytest tests_oicc -q          # 60 tests
+#   python experiments/oicc_runs/reproduce_all.py          # 13 assertions
+
+numpy==1.26.4
+scipy==1.17.1
+# --- optional: real-data loaders + figures ---
+pandas==2.2.3
+matplotlib==3.11.0
+# torch is only needed for the US panel loader (data/processed/*.pt)
+# torch>=2.2
+# --- dev ---
+pytest==9.0.3

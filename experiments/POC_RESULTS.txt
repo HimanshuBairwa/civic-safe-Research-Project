@@ -1,0 +1,42 @@
+========================================================================
+MULTI-CHANNEL LATENT RECOVERY + OVER-ID WALD TEST  (v2, corrected)
+========================================================================
+
+########## REGIME: CONSTANT bias (assumptions HOLD) ##########
+  latent-recovery RMSE(log-rate), lower=better:
+    records : 0.350
+    calls   : 0.398
+    survey  : 0.547
+    deconv  : 0.222  <== 3-channel
+    -> deconvolution WINS vs best single channel
+  over-ID Wald test rejection @H0 (no confounder), want ~0.05: 0.07
+  over-ID Wald test power vs confounder strength:
+    confound=0.0 -> reject 0.07
+    confound=0.3 -> reject 1.00
+    confound=0.6 -> reject 1.00
+    confound=1.0 -> reject 1.00
+
+########## REGIME: COVARIATE-DEPENDENT bias (assumption partially violated) ##########
+  latent-recovery RMSE(log-rate), lower=better:
+    records : 0.532
+    calls   : 0.410
+    survey  : 0.547
+    deconv  : 0.528  <== 3-channel
+    -> deconvolution does NOT win vs best single channel
+  over-ID Wald test rejection @H0 (no confounder), want ~0.05: 1.00
+  over-ID Wald test power vs confounder strength:
+    confound=0.0 -> reject 1.00
+    confound=0.3 -> reject 1.00
+    confound=0.6 -> reject 1.00
+    confound=1.0 -> reject 1.00
+
+========================================================================
+HONEST READ:
+ - Under constant bias, 3-channel deconvolution should beat every single
+   channel AND the Wald test should hold ~0.05 size and gain power vs a
+   confounder -> the over-ID restriction makes independence TESTABLE.
+ - Under covariate-dependent bias, recovery degrades: a real, reportable
+   limitation (the model needs the covariate, or the bias must be additive).
+ - INVISIBLE to any over-ID test: a confounder shared EQUALLY by ALL
+   channels (shifts every covariance together). This is the residual
+   untestable core; it must be stated as a named assumption, not hidden.

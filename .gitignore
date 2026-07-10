@@ -61,3 +61,12 @@ logs/
 .env
 *.key
 
+
+# OICC transient artifacts
+experiments/oicc_runs/*.output
+*.egg-info/
+.ipynb_checkpoints/
+unpushed_changes.patch
+
+# arXiv build artifacts (regenerate with make_arxiv.py)
+paper/arxiv/build/
