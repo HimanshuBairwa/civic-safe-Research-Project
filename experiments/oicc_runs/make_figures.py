@@ -178,12 +178,44 @@ def fig4_monitor():
     plt.close(fig)
 
 
+def fig5_exclusion_sensitivity():
+    from oicc.proximal import exclusion_sensitivity
+    d = generate_proximal(n=8000, seed=1, K=4, Q=2, cm_strength=1.2,
+                          ctrl_theta_load=0.0)
+    true = float(np.var(d.theta))
+    es = exclusion_sensitivity(d.signal_channels, d.controls,
+                               eps_max=0.4, n_grid=17)
+    fig, ax = plt.subplots(figsize=(5.6, 3.6))
+    ax.fill_between(es.eps_grid, es.var_theta_lo, es.var_theta_hi,
+                    color=BLUE, alpha=0.25,
+                    label=r"implied $\mathrm{Var}(\theta)$ band (both signs)")
+    ax.plot(es.eps_grid, es.var_theta_lo, color=BLUE, lw=1)
+    ax.plot(es.eps_grid, es.var_theta_hi, color=BLUE, lw=1)
+    ax.axhline(es.var_theta_ref, ls="-", color=GREEN, lw=2,
+               label=r"point estimate ($\epsilon=0$)")
+    ax.axhline(true, ls="--", color="k", lw=1.3,
+               label=r"true $\mathrm{Var}(\theta)$")
+    if es.robustness_eps < 1.0:
+        ax.axvline(es.robustness_eps, ls=":", color=RED, lw=1.5,
+                   label=fr"robustness $\epsilon^*={es.robustness_eps:.2f}$")
+    ax.set_xlabel(r"exclusion violation $\epsilon$ "
+                  r"(fraction of control variance driven by $\theta$)")
+    ax.set_ylabel(r"$\mathrm{Var}(\theta)$")
+    ax.set_title("Exclusion-sensitivity: how the point estimate could move\n"
+                 "if the negative controls secretly carry the latent")
+    ax.legend(fontsize=8, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(OUT / "fig5_exclusion_sensitivity.png")
+    plt.close(fig)
+
+
 def main():
     print("generating figures ->", OUT)
     fig1_overid(); print("  fig1 over-ID size/power/blindness")
     fig2_coverage(); print("  fig2 two-interval coverage")
     fig3_proximal(); print("  fig3 proximal point-ID rescue")
     fig4_monitor(); print("  fig4 anytime-valid monitor")
+    fig5_exclusion_sensitivity(); print("  fig5 exclusion-sensitivity band")
     print("done:", sorted(p.name for p in OUT.glob("*.png")))
 
 

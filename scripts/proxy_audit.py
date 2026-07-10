@@ -18,7 +18,6 @@ import logging
 
 import torch
 import torch.nn as nn
-from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, TensorDataset
 
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +108,7 @@ def run_proxy_audit(
     
     try:
         # Macro-averaged ROC AUC for multiclass
+        from sklearn.metrics import roc_auc_score  # lazy import: optional dep
         auc = roc_auc_score(all_true, all_probs, multi_class="ovo", average="macro")
         logger.info(f"Proxy Audit ROC-AUC: {auc:.4f}")
         

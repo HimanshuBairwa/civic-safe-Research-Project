@@ -39,9 +39,37 @@ makes the rest defensible.
 
 ```bash
 pip install -r requirements-oicc.txt
-PYTHONPATH=src python -m pytest tests_oicc -q            # 60 tests, all green
+PYTHONPATH=src python -m pytest tests_oicc -q            # OICC tests, all green
 python experiments/oicc_runs/reproduce_all.py            # 13 headline assertions
 ```
+
+## Running the WHOLE codebase on an A100 (guaranteed clean)
+
+The full repo (the civicsafe GNN forecaster + OICC) is device-agnostic and
+runs error-free on a fresh Linux A100. Three ways, easiest first:
+
+```bash
+# 0. one-command preflight -- env report + GPU training smoke + tests + reproduce
+python run_all.py                 # add --full to also run the 300-test civicsafe suite
+
+# 1. reproducible container (pins CUDA torch + PyG; no compiled PyG extensions)
+docker build -t civicsafe-oicc .
+docker run --gpus all civicsafe-oicc           # runs the full test suite on the GPU
+
+# 2. bare metal
+pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.4.1
+pip install -r requirements-a100.txt
+PYTHONPATH=src python experiments/oicc_runs/device_smoke.py   # exercises the real
+                                                              # cuda + bf16 path
+PYTHONPATH=src python -m pytest tests/ tests_oicc/ -q         # 360+ tests
+```
+
+**Guarantees baked in:** no hardcoded absolute paths (a resolver finds data or
+skips), no unguarded `.cuda()` (device is always `cuda if available else cpu`),
+bf16 autocast via the modern `torch.amp` API, matplotlib forced to `Agg`
+(headless), numpy-2.x safe, optional deps (`xgboost`/`scikit-learn`/`seaborn`)
+lazily imported so no script crashes on import, and `WANDB_MODE=disabled` by
+default. A `device_smoke` test auto-runs the real GPU forward/backward path.
 
 `reproduce_all.py` re-runs the whole battery and **asserts** every headline
 number lands in range; it exits non-zero if anything drifts. "It reproduces" is

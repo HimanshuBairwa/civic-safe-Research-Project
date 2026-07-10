@@ -297,8 +297,13 @@ def identify_kappa_did(
         mp = _hetero_fixed_point(lam, beta, rho_vec)
         if m0 is None or mp is None:
             return float("inf")
-        dt = float(np.log(mp[treated_mask]).mean() - np.log(m0[treated_mask]).mean())
-        dc = float(np.log(mp[~treated_mask]).mean() - np.log(m0[~treated_mask]).mean())
+        # floor rates before the log so a degenerate (zero) fixed point yields a
+        # large-but-finite value instead of a divide-by-zero warning / -inf.
+        _floor = 1e-12
+        lmp = np.log(np.clip(mp, _floor, None))
+        lm0 = np.log(np.clip(m0, _floor, None))
+        dt = float(lmp[treated_mask].mean() - lm0[treated_mask].mean())
+        dc = float(lmp[~treated_mask].mean() - lm0[~treated_mask].mean())
         return dt - dc
 
     best_rho = min(grid, key=lambda rr: abs(predicted_did(rr) - did))

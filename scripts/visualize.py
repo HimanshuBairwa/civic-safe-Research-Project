@@ -2,8 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+import matplotlib
+matplotlib.use("Agg")  # headless-safe (A100/servers without a display)
 import matplotlib.pyplot as plt
-import seaborn as sns
 import networkx as nx
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
@@ -120,6 +121,7 @@ def plot_target_centric_attention(gdf):
 
 # 3. Temporal Attention Heatmap (Transformer query vs key attention across time lags)
 def plot_temporal_attention():
+    import seaborn as sns  # lazy import: optional dep
     # Sequence length T (e.g., 24 time steps)
     T = 24
     # Create mock attention matrix [Query Time, Key Time]
