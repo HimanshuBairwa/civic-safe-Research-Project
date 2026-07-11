@@ -39,51 +39,50 @@ git pull origin main
 pip install -r requirements-a100.txt
 pip install -e .
 
-# 4. ARCHIVE the old outputs (do NOT delete -- zero data loss, zero confusion).
-#    New runs write to a fresh timestamped dir so they never collide, but
-#    archiving the old ones keeps the folder clean.
-mkdir -p archive
-mv outputs archive/outputs_OLD_$(date +%Y%m%d) 2>/dev/null || true
-mkdir -p outputs
-#    (archive/ and results_campaign_*/ are gitignored, so the next
-#     `git reset --hard` will NOT delete them either.)
-
-# 5. sanity check the whole box (env + GPU smoke + oicc tests + reproduction)
-python run_all.py                     # must print ALL GREEN
+# 4. sanity check the whole box (env + GPU smoke + oicc tests + reproduction)
+python run_all.py
 ```
+
+That's it for setup. **Do NOT manually `mkdir`/`mv` outputs** — the launcher in
+Section A.5 archives them for you automatically. (Old-outputs handling, India-data
+detection, and logging are all built into the one launcher command.)
 
 **On `git reset --hard`:** it is safe here. Your datasets, archived outputs, and
 campaign results are all gitignored, so reset only refreshes tracked *code*.
 
-**On the "old outputs" question:** I chose **archive, not delete** — nothing is
-lost, and the new `outputs/` is clean. If you are 100% sure you want them gone:
-`rm -rf archive/outputs_OLD_*` later. Never needed for correctness.
-
 ---
 
-## Section A.5 — ⭐ THE ONE-COMMAND MAX-RIGOR CAMPAIGN (use your unlimited A100)
+## Section A.5 — ⭐ THE ONE-COMMAND CAMPAIGN (copy-paste ONE line, nothing else)
 
-For the "run it for days, everything top-notch" outcome, this single command runs
-the **entire** publication pipeline into one clean timestamped dir:
+> Use **`launch_campaign.sh`** — a single, paste-safe script. It auto-archives old
+> outputs, auto-finds your India data, runs the whole pipeline, and logs
+> everything. **Do not paste multi-line commands** (that caused the earlier
+> `syntax error` / `command not found` — those were paste artifacts, not bugs).
 
+**Just the contribution + all figures (~5 min, no GPU) — run this FIRST:**
 ```bash
-export OICC_INDIA_DATA=/path/to/crime-detection-ai/data     # your India data
-nohup python scripts/run_full_campaign.py --seeds 15 --epochs 200 \
-      > campaign.log 2>&1 &                                 # runs for hours; survives disconnect
-tail -f campaign.log                                        # watch progress
+bash scripts/launch_campaign.sh --oicc-only
 ```
 
-It produces `results_campaign_<timestamp>/` containing: the rigorous OICC
-reproduction (tight CIs), the real India NCRB run, the US contrast, all
-publication figures (heatmaps + choropleth), and the 15-seed GNN baseline
-training for both cities + conformal evaluation. Everything logged; zero collision
-with old outputs.
-
-Variants:
+**The full multi-day campaign (OICC + 15-seed training), in the background:**
 ```bash
-python scripts/run_full_campaign.py --oicc-only    # just the contribution (~5 min, no GPU)
-python scripts/run_full_campaign.py --skip-train   # OICC + figures, no GPU training
-python scripts/run_full_campaign.py --seeds 15     # 15-seed publication CIs (default)
+bash scripts/launch_campaign.sh --smoke-first --bg
+```
+Then watch it with:
+```bash
+tail -f campaign.log
+```
+
+`--smoke-first` runs a 2-minute training check per city before the multi-day run,
+so any training problem is caught immediately instead of hours in. `--bg` runs it
+detached (survives disconnect). It all lands in `results_campaign_<timestamp>/`
+with a full `campaign.log`; zero collision with old outputs.
+
+**Other variants (all one line, all paste-safe):**
+```bash
+bash scripts/launch_campaign.sh --skip-train        # OICC + figures, no GPU training
+bash scripts/launch_campaign.sh --seeds 15          # explicit seed count (15 = default)
+bash scripts/launch_campaign.sh                      # full run, foreground (use tmux)
 ```
 
 > **What "max rigor" actually means (honest):** unlimited A100 buys **more seeds**
@@ -242,23 +241,21 @@ we already do.
 
 ---
 
-## TL;DR — the minimal "greatest" sequence
+## TL;DR — the minimal "greatest" sequence (each line pastes on its own)
 
 ```bash
-cd /path/to/civic-safe-Research-Project
-python scripts/a100_sync.py && pip install -r requirements-a100.txt && pip install -e .
-mkdir -p archive && mv outputs archive/outputs_OLD_$(date +%Y%m%d); mkdir -p outputs
-python run_all.py                                          # verify: ALL GREEN
-python experiments/oicc_runs/reproduce_all.py             # the real result: 17/17
-export OICC_INDIA_DATA=/path/to/crime-detection-ai/data
-python experiments/oicc_runs/run_ncrb_experiment.py       # real Indian data
-python experiments/oicc_runs/run_us_experiment.py         # US contrast
-python experiments/oicc_runs/make_pub_figures.py          # heatmaps + choropleth
-# optional, slow, GPU baseline forecaster:
-python scripts/train.py data=chicago training.num_seeds=3 training.epochs=100
-python scripts/train.py data=nyc     training.num_seeds=3 training.epochs=100
+cd /workspace/civic-safe-Research-Project
+git reset --hard origin/main
+git pull origin main
+pip install -r requirements-a100.txt
+pip install -e .
+python run_all.py
+bash scripts/launch_campaign.sh --oicc-only
+bash scripts/launch_campaign.sh --smoke-first --bg
+tail -f campaign.log
 ```
 
-That gives you the whole project — the real contribution (fast), the real Indian
-data run, the publication figures, and the trained baseline — with zero
-confusion between old and new outputs.
+Line 6 verifies the box (ALL GREEN). Line 7 gives you the whole contribution +
+all figures in ~5 minutes. Line 8 launches the full multi-day 15-seed training in
+the background (auto-archives old outputs, auto-finds India data). Line 9 watches
+it. **Paste one line at a time** — never a multi-line block.
