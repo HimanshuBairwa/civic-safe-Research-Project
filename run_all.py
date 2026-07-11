@@ -91,7 +91,7 @@ def main() -> int:
     results.append((
         "OICC reproduction",
         _run([py, "experiments/oicc_runs/reproduce_all.py", "--quick"],
-             "OICC headline reproduction (13 assertions)"),
+             "OICC headline reproduction (machine-checked assertions)"),
     ))
     if args.full:
         results.append((

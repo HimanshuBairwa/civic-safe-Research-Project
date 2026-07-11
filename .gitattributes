@@ -1,0 +1,7 @@
+# Force LF line endings for shell scripts so they run on the Linux A100.
+# (A .sh file with CRLF fails on Linux with "bash\r: No such file or directory".)
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf

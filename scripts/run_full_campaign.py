@@ -44,6 +44,9 @@ def main() -> int:
     ap.add_argument("--seeds", type=int, default=15,
                     help="GNN training seeds (default 15 for publication CIs)")
     ap.add_argument("--epochs", type=int, default=200)
+    ap.add_argument("--smoke-first", action="store_true",
+                    help="run a 2-epoch/1-seed training check per city BEFORE the "
+                         "full run; abort the full train if the smoke fails")
     ap.add_argument("--india-data", type=str,
                     default=os.environ.get("OICC_INDIA_DATA", ""),
                     help="path to crime-detection-ai/data (India NCRB)")
@@ -106,6 +109,19 @@ def main() -> int:
 
     if not args.oicc_only and not args.skip_train:
         # 2. GNN baseline training (slow, GPU) -------------------------------
+        if args.smoke_first:
+            # cheap 2-epoch/1-seed check per city: catch any training error in
+            # ~2 min instead of hours into the real run.
+            for city in ("chicago", "nyc"):
+                ok = run([py, "scripts/train.py", f"data={city}",
+                          "training.num_seeds=1", "training.epochs=2"],
+                         f"SMOKE training {city} (2 epochs, 1 seed)")
+                results.append((f"smoke {city}", ok))
+                if not ok:
+                    print(f"\n[ABORT] smoke training for {city} FAILED -- fix "
+                          f"before the multi-day run. See campaign.log.")
+                    log.write(f"[ABORT] smoke {city} failed\n"); log.close()
+                    return 1
         for city in ("chicago", "nyc"):
             ok = run([py, "scripts/train.py", f"data={city}",
                       f"training.num_seeds={args.seeds}",
