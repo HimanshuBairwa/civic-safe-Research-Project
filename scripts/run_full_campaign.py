@@ -59,26 +59,41 @@ def main() -> int:
     log = (camp / "campaign.log").open("w", encoding="utf-8")
 
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src"),
-           "MPLBACKEND": "Agg", "WANDB_MODE": "disabled"}
+           "MPLBACKEND": "Agg", "WANDB_MODE": "disabled",
+           # force child Python to flush stdout line-by-line so `tail -f`
+           # shows live per-epoch training progress instead of nothing for days.
+           "PYTHONUNBUFFERED": "1"}
     if args.india_data:
         env["OICC_INDIA_DATA"] = args.india_data
 
     def run(cmd: list[str], label: str, outfile: Path | None = None) -> bool:
         banner = f"\n{'='*70}\n>>> {label}\n{'='*70}"
-        print(banner); log.write(banner + "\n"); log.flush()
+        print(banner, flush=True); log.write(banner + "\n"); log.flush()
         t = time.time()
-        r = subprocess.run(cmd, cwd=str(ROOT), env=env,
-                           capture_output=True, text=True)
+        # Stream child output line-by-line so `tail -f campaign.log` shows live
+        # progress (e.g. per-epoch training) instead of nothing until the step
+        # finishes. We still keep the full text for the per-step outfile.
+        captured: list[str] = []
+        proc = subprocess.Popen(
+            cmd, cwd=str(ROOT), env=env, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            captured.append(line)
+            log.write(line); log.flush()   # live to campaign.log
+        proc.wait()
         dt = time.time() - t
-        tail = "\n".join((r.stdout + r.stderr).splitlines()[-12:])
-        print(tail)
-        log.write(r.stdout + r.stderr + f"\n[{label}: rc={r.returncode} in {dt:.0f}s]\n")
+        full = "".join(captured)
+        # echo a short tail to the console summary
+        print("\n".join(full.splitlines()[-12:]), flush=True)
+        log.write(f"\n[{label}: rc={proc.returncode} in {dt:.0f}s]\n")
         log.flush()
         if outfile:
-            outfile.write_text(r.stdout + r.stderr, encoding="utf-8")
-        status = "OK" if r.returncode == 0 else f"FAIL(rc={r.returncode})"
-        print(f"<<< {label}: {status} in {dt:.0f}s")
-        return r.returncode == 0
+            outfile.write_text(full, encoding="utf-8")
+        status = "OK" if proc.returncode == 0 else f"FAIL(rc={proc.returncode})"
+        print(f"<<< {label}: {status} in {dt:.0f}s", flush=True)
+        return proc.returncode == 0
 
     py = sys.executable
     results = []
