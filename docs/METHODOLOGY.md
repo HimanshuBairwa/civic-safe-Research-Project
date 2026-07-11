@@ -500,6 +500,61 @@ $$x_j^{(\text{intensive})} = \frac{\sum_{i \in \mathcal{T}_j} \text{Pop}(T_i \ca
 
 ---
 
+## 11  Spatial Resolution and the Areal-Data Question
+
+**Reference implementation:** `experiments/oicc_runs/ncrb_loader.py`, `us_loader.py`
+
+A natural reviewer question: the India NCRB channels are **areal** (state-year),
+not **point** (lat/long incident locations). Is that a valid basis for
+latent-rate estimation? The answer is **yes — areal data is the correct and
+standard substrate for this task**, for three reasons.
+
+**(1) Latent-rate estimation is intrinsically an areal / small-area problem.**
+The quantity of interest, $\theta_a$ = the latent offending/exposure rate of a
+population, is defined *per population unit*, not per point. Point (lat/long) data
+answers a different question — where incidents *cluster* (hotspot detection, log-
+Gaussian Cox point processes). The multi-channel factor model here
+($Y^c_a=\alpha_c+\beta_c\theta_a+\varepsilon^c_a$) requires each channel measured
+on a **common areal unit** $a$; it is a small-area-estimation (SAE) model in the
+Fay–Herriot tradition, where the latent $\theta_a$ is exactly the estimand. This
+matches the published latent-crime literature (e.g. MTMM models that treat
+recorded crime and survey crime as imperfect measures of an unobserved true rate).
+
+**(2) The state-level unit for India is *forced by data publishing*, not chosen.**
+Of the four channels, only IPC crime is published at district level (≈806
+districts). The three police-accountability channels — complaints received,
+complaints against police, custodial deaths, human-rights violations — are
+published by NCRB **only at state level**. Because OICC requires all channels on
+the *same* unit to identify a common $\theta_a$, the binding resolution is the
+coarsest channel: **state-year (N ≈ 34 states × 10 years ≈ 340 cells)**. This is a
+data-availability constraint, documented honestly, not a modelling shortcut.
+
+**(3) The method is demonstrated at multiple resolutions.** The US runs operate at
+**finer** areal units — Chicago community areas (77) and NYC precincts — showing
+the estimator is resolution-agnostic. Census demographics are moved onto these
+units by area-weighted / dasymetric interpolation (§10).
+
+**Honest limitations (stated, not hidden):**
+- **Small N for India.** ~34 states is a small sample; higher-order (third-
+  cumulant) over-ID tests are underpowered at this N. We report this and lean on
+  the second-moment over-ID test where N permits.
+- **Modifiable Areal Unit Problem (MAUP).** Areal estimates depend on the unit
+  and boundaries. We mitigate by (a) using the administrative unit at which the
+  accountability data are actually collected (no arbitrary re-zoning), and (b)
+  reporting the district-level IPC field as a single-channel robustness view — the
+  latent *multi-channel* estimate is not claimed below state resolution.
+- **What would sharpen it.** District-level accountability microdata (were NCRB to
+  publish it) would raise N ~20× and enable a district-level multi-channel latent
+  field. This is a data-access frontier, not a methodological gap.
+
+**Bottom line for the reader:** state-level areal data is a valid, standard, and
+correct substrate for latent-rate estimation; the contribution's identification
+argument (over-ID + proximal point-ID) does not depend on point-level data. The
+only real cost of coarse units is statistical power (small N), which is reported
+transparently rather than papered over.
+
+---
+
 ## Summary of Key Dimensions
 
 | Component | Key Hyperparameters |

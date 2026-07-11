@@ -13,6 +13,14 @@ These pass through DIFFERENT institutional filters, which is the identifying
 requirement.  HONEST LIMITS (documented, not hidden):
   * state-year, N ~ 34 states x 10 years ~ 340 cells: small; third-cumulant
     over-ID at K=3 is underpowered, so we use K=4 where possible.
+  * WHY STATE-LEVEL (not district): the IPC-crime table is published at district
+    resolution (~806 districts), but the accountability channels (complaints,
+    custodial deaths, HR violations) are published by NCRB ONLY at state level.
+    OICC needs all channels on the SAME areal unit to identify one factor, so the
+    binding resolution is the coarsest channel = state. This is a data-publishing
+    constraint, NOT a modelling choice. Areal (not point/lat-long) data is the
+    correct substrate for latent-RATE estimation anyway (small-area estimation;
+    point data answers a different, hotspot question). See docs/METHODOLOGY.md #11.
   * channels measure DIFFERENT latent constructs (offending vs mistreatment); we
     treat them as noisy indicators of a shared "coercion/exposure" factor and
     are explicit that this is a modeling choice, validated only by the over-ID
