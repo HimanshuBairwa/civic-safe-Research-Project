@@ -1,13 +1,20 @@
-"""Feedback-corrected latent prediction intervals.
+"""Feedback-corrected latent prediction intervals (kappa-sensitivity model).
 
-The prior literature (Ensign et al. 2018; van Amsterdam et al. 2025; Algometrics
-2026) *diagnoses* observation-biased feedback but does not *correct* it. This
-module provides the constructive step: given the feedback gain ``kappa`` (which
-is point-identified by the difference-in-differences design of
-:func:`civicsafe.theory.feedback_law.identify_kappa_did`), it deflates the
-recorded-scale forecast back to the latent scale and issues a prediction
-interval that recovers coverage of the *true* latent process rather than the
-biased record.
+The prior literature (Ensign et al. 2018; and later feedback-diagnosis work)
+*diagnoses* observation-biased feedback but does not *correct* it. This module
+provides a constructive correction *conditional on an assumed feedback gain*
+``kappa``: it deflates the recorded-scale forecast back to a latent scale and
+issues a prediction interval for that latent process.
+
+HONESTY NOTE (retraction): ``kappa`` is **NOT point-identified from passive
+data** — an earlier claim that a difference-in-differences design point-identifies
+it was over-stated and is retracted (see ``docs/AUDIT_2026-07.md``). Treat
+``kappa`` as a **sensitivity parameter**: sweep it (see
+:mod:`civicsafe.theory.sensitivity`) and report how conclusions move. The
+*identified* latent field for this project is the OICC estimate
+(:func:`oicc.leave_pivot_out_conformal`), which needs no feedback-gain
+assumption; routing should prefer that field via
+:func:`civicsafe.routing.feedback_aware.oicc_routing_field`.
 
 Mechanism
 ---------
@@ -23,12 +30,11 @@ margin calibrated on a gold-standard anchor). When ``kappa`` approaches the
 runaway threshold ``1`` — or the deflation is too uncertain — the interval is
 flagged for **abstention** rather than issued with false confidence.
 
-This is the deployable counterpart to the impossibility result: the
-confidently-wrong state cannot be detected from passive data, but once ``kappa``
-is measured by intervention, the correction below restores honest coverage. See
-``docs/RESULTS_latent_correction.md`` for the verified coverage table and the
-non-obvious operating condition (the identifying shock must keep treated cells
-sub-runaway, ``kappa*(1+delta) < 1``).
+This is a sensitivity-model counterpart to the impossibility result: the
+confidently-wrong state cannot be detected from passive data, so rather than
+claim a single identified ``kappa``, we expose it as a knob and lean on OICC for
+the identified estimate. See ``docs/RESULTS_latent_correction.md`` for the
+coverage table across the ``kappa`` sweep.
 """
 
 from __future__ import annotations

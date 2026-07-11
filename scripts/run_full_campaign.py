@@ -102,9 +102,16 @@ def main() -> int:
     results.append(("us contrast",
         run([py, "experiments/oicc_runs/run_us_experiment.py"],
             "OICC US cross-national contrast", oicc / "us_contrast.txt")))
+    results.append(("feedback routing",
+        run([py, "experiments/oicc_runs/run_feedback_routing_experiment.py"],
+            "conformal safe routing: feedback-loop mitigation",
+            oicc / "feedback_routing.txt")))
     results.append(("pub figures",
         run([py, "experiments/oicc_runs/make_pub_figures.py"],
             "publication figures (heatmaps, choropleth)")))
+    results.append(("routing figure",
+        run([py, "experiments/oicc_runs/make_routing_figure.py"],
+            "routing contribution figure (feedback + exposure coverage)")))
     run([py, "experiments/oicc_runs/make_figures.py"], "core figures")
 
     if not args.oicc_only and not args.skip_train:

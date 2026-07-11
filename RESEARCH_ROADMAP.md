@@ -228,6 +228,26 @@ desk-reject and would poison the credibility of the genuine contribution.
 **Status: DONE — router renamed `BatchedFrontierRouter` (legacy alias kept),
 engine defaults to exact Dijkstra, all docs corrected + forward citation.**
 
+**UPGRADE (routing is now a genuine SUPPORTING contribution, not just a utility).**
+The *algorithm* stays honest Dijkstra, but the routing *problem* now carries two
+real, tested guarantees (see `docs/METHODOLOGY.md` §9.5):
+- **(G1) Path-level conformal exposure certificate** — a finite-sample,
+  distribution-free upper bound on the *realized* risk-exposure of the route a
+  policy returns (split conformal on the exposure functional; empirical-coverage
+  test passes across 400 splits). Novel in application: prior conformal-navigation
+  work calibrates robot obstacle sets; interval-cost robust routing is NP-hard and
+  over-conservative. `src/civicsafe/routing/exposure_conformal.py`.
+- **(G2) Debiasing breaks the runaway feedback loop** — allocating on the OICC
+  latent field (whose 911/survey channels are patrol-independent) keeps belief
+  calibrated (≈0.95 vs record-only ≈0.41) and cuts the over-patrolled group's
+  exposure disparity by ≈0.9 in a controlled simulation (robust across seeds).
+  `experiments/oicc_runs/run_feedback_routing_experiment.py`.
+- **Honesty fix:** the earlier "DiD point-identifies the feedback gain κ" claim is
+  retracted; κ is now a *sensitivity* knob only, and the identified debiased field
+  is OICC (`oicc_routing_field`). Ties routing to the measurement contribution:
+  *honest risk → honest routing.* Impact ~7.0 → ~7.5; does NOT change the venue
+  ceiling (OICC remains the headline). Figure: `pub_fig8_routing`.
+
 ---
 
 ## 8. Does it run on REAL data on the A100? — the precise answer
