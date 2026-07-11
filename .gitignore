@@ -34,6 +34,12 @@ data/processed/
 *.csv
 *.feather
 
+# EXCEPTION: the small (23MB) India NCRB dataset IS committed so it reaches the
+# A100 via `git pull` (the loader's default path is data/ncrb/). These lines must
+# stay AFTER the *.csv rule above to override it.
+!data/ncrb/
+!data/ncrb/**
+
 # Model checkpoints (too large for git, >100MB)
 checkpoints/
 *.pth
