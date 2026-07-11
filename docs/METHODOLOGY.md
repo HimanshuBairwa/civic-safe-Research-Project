@@ -477,6 +477,55 @@ $$\text{AbstainIf:} \quad \max_{e \in P^*} \left(U_e - L_e\right) > \theta_\text
 
 where $[L_e, U_e]$ is the conformal prediction interval for edge $e$ and $\theta_\text{abstain}$ is a calibrated safety threshold. When triggered, the engine returns an advisory message explaining why a safe route cannot be determined.
 
+### 9.5  Conformal Safe Routing on a Debiased Crime Field (contribution)
+
+**Reference implementation:** `src/civicsafe/routing/exposure_conformal.py`,
+`src/civicsafe/routing/feedback_aware.py`,
+`experiments/oicc_runs/run_feedback_routing_experiment.py`
+
+Advisory routing is not just a utility layer here — it is the *deployed
+consequence* of the measurement contribution. We pair two honest guarantees.
+
+**(G1) Path-level conformal exposure certificate.** Fix a routing policy $\pi$
+(a map from a predicted risk field to a route). On $n$ exchangeable held-out
+scenarios, each with a predicted field and the *realized* node-risk field, score
+the realized exposure $E_i=\sum_{s\in\pi(\text{pred}_i)}\text{real}_i[s]$. With
+$k=\lceil (n+1)(1-\alpha)\rceil$ and $Q$ the $k$-th smallest $E_i$,
+
+$$\mathbb{P}\big(E_{n+1}\le Q\big)\ge 1-\alpha,$$
+
+a finite-sample, distribution-free bound on the realized exposure of the route
+the policy returns. **We deliberately use split conformal on the scalar exposure
+functional, not a conformal-risk-control monotone-threshold argument**, because
+realized exposure is *not* monotone in the router's risk-aversion (planning on a
+miscalibrated field can route a civilian *through* a truly high-risk node); only
+the exchangeability-based split-conformal guarantee is sound here. Verified by an
+empirical-coverage test (exceedance $\le\alpha$ across 400 splits). This is, to
+our knowledge, the first path-level conformal exposure guarantee over a latent
+crime field; prior conformal-navigation work calibrates robot obstacle sets, and
+robust interval-cost routing (min-max regret) is NP-hard and over-conservative.
+
+**(G2) Debiasing breaks the runaway feedback loop.** Predictive-allocation
+systems patrol where they believe crime is high, discover crime only where they
+patrol, and update belief from those discoveries — so belief diverges from truth
+(Ensign et al., FAccT 2018; Lum & Isaac 2016). Routing/allocating on the **OICC**
+latent field breaks this: two of OICC's channels (911 calls, victimization
+survey) are *public-initiated* and hence independent of patrol, anchoring belief
+to signals the loop cannot contaminate. In a controlled simulation with known
+latent rate, the record-only policy's belief–truth correlation collapses
+(≈0.41) while the OICC-anchored policy stays calibrated (≈0.95), and the
+over-patrolled group's exposure disparity ("navigational redlining") falls by
+≈0.9 (robust across seeds). **Honest scope:** this is a simulation whose
+mitigation holds *under OICC's core identifying assumption* (patrol-independent
+channels); it is a demonstration, not a universal proof.
+
+**Honesty note on the earlier $\kappa$ correction.** A prior version debiased the
+field using a feedback gain $\kappa$ claimed to be point-identified by a
+difference-in-differences design. That identification claim was **over-stated and
+is retracted**; $\kappa$ is now treated only as a *sensitivity* parameter
+(sweep it, do not report a single value). The *identified* debiased field is the
+OICC estimate, and routing consumes it via `oicc_routing_field`.
+
 ---
 
 ## 10  Geospatial Areal Interpolation

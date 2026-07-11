@@ -2,30 +2,41 @@
 
 The default routing costs (``civicsafe.routing.cost``) consume conformal
 intervals computed from the **recorded** crime process. Under observation-biased
-feedback (see :mod:`civicsafe.theory`), that record is inflated exactly where
-attention has historically concentrated — so naive risk-aware routing would
-faithfully steer civilians around *over-policed* areas rather than *genuinely
-high-risk* ones, laundering enforcement bias into navigation. This is the
-routing analogue of the "confidently wrong" phenomenon.
+feedback, that record is inflated exactly where attention has historically
+concentrated — so naive risk-aware routing would faithfully steer civilians
+around *over-policed* areas rather than *genuinely high-risk* ones, laundering
+enforcement bias into navigation. This is the routing analogue of the
+"confidently wrong" phenomenon.
 
-This module closes that gap. It provides:
+This module closes that gap by routing on a **debiased latent risk field**. The
+honest, preferred source of that field is **OICC** (:mod:`oicc`), which recovers
+a latent rate from >=3 mechanism-independent channels *without* any unidentified
+feedback-gain assumption and ships genuine leave-pivot-out conformal intervals.
+Use :func:`oicc_routing_field` to build routing bounds directly from an OICC
+``ConformalResult``.
 
-* :func:`correct_node_risk` / :func:`correct_node_intervals` — deflate recorded
-  node risk to the latent scale using the DiD-identified feedback gain ``kappa``
-  (:mod:`civicsafe.theory.feedback_law`), so the router plans against *true*
-  risk.
-* :class:`LatentCVaRCost` — a tail-risk (Conditional Value-at-Risk) edge cost
-  over the corrected interval, the robust-routing best practice: it plans
-  against the average of the worst ``(1 - beta)`` tail of the risk interval
-  rather than a single quantile, and abstains-by-cost when a node is flagged
-  un-correctable.
+It also retains a **sensitivity-analysis** correction path (``correct_node_risk``
+/ ``correct_node_intervals``) parameterized by a feedback gain ``kappa``. IMPORTANT
+HONESTY NOTE: ``kappa`` is **NOT point-identified from passive data** (that was an
+earlier over-claim, now retracted — see ``docs/AUDIT_2026-07.md``). Treat it as a
+*sensitivity knob*: sweep it to see how conclusions move, do not report a single
+"identified" value. The OICC path above is the identified one.
+
+Provided here:
+
+* :func:`oicc_routing_field` — turn an OICC latent conformal band into
+  ``(risk_upper, interval_width)`` routing weights (the identified path).
+* :func:`correct_node_risk` / :func:`correct_node_intervals` — kappa-sensitivity
+  deflation of a recorded field (NOT identified; for robustness sweeps only).
+* :class:`LatentCVaRCost` — a tail-risk (CVaR) edge cost over the routing
+  interval, the robust-routing best practice.
 * :class:`ExposureDisparityAudit` — measures whether risk-aware routes
   systematically divert exposure away from (or toward) a demographic group, and
-  quantifies how much feedback-correction reduces that disparity.
+  quantifies how much debiasing reduces that disparity.
 
-Together these make routing the deployed consequence of the correction theorem:
-*correct the risk at the source, then route on truth, and prove the correction
-shrinks navigational redlining.*
+Together these make routing the deployed consequence of the measurement work:
+*recover honest risk (OICC), route on it, and show it shrinks navigational
+redlining.*
 """
 
 from __future__ import annotations
@@ -38,6 +49,7 @@ from civicsafe.routing.graph import Edge
 from civicsafe.theory.latent_correction import recording_multiplier, should_abstain
 
 __all__ = [
+    "oicc_routing_field",
     "correct_node_risk",
     "correct_node_intervals",
     "LatentCVaRCost",
@@ -46,8 +58,40 @@ __all__ = [
 ]
 
 
+def oicc_routing_field(
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Build routing weights from an OICC latent conformal band (identified path).
+
+    This is the HONEST source of the debiased risk field: ``lower``/``upper`` come
+    from :func:`oicc.leave_pivot_out_conformal` (a ``ConformalResult``), which
+    recovers the latent rate from mechanism-independent channels with no
+    unidentified feedback-gain assumption. The router plans on the conformal
+    ``upper`` bound (conservative) with ``interval_width = upper - lower`` as the
+    uncertainty signal.
+
+    Args:
+        lower: (N,) OICC latent lower bounds (log-rate or rate scale).
+        upper: (N,) OICC latent upper bounds, same scale.
+
+    Returns:
+        ``{"risk_upper": (N,), "interval_width": (N,)}`` ready to inject into a
+        :class:`~civicsafe.routing.graph.RoutingGraph`.
+    """
+    lo = np.asarray(lower, dtype=float)
+    hi = np.asarray(upper, dtype=float)
+    if lo.shape != hi.shape:
+        raise ValueError("lower and upper must have the same shape")
+    return {"risk_upper": hi, "interval_width": np.clip(hi - lo, 0.0, None)}
+
+
 def correct_node_risk(mu: np.ndarray, kappa: float) -> np.ndarray:
-    """Deflate recorded node risk ``mu`` to the latent scale ``lambda_hat``.
+    """Deflate recorded node risk ``mu`` to a latent scale (kappa SENSITIVITY).
+
+    NOTE: ``kappa`` is a sensitivity parameter, NOT point-identified from passive
+    data. Use this to sweep how routing conclusions move with the assumed feedback
+    gain; for the identified field use :func:`oicc_routing_field` instead.
 
     ``lambda_hat_s = mu_s / (mu_s / mean(mu)) ** kappa``. With ``kappa == 0``
     (no feedback) this is the identity; as ``kappa`` grows, cells recorded far
@@ -55,7 +99,7 @@ def correct_node_risk(mu: np.ndarray, kappa: float) -> np.ndarray:
 
     Args:
         mu: Recorded node risk (e.g. point crime rate), shape ``(N,)``, positive.
-        kappa: Identified feedback gain in ``[0, 1)``.
+        kappa: Assumed feedback gain in ``[0, 1)`` (sensitivity knob).
 
     Returns:
         Latent-scale node risk, shape ``(N,)``.
@@ -220,21 +264,25 @@ class ExposureDisparityAudit:
         groups: np.ndarray,
         kappa: float,
     ) -> dict[str, float]:
-        """Show feedback-correction shrinks exposure disparity.
+        """Show debiasing shrinks exposure disparity (kappa-sensitivity variant).
 
-        Audits the biased (recorded) risk field and the feedback-corrected field
-        against the same latent truth and reports both headline disparities.
+        Audits the biased (recorded) risk field and a debiased field against the
+        same latent truth and reports both headline disparities. Here the
+        debiased field is formed by the ``kappa``-sensitivity deflation; for the
+        identified analysis, pass an OICC latent field to :meth:`audit` directly
+        and compare to the recorded audit (see
+        ``experiments/oicc_runs`` feedback-loop demo).
 
         Args:
             recorded_risk: Observation-biased node risk, shape ``(N,)``.
             latent_risk: True latent incidence per node, shape ``(N,)``.
             groups: Integer group labels, shape ``(N,)``.
-            kappa: Identified feedback gain used for correction.
+            kappa: Assumed feedback gain (sensitivity knob, NOT identified).
 
         Returns:
             ``{"biased_max_disparity", "corrected_max_disparity",
             "reduction"}``. ``reduction`` is the absolute drop in worst-group
-            disparity (positive = correction helped).
+            disparity (positive = debiasing helped).
         """
         biased = self.audit(recorded_risk, latent_risk, groups).max_abs_disparity
         corrected_field = correct_node_risk(np.asarray(recorded_risk, dtype=float), kappa)
