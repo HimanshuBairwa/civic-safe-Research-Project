@@ -261,7 +261,9 @@ def run_rolling_inference(
 
     for idx in range(len(dataset)):
         sample = dataset[idx]
-        features = sample["input_features"].to(device)  # (S, W, F)
+        x_feat = sample["input_features"].to(device)   # (S, W, F)
+        x_counts = torch.log1p(sample["input_counts"].float().to(device))  # (S, W, C)
+        features = torch.cat([x_feat, x_counts], dim=-1)  # (S, W, F+C)
         target = sample["target_counts"]  # (S, C)
 
         output = model(features, edge_q, edge_k)
@@ -559,7 +561,7 @@ def run_conformal_evaluation(
 
     for i, ckpt in enumerate(all_ckpts):
         logger.info(f"\n  --- Seed {i+1}/{K}: {ckpt.parent.name}/{ckpt.name} ---")
-        model_i = load_model_from_checkpoint(ckpt, F, C, config, device)
+        model_i = load_model_from_checkpoint(ckpt, F + C, C, config, device)
 
         cal_res = run_rolling_inference(model_i, cal_dataset, edge_queen, edge_knn, device)
         test_res = run_rolling_inference(model_i, test_dataset, edge_queen, edge_knn, device)

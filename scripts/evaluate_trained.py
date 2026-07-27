@@ -187,9 +187,24 @@ def load_data(data_name: str) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
     F = features.shape[-1]
     logger.info(f"  Panel: {S} spatial × {T} time × {C} categories, {F} features")
 
-    # Z-score normalize (same as train.py)
-    feat_mean = features.mean(dim=(0, 1), keepdim=True)
-    feat_std = features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+    # Z-score normalize using TRAINING-period statistics saved by train.py.
+    # Recomputing here over all timesteps would (a) leak test-period statistics
+    # into the normalization and (b) differ from the stats the model trained
+    # with — silently degrading every metric. Load the frozen stats instead.
+    norm_stats_path = PROJECT_ROOT / "data" / "processed" / f"{data_name}_norm_stats.pt"
+    if norm_stats_path.exists():
+        norm_stats = torch.load(norm_stats_path, weights_only=False)
+        feat_mean = norm_stats["mean"]
+        feat_std = norm_stats["std"]
+        logger.info("  Loaded normalization stats from training")
+    else:
+        # Fallback: compute from training period only (no leakage), matching
+        # train.py's train_end_idx = 208 (2018-2021).
+        train_end = 208
+        train_features = features[:, :train_end, :]
+        feat_mean = train_features.mean(dim=(0, 1), keepdim=True)
+        feat_std = train_features.std(dim=(0, 1), keepdim=True).clamp(min=1e-6)
+        logger.info("  Computed normalization from training period (no saved stats)")
     features = (features - feat_mean) / feat_std
 
     logger.info(f"  Loading graph from {graph_path}")
@@ -285,10 +300,15 @@ def rolling_evaluate(
             logger.warning(f"  Skipping week {t}: insufficient history")
             continue
 
-        # Input features for this step: (S, W, F)
-        x_feat = features[:, t - window_size : t, :].to(device)
+        # Input features for this step: (S, W, F). The model was trained on
+        # [static features ‖ log1p(crime history)], so we MUST rebuild the same
+        # (S, W, F+C) tensor here or the model sees a different input space than
+        # it was trained on (→ garbage predictions). This mirrors trainer.py.
+        x_feat = features[:, t - window_size : t, :].to(device)          # (S, W, F)
+        x_counts = torch.log1p(counts[:, t - window_size : t, :].float().to(device))  # (S, W, C)
+        x_in = torch.cat([x_feat, x_counts], dim=-1)                     # (S, W, F+C)
 
-        output = model(x_feat, edge_queen, edge_knn)
+        output = model(x_in, edge_queen, edge_knn)
 
         all_y.append(counts[:, t, :].cpu())           # (S, C)
         all_pi.append(output["pi"].cpu())              # (S, C)
@@ -511,7 +531,7 @@ def conformal_evaluation(
         "avg_interval_width": round(avg_width, 2),
         "median_interval_width": round(median_width, 2),
         "threshold": round(calibrator.threshold, 4),
-        "n_cal": int(y_val.shape[0]),
+        "n_cal": int(y_cal.shape[0]),
         "n_test": int(y_test.shape[0]),
     }
 
@@ -596,7 +616,9 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     # ── 2. Build model & load checkpoint ──
     logger.info("\n[2/5] Loading model checkpoint...")
     state_dict, ckpt_path = load_checkpoint(args.checkpoint, args.data)
-    model = build_model(num_features=F, num_categories=C)
+    # Model was trained with [static features ‖ log1p(crime history)] as input,
+    # so num_features must be F+C to match the trained input_proj weight shape.
+    model = build_model(num_features=F + C, num_categories=C)
 
     # Try to load state_dict (handle possible key mismatches gracefully)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
