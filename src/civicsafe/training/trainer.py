@@ -290,6 +290,7 @@ class Trainer:
         """
         # Move to GPU with non-blocking transfers (pinned memory)
         features = batch["input_features"].to(self.device, non_blocking=True)
+        input_counts = batch["input_counts"].to(self.device, non_blocking=True)
         target_counts = batch["target_counts"].to(self.device, non_blocking=True)
 
         # Edge indices (shared across batch — graph is the same)
@@ -304,7 +305,10 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=self.device)
 
         for i in range(B):
-            feat_i = features[i]  # (S, W, F)
+            # Concatenate log1p crime history to static features — this is the
+            # primary temporal signal the model needs to learn from.
+            counts_i = torch.log1p(input_counts[i].float())  # (S, W, C)
+            feat_i = torch.cat([features[i], counts_i], dim=-1)  # (S, W, F+C)
             target_i = target_counts[i]  # (S, C)
 
             # --- Forward pass with mixed precision ---
@@ -433,6 +437,7 @@ class Trainer:
 
         for batch in self.val_loader:
             features = batch["input_features"].to(self.device, non_blocking=True)
+            input_counts = batch["input_counts"].to(self.device, non_blocking=True)
             target_counts = batch["target_counts"].to(self.device, non_blocking=True)
 
             edge_queen = batch.get("edge_queen")
@@ -444,7 +449,9 @@ class Trainer:
 
             B = features.shape[0]
             for i in range(B):
-                output = model(features[i], edge_queen, edge_knn)
+                counts_i = torch.log1p(input_counts[i].float())  # (S, W, C)
+                feat_i = torch.cat([features[i], counts_i], dim=-1)  # (S, W, F+C)
+                output = model(feat_i, edge_queen, edge_knn)
 
                 all_y.append(target_counts[i].cpu().float().reshape(-1))
                 all_pi.append(output["pi"].cpu().float().reshape(-1))

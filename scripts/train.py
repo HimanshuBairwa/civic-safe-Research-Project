@@ -216,10 +216,14 @@ def run_single_seed(
     arch = model_cfg.get("architecture", "sequential")
     logger.info(f"  Architecture: {arch}")
 
+    # Crime history (C channels, log1p-transformed) is concatenated to the
+    # static ACS features in the trainer. The model must accept F+C input dims.
+    model_input_features = F + C
+
     if arch == "unified":
         # V2: Spatiotemporal Graph Transformer (joint space-time attention)
         model = CivicSafeModelV2(
-            num_features=F,
+            num_features=model_input_features,
             hidden_dim=spatial_cfg.get("hidden_dim", 128),
             st_layers=temporal_cfg.get("num_layers", 3),
             st_heads=temporal_cfg.get("num_heads", 4),
@@ -231,7 +235,7 @@ def run_single_seed(
     else:
         # V1: Sequential GATv2 → Transformer (default)
         model = CivicSafeModel(
-            num_features=F,
+            num_features=model_input_features,
             hidden_dim=spatial_cfg.get("hidden_dim", 128),
             spatial_layers=spatial_cfg.get("num_layers", 2),
             spatial_heads=spatial_cfg.get("num_heads", 4),
