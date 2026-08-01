@@ -486,6 +486,12 @@ def conformal_evaluation(
         device=device,
     )
 
+    # Shapes: rolling_evaluate stacks as (N_weeks, S, C); reshape(-1) gives
+    # element ordering [week][spatial][category]. Any groups tensor MUST follow
+    # the same (N, S, C) layout or fit()/predict() will index-mismatch.
+    N_cal, S_dim, C_dim = cal_results["y_true"].shape
+    N_test = test_results["y_true"].shape[0]
+
     # Flatten cal results for calibration
     y_cal = cal_results["y_true"].reshape(-1).float()
     pi_cal = cal_results["pi"].reshape(-1).float()
@@ -494,13 +500,17 @@ def conformal_evaluation(
 
     # Use ECRC (Equalized Conditional Risk Control) calibrator
     calibrator = ECRCCalibrator(alpha=alpha, delta=0.05)
-    
-    # Stratify calibration points by population density or total pop (feature index 0)
-    # to form "groups" for ECRC coverage guarantees
-    # We grab features for the calibration and test periods
-    feat_cal = features[:, CAL_START_WEEK : TEST_START_WEEK, 0].transpose(0, 1).flatten()
-    q_bins = torch.quantile(feat_cal, torch.tensor([0.2, 0.4, 0.6, 0.8], device=feat_cal.device))
-    groups_cal = torch.bucketize(feat_cal, q_bins)
+
+    # Stratify by a STATIC per-spatial-unit feature (feature 0). ACS features are
+    # broadcast across time, so feature[:, t, 0] is identical for every week —
+    # take one column, bucketize into quintiles, then expand to (N, S, C) so the
+    # group label lines up with the flattened [week][spatial][category] data.
+    feat_units = features[:, 0, 0]  # (S,) static across time
+    q_bins = torch.quantile(feat_units, torch.tensor([0.2, 0.4, 0.6, 0.8]))
+    groups_unit = torch.bucketize(feat_units, q_bins)  # (S,)
+
+    groups_cal = groups_unit.view(1, S_dim, 1).expand(N_cal, S_dim, C_dim).reshape(-1)
+    groups_test = groups_unit.view(1, S_dim, 1).expand(N_test, S_dim, C_dim).reshape(-1)
 
     calibrator.fit(y_cal, pi_cal, mu_cal, r_cal, groups=groups_cal)
 
@@ -509,9 +519,6 @@ def conformal_evaluation(
     pi_test = test_results["pi"].reshape(-1).float()
     mu_test = test_results["mu"].reshape(-1).float()
     r_test = test_results["r"].reshape(-1).float()
-    
-    feat_test = features[:, TEST_START_WEEK : counts.shape[1], 0].transpose(0, 1).flatten()
-    groups_test = torch.bucketize(feat_test, q_bins)
 
     intervals = calibrator.predict(pi_test, mu_test, r_test, groups=groups_test)
     lower = intervals["lower"]
@@ -523,14 +530,20 @@ def conformal_evaluation(
     avg_width = (upper - lower).mean().item()
     median_width = (upper - lower).median().item()
 
+    # ECRC stores per-group thresholds (dict), not a single scalar; report the
+    # mean group threshold plus the Hoeffding slack for the record.
+    _group_thr = list(calibrator._group_thresholds.values())
+    mean_threshold = float(np.mean(_group_thr)) if _group_thr else 0.0
+
     conf_results = {
-        "method": "split_conformal",
+        "method": "ecrc",
         "alpha": alpha,
         "target_coverage": round(1 - alpha, 4),
         "test_coverage": round(coverage, 4),
         "avg_interval_width": round(avg_width, 2),
         "median_interval_width": round(median_width, 2),
-        "threshold": round(calibrator.threshold, 4),
+        "mean_group_threshold": round(mean_threshold, 4),
+        "hoeffding_epsilon": round(float(calibrator.epsilon), 4),
         "n_cal": int(y_cal.shape[0]),
         "n_test": int(y_test.shape[0]),
     }
@@ -543,7 +556,9 @@ def conformal_evaluation(
         pic = test_results["pi"][:, :, c].reshape(-1).float()
         muc = test_results["mu"][:, :, c].reshape(-1).float()
         rc = test_results["r"][:, :, c].reshape(-1).float()
-        ivals = calibrator.predict(pic, muc, rc)
+        # groups for this single category: (N_test, S) → flatten
+        groups_c = groups_unit.view(1, S).expand(N, S).reshape(-1)
+        ivals = calibrator.predict(pic, muc, rc, groups=groups_c)
         cov_c = ((yc >= ivals["lower"]) & (yc <= ivals["upper"])).float().mean().item()
         conf_results[f"coverage_{cat_name}"] = round(cov_c, 4)
 
