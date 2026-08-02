@@ -120,7 +120,7 @@ def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
 
 def load_checkpoint(
     checkpoint_path: str, data_name: str, weights: str = "auto"
-) -> tuple[dict[str, Any], Path, str]:
+) -> tuple[dict[str, Any], Path, str, dict[str, Any]]:
     """Load a checkpoint, handling 'auto' discovery.
 
     Args:
@@ -132,7 +132,9 @@ def load_checkpoint(
             `select_weights_on_validation`.
 
     Returns:
-        (state_dict_or_candidates, resolved_path, weights_source)
+        (state_dict_or_candidates, resolved_path, weights_source, arch)
+        ``arch`` is the architecture fingerprint the trainer recorded, or {}
+        for older checkpoints saved before fingerprinting existed.
     """
     if checkpoint_path.lower() == "auto":
         ckpt_path = discover_checkpoint(data_name)
@@ -159,6 +161,18 @@ def load_checkpoint(
     # fraction of its initial snapshot. It measurably underperforms the online
     # weights on test. The choice is now made on validation data instead of
     # being hardcoded.
+    arch: dict[str, Any] = ckpt.get("arch", {}) if isinstance(ckpt, dict) else {}
+    if arch:
+        off = [
+            k for k in ("use_gnn", "use_transformer", "zero_inflation")
+            if not arch.get(k, True)
+        ]
+        if off:
+            logger.warning(
+                f"  Checkpoint records an ABLATED architecture "
+                f"(disabled: {', '.join(off)}) — rebuilding to match."
+            )
+
     candidates: dict[str, dict[str, Any]] = {}
     if "ema_state_dict" in ckpt:
         candidates["ema"] = _clean_state_dict(ckpt["ema_state_dict"])
@@ -166,7 +180,7 @@ def load_checkpoint(
         candidates["raw"] = _clean_state_dict(ckpt["model_state_dict"])
     if not candidates:
         # Assume the file IS the state_dict.
-        return _clean_state_dict(ckpt), ckpt_path, "raw_toplevel"
+        return _clean_state_dict(ckpt), ckpt_path, "raw_toplevel", arch
 
     if weights in ("raw", "ema"):
         if weights not in candidates:
@@ -175,12 +189,12 @@ def load_checkpoint(
                 f"Available: {sorted(candidates)}"
             )
         logger.info(f"  Using '{weights}' weights (explicitly requested)")
-        return candidates[weights], ckpt_path, weights
+        return candidates[weights], ckpt_path, weights, arch
 
     if weights != "auto":
         raise ValueError(f"weights must be 'auto', 'raw' or 'ema', got {weights!r}")
 
-    return candidates, ckpt_path, "auto"  # type: ignore[return-value]
+    return candidates, ckpt_path, "auto", arch  # type: ignore[return-value]
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -259,13 +273,26 @@ def load_data(data_name: str) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
 # ───────────────────────────────────────────────────────────────────
 # Model construction
 # ───────────────────────────────────────────────────────────────────
-def build_model(num_features: int, num_categories: int) -> "torch.nn.Module":
-    """Build CivicSafeModel with default architecture hyperparameters."""
+def build_model(
+    num_features: int,
+    num_categories: int,
+    arch: dict | None = None,
+) -> "torch.nn.Module":
+    """Build CivicSafeModel, honoring any architecture recorded in a checkpoint.
+
+    Args:
+        num_features: Input feature width (static features + crime history).
+        num_categories: Number of crime categories.
+        arch: Optional ``arch`` dict saved by the trainer. Carries the ablation
+            toggles, so an ablated checkpoint is rebuilt as the model that was
+            actually trained instead of the full architecture.
+    """
     from civicsafe.models.civicsafe_model import CivicSafeModel
 
+    arch = arch or {}
     model = CivicSafeModel(
         num_features=num_features,
-        hidden_dim=128,
+        hidden_dim=int(arch.get("hidden_dim", 128)),
         spatial_layers=2,
         spatial_heads=4,
         temporal_layers=2,
@@ -273,6 +300,9 @@ def build_model(num_features: int, num_categories: int) -> "torch.nn.Module":
         temporal_ff_dim=512,
         num_categories=num_categories,
         max_seq_len=WINDOW_SIZE,
+        use_gnn=bool(arch.get("use_gnn", True)),
+        use_transformer=bool(arch.get("use_transformer", True)),
+        zero_inflation=bool(arch.get("zero_inflation", True)),
     )
     return model
 
@@ -710,12 +740,13 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     # ── 2. Build model & load checkpoint ──
     logger.info("\n[2/5] Loading model checkpoint...")
-    loaded, ckpt_path, weights_source = load_checkpoint(
+    loaded, ckpt_path, weights_source, arch = load_checkpoint(
         args.checkpoint, args.data, weights=args.weights
     )
     # Model was trained with [static features ‖ log1p(crime history)] as input,
     # so num_features must be F+C to match the trained input_proj weight shape.
-    model = build_model(num_features=F + C, num_categories=C)
+    # `arch` carries any ablation toggles so the rebuild matches what was trained.
+    model = build_model(num_features=F + C, num_categories=C, arch=arch)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -728,7 +759,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
         val_scores: dict[str, float] = {}
         for cand_name, cand_sd in loaded.items():  # type: ignore[union-attr]
-            probe = build_model(num_features=F + C, num_categories=C)
+            probe = build_model(num_features=F + C, num_categories=C, arch=arch)
             miss, _ = probe.load_state_dict(cand_sd, strict=False)
             if miss:
                 logger.warning(f"    {cand_name}: {len(miss)} missing keys, skipping")
@@ -830,9 +861,19 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     # ── 5. Save results ──
     logger.info("\n[5/5] Saving results...")
-    output_dir = PROJECT_ROOT / "outputs" / "evaluation"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{args.data}_test_results.json"
+    # Record the evaluated architecture in the results so an ablation JSON is
+    # self-identifying and can never be mistaken for a full-model result.
+    metrics["arch"] = arch or {"note": "not recorded (pre-fingerprint checkpoint)"}
+
+    custom_out = getattr(args, "output", None)
+    if custom_out:
+        output_file = Path(custom_out)
+        output_dir = output_file.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = PROJECT_ROOT / "outputs" / "evaluation"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / f"{args.data}_test_results.json"
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, default=str)
@@ -840,7 +881,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     # ── LaTeX table ──
     latex = generate_latex_table(metrics)
-    latex_file = output_dir / f"{args.data}_results_table.tex"
+    latex_file = output_file.with_name(f"{output_file.stem}_table.tex")
     with open(latex_file, "w", encoding="utf-8") as f:
         f.write(latex)
     logger.info(f"  LaTeX table saved to: {latex_file}")
@@ -933,6 +974,16 @@ def main() -> None:
             "whichever scores lower CRPS on the 2022-H1 VALIDATION split, so the "
             "choice never touches the test set. 'raw'=model_state_dict, "
             "'ema'=ema_state_dict."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help=(
+            "Write results JSON to this exact path instead of the default "
+            "outputs/evaluation/{data}_test_results.json. Used by the ablation "
+            "runner to keep each variant's results separate."
         ),
     )
     args = parser.parse_args()

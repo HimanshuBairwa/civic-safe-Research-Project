@@ -499,6 +499,28 @@ class Trainer:
 
         return compute_all_metrics(y, pi, mu, r)
 
+    def _arch_fingerprint(self) -> dict[str, Any]:
+        """Describe the architecture of the model being trained.
+
+        Read off the live module rather than the config so it stays truthful
+        even if the config and the constructed model ever disagree.
+        """
+        m = self.model
+        zinb = getattr(m, "zinb_head", None)
+        fp: dict[str, Any] = {
+            "class": type(m).__name__,
+            "use_gnn": bool(getattr(m, "use_gnn", True)),
+            "use_transformer": bool(getattr(m, "use_transformer", True)),
+            "zero_inflation": bool(getattr(zinb, "zero_inflation", True)),
+            "hidden_dim": int(getattr(m, "hidden_dim", 128)),
+        }
+        proj = getattr(m, "input_proj", None)
+        if proj is not None and hasattr(proj, "in_features"):
+            fp["num_features"] = int(proj.in_features)
+        if zinb is not None and hasattr(zinb, "num_categories"):
+            fp["num_categories"] = int(zinb.num_categories)
+        return fp
+
     def save_checkpoint(self, path: Path, epoch: int, metrics: dict[str, Any]) -> None:
         """Save a training checkpoint with atomic write.
 
@@ -514,6 +536,12 @@ class Trainer:
             "scheduler_state_dict": self.scheduler.state_dict(),
             "metrics": metrics,
             "global_step": self._global_step,
+            # Record the architecture that produced these weights. Evaluation
+            # rebuilds the model from defaults, so without this an ablated
+            # checkpoint (e.g. use_gnn=False) would be silently reconstructed
+            # as the FULL architecture and load with a partial state_dict —
+            # reporting an ablation number that came from a different model.
+            "arch": self._arch_fingerprint(),
         }
 
         if self.ema_model is not None:

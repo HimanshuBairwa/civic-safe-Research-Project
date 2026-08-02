@@ -28,6 +28,99 @@ from civicsafe.models.zinb_head import ZINBHead
 from civicsafe.models.adversarial_head import AdversarialDiscriminator
 
 
+class NoGraphSpatialBypass(nn.Module):
+    """Per-node MLP replacing GATv2 — ablates spatial message passing.
+
+    Deliberately keeps the ``SpatialEncoder`` call signature (and accepts the
+    edge indices, ignoring them) so the surrounding forward path is unchanged.
+    Each node is encoded from its own features alone.
+
+    Matching depth, width, and nonlinearity to the encoder it replaces is what
+    makes this a test of *message passing* specifically. A bypass that also
+    changed capacity would confound "graph structure doesn't help" with
+    "the replacement was simply smaller".
+
+    Args:
+        hidden_dim: Embedding width, matched to the GATv2 encoder.
+        num_layers: Number of MLP blocks, matched to ``spatial_layers``.
+        dropout: Dropout rate, matched to the encoder.
+    """
+
+    def __init__(
+        self, hidden_dim: int, num_layers: int = 2, dropout: float = 0.1
+    ) -> None:
+        super().__init__()
+        layers: list[nn.Module] = []
+        for _ in range(num_layers):
+            layers += [
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+            ]
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(
+        self,
+        x: Tensor,
+        edge_index_queen: Tensor | None = None,
+        edge_index_knn: Tensor | None = None,
+    ) -> Tensor:
+        """Encode nodes independently, ignoring graph structure.
+
+        Args:
+            x: Node features, either (S, D) for one timestep or (S, T, D).
+            edge_index_queen: Accepted for signature parity; unused.
+            edge_index_knn: Accepted for signature parity; unused.
+
+        Returns:
+            Same shape as ``x``.
+        """
+        return self.mlp(x)  # type: ignore[no-any-return]
+
+
+class NoAttentionTemporalBypass(nn.Module):
+    """Per-timestep MLP + causal running mean, replacing the causal Transformer.
+
+    Position ``t`` receives the uniform average of encoded steps ``0..t``, so
+    the receptive field and the causality constraint are identical to the
+    Transformer's. The only thing removed is *learned* attention weighting.
+
+    That makes this a test of whether attention beats uniform pooling, rather
+    than a test of whether the model can see history at all — a bypass that
+    only saw the current step would collapse the comparison into "history
+    helps", which is not in question.
+
+    Args:
+        d_model: Model width, matched to the Transformer it replaces.
+        dropout: Dropout rate, matched to the Transformer.
+    """
+
+    def __init__(self, d_model: int, dropout: float = 0.1) -> None:
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, d_model),
+        )
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Encode each step, then causally average.
+
+        Args:
+            x: Sequence of spatial embeddings. Shape: (S, T, D)
+
+        Returns:
+            (S, T, D) — position ``t`` is the mean of encoded steps ``0..t``.
+        """
+        h = self.mlp(x)
+        # Running mean over time: cumsum / (1, 2, ..., T). Strictly causal.
+        csum = h.cumsum(dim=1)
+        counts = torch.arange(1, h.shape[1] + 1, device=h.device, dtype=h.dtype)
+        return self.norm(csum / counts.view(1, -1, 1))  # type: ignore[no-any-return]
+
+
 class CivicSafeModel(nn.Module):
     """Complete CIVIC-SAFE spatiotemporal ZINB forecasting model.
 
@@ -50,6 +143,10 @@ class CivicSafeModel(nn.Module):
         max_seq_len: Maximum sequence length (weeks).
         dropout: Global dropout rate.
         use_gradient_checkpointing: Whether to use gradient checkpointing.
+        use_gnn: If False, replace GATv2 with a per-node MLP (spatial ablation).
+        use_transformer: If False, replace the causal Transformer with a
+            per-step MLP plus causal mean pooling (temporal ablation).
+        zero_inflation: If False, the ZINB head emits pi=0 (pure NB ablation).
     """
 
     def __init__(
@@ -74,32 +171,49 @@ class CivicSafeModel(nn.Module):
         num_adv_classes: int = 0,
         adv_lambda: float = 1.0,
         use_gradient_checkpointing: bool = False,
+        use_gnn: bool = True,
+        use_transformer: bool = True,
+        zero_inflation: bool = True,
     ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.use_gnn = use_gnn
+        self.use_transformer = use_transformer
 
         # Input projection: F_in → hidden_dim
         self.input_proj = nn.Linear(num_features, hidden_dim)
 
-        # Spatial encoder (GATv2 with dual adjacency)
-        self.spatial_encoder = SpatialEncoder(
-            in_channels=hidden_dim,
-            hidden_channels=hidden_dim,
-            num_layers=spatial_layers,
-            num_heads=spatial_heads,
-            dropout=dropout,
-        )
+        # Spatial encoder (GATv2 with dual adjacency), or MLP bypass if ablated
+        if use_gnn:
+            self.spatial_encoder: nn.Module = SpatialEncoder(
+                in_channels=hidden_dim,
+                hidden_channels=hidden_dim,
+                num_layers=spatial_layers,
+                num_heads=spatial_heads,
+                dropout=dropout,
+            )
+        else:
+            self.spatial_encoder = NoGraphSpatialBypass(
+                hidden_dim=hidden_dim,
+                num_layers=spatial_layers,
+                dropout=dropout,
+            )
 
-        # Temporal encoder (Causal Transformer)
-        self.temporal_encoder = TemporalEncoder(
-            d_model=hidden_dim,
-            num_heads=temporal_heads,
-            num_layers=temporal_layers,
-            dim_feedforward=temporal_ff_dim,
-            dropout=dropout,
-            max_seq_len=max_seq_len,
-        )
+        # Temporal encoder (Causal Transformer), or causal-mean bypass if ablated
+        if use_transformer:
+            self.temporal_encoder: nn.Module = TemporalEncoder(
+                d_model=hidden_dim,
+                num_heads=temporal_heads,
+                num_layers=temporal_layers,
+                dim_feedforward=temporal_ff_dim,
+                dropout=dropout,
+                max_seq_len=max_seq_len,
+            )
+        else:
+            self.temporal_encoder = NoAttentionTemporalBypass(
+                d_model=hidden_dim, dropout=dropout
+            )
 
         # Feature mixer (MFFM)
         self.feature_mixer = FeatureMixer(
@@ -109,7 +223,7 @@ class CivicSafeModel(nn.Module):
             collapse_threshold=mixer_collapse_threshold,
         )
 
-        # ZINB projection head
+        # ZINB projection head (pi head is disabled when zero_inflation=False)
         self.zinb_head = ZINBHead(
             in_features=hidden_dim,
             pi_hidden=pi_hidden,
@@ -117,6 +231,7 @@ class CivicSafeModel(nn.Module):
             r_hidden=r_hidden,
             num_categories=num_categories,
             r_floor=r_floor,
+            zero_inflation=zero_inflation,
         )
 
         # Adversarial Head (GRL)
@@ -206,5 +321,10 @@ class CivicSafeModel(nn.Module):
         edge_index_queen: Tensor,
         edge_index_knn: Tensor | None,
     ) -> Tensor:
-        """Spatial encoding for a single timestep (checkpointable)."""
+        """Spatial encoding for a single timestep (checkpointable).
+
+        When ``use_gnn=False``, the spatial encoder is a per-node MLP that
+        ignores the edge tensors — this forward path passes them anyway for
+        signature parity, keeping the caller simple.
+        """
         return self.spatial_encoder(x_t, edge_index_queen, edge_index_knn)  # type: ignore[no-any-return]

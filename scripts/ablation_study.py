@@ -68,6 +68,41 @@ def _fmt(value: float | None, fmt: str = FMT_4, missing: str = "--") -> str:
     return f"{value:{fmt}}"
 
 
+def _fmt_pm(
+    value: float | None,
+    std: float | None = None,
+    fmt: str = FMT_4,
+    missing: str = "--",
+) -> str:
+    """Format ``mean`` with an optional ``\\pm std``.
+
+    Ablation gaps on a 53-week test set are frequently smaller than the spread
+    across seeds. Printing the spread next to the mean is what stops a reader
+    (or an author) from treating a 0.01 CRPS difference as a finding.
+    """
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return missing
+    if std is None or (isinstance(std, float) and np.isnan(std)) or std == 0:
+        return f"{value:{fmt}}"
+    return rf"{value:{fmt}} $\pm$ {std:{fmt}}"
+
+
+def _mean_of(cell: str) -> float | None:
+    """Recover the numeric mean from a possibly ``mean $\\pm$ std`` cell.
+
+    ``_bold_best_column`` compares cells numerically; without this it would
+    fail to parse any cell carrying a spread and quietly bold nothing.
+    """
+    if not cell or cell == "--":
+        return None
+    head = cell.split("$\\pm$")[0].split("±")[0]
+    head = head.replace(r"\textbf{", "").replace("}", "").strip()
+    try:
+        return float(head)
+    except ValueError:
+        return None
+
+
 def _bold(text: str) -> str:
     """Wrap text in LaTeX bold."""
     return rf"\textbf{{{text}}}"
@@ -93,12 +128,10 @@ def _bold_best_column(
         numeric: list[tuple[int, float]] = []
         for i, row in enumerate(rows):
             val_str = row.get(col, "--")
-            if val_str == "--":
+            parsed = _mean_of(val_str)
+            if parsed is None:
                 continue
-            try:
-                numeric.append((i, float(val_str)))
-            except ValueError:
-                continue
+            numeric.append((i, parsed))
 
         if not numeric:
             continue
@@ -339,12 +372,12 @@ def generate_ablation_table(results: dict[str, Any] | None = None) -> str:
     ablation_variants = [
         ("full_model", r"\textsc{Civic-Safe} (Full)"),
         ("no_gatv2", r"$-$ Spatial attention (GATv2)"),
+        ("no_transformer", r"$-$ Temporal attention (Transformer)"),
+        ("nb_only", r"$-$ Zero-inflation (NB only)"),
+        ("no_r_reg", r"$-$ $r$-floor regularization"),
+        ("no_sharpness", r"$-$ Sharpness penalty"),
         ("no_emos", r"$-$ EMOS weighting"),
         ("no_recal", r"$-$ Recalibration"),
-        ("no_r_reg", r"$-$ $r$-floor regularization"),
-        ("nb_only", r"$-$ Zero-inflation (NB only)"),
-        ("nll_loss", r"$-$ CRPS loss (NLL only)"),
-        ("no_sharpness", r"$-$ Sharpness penalty"),
         ("no_grl", r"$-$ GRL (Demographic blindness)"),
     ]
 
@@ -352,12 +385,13 @@ def generate_ablation_table(results: dict[str, Any] | None = None) -> str:
     for key, display_name in ablation_variants:
         if results is not None and key in results:
             m = results[key]
+            std = m.get("_std", {}) if isinstance(m, dict) else {}
             rows.append({
                 "name": display_name,
-                "CRPS": _fmt(m.get("crps")),
-                "MAE": _fmt(m.get("mae")),
-                "RMSE": _fmt(m.get("rmse")),
-                "Brier": _fmt(m.get("brier_zero")),
+                "CRPS": _fmt_pm(m.get("crps"), std.get("crps")),
+                "MAE": _fmt_pm(m.get("mae"), std.get("mae")),
+                "RMSE": _fmt_pm(m.get("rmse"), std.get("rmse")),
+                "Brier": _fmt_pm(m.get("brier_zero"), std.get("brier_zero")),
             })
         else:
             rows.append({
@@ -586,12 +620,13 @@ def generate_loss_ablation_table(results: dict[str, Any] | None = None) -> str:
     for key, display in loss_variants:
         if results is not None and key in results:
             m = results[key]
+            std = m.get("_std", {}) if isinstance(m, dict) else {}
             rows.append({
                 "name": display,
-                "CRPS": _fmt(m.get("crps")),
-                "MAE": _fmt(m.get("mae")),
-                "RMSE": _fmt(m.get("rmse")),
-                "Brier": _fmt(m.get("brier_zero")),
+                "CRPS": _fmt_pm(m.get("crps"), std.get("crps")),
+                "MAE": _fmt_pm(m.get("mae"), std.get("mae")),
+                "RMSE": _fmt_pm(m.get("rmse"), std.get("rmse")),
+                "Brier": _fmt_pm(m.get("brier_zero"), std.get("brier_zero")),
             })
         else:
             rows.append({
@@ -721,21 +756,41 @@ def discover_ablation_results(results_dir: Path) -> dict[str, Any]:
         )
         return out
 
-    # Component ablation files
-    for variant in ["full_model", "no_gatv2", "no_emos", "no_recal", "no_r_reg"]:
+    # Component ablation files.
+    # This list must stay in sync with the variants rendered by
+    # generate_ablation_table() AND with those produced by run_ablations.py:
+    # a name present in only one place either silently drops a result that was
+    # computed, or renders a permanent dash for a row nothing will ever fill.
+    for variant in [
+        "full_model",
+        "no_gatv2",
+        "no_transformer",
+        "nb_only",
+        "no_r_reg",
+        "no_sharpness",
+        "no_emos",
+        "no_recal",
+        "no_grl",
+    ]:
         path = ablation_dir / f"{variant}_results.json"
         data = _load_json(path)
         if data is not None:
             # Normalise: accept either top-level metrics or nested "overall"
             metrics = data.get("overall", data)
+            # Carry the seed spread through so the table can print mean +/- std
+            if isinstance(data, dict) and "std" in data:
+                metrics = {**metrics, "_std": data["std"], "_n_seeds": data.get("n_seeds")}
             out["component"][variant] = metrics
 
-    # Loss function ablation
+    # Loss function ablation. run_ablations.py writes loss_{nll,sac}_results.json
+    # and aliases loss_crps to the full model (which is already CRPS-trained).
     for loss in ["nll", "crps", "sac"]:
         path = ablation_dir / f"loss_{loss}_results.json"
         data = _load_json(path)
         if data is not None:
             metrics = data.get("overall", data)
+            if isinstance(data, dict) and "std" in data:
+                metrics = {**metrics, "_std": data["std"], "_n_seeds": data.get("n_seeds")}
             out["loss"][loss] = metrics
 
     # Ensemble size ablation

@@ -216,6 +216,13 @@ def run_single_seed(
     arch = model_cfg.get("architecture", "sequential")
     logger.info(f"  Architecture: {arch}")
 
+    # Log any active ablation so a run is never silently a different model than
+    # the log header implies.
+    _abl = model_cfg.get("ablations", {})
+    _off = [k for k in ("use_gnn", "use_transformer", "zero_inflation") if not _abl.get(k, True)]
+    if _off:
+        logger.warning(f"  ABLATION ACTIVE — disabled: {', '.join(_off)}")
+
     # Crime history (C channels, log1p-transformed) is concatenated to the
     # static ACS features in the trainer. The model must accept F+C input dims.
     model_input_features = F + C
@@ -234,6 +241,9 @@ def run_single_seed(
         )
     else:
         # V1: Sequential GATv2 → Transformer (default)
+        # Read ablation toggles so experiments can drop components from the CLI:
+        #   python scripts/train.py model.ablations.use_gnn=False
+        ablations = model_cfg.get("ablations", {})
         model = CivicSafeModel(
             num_features=model_input_features,
             hidden_dim=spatial_cfg.get("hidden_dim", 128),
@@ -244,6 +254,9 @@ def run_single_seed(
             temporal_ff_dim=temporal_cfg.get("dim_feedforward", 512),
             num_categories=C,
             max_seq_len=temporal_cfg.get("max_seq_len", 52),
+            use_gnn=ablations.get("use_gnn", True),
+            use_transformer=ablations.get("use_transformer", True),
+            zero_inflation=ablations.get("zero_inflation", True),
         )
     num_params = sum(p.numel() for p in model.parameters())
     logger.info(f"  Model parameters: {num_params:,}")
@@ -340,18 +353,37 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Auto-resume: reuse most recent run directory for THIS DATASET ONLY.
-    # Directory naming convention: run_{dataset}_{timestamp}
+    # Directory naming convention: run_{dataset}[_{run_tag}]_{timestamp}
     # This prevents Chicago runs from being confused with NYC runs.
-    dataset_prefix = f"run_{data_name}_"
+    #
+    # run_tag additionally partitions the namespace, which ablations REQUIRE:
+    # without it, `train.py data=chicago model.ablations.use_gnn=false` would
+    # auto-resume straight into the full model's run directory and overwrite its
+    # checkpoints, silently destroying the baseline it is meant to be compared
+    # against. Any run that is not the canonical full model must pass a tag.
+    run_tag = str(config.get("run_tag", "")).strip()
+    if run_tag:
+        dataset_prefix = f"run_{data_name}_{run_tag}_"
+        logger.info(f"Run tag: {run_tag} (isolated from untagged runs)")
+    else:
+        dataset_prefix = f"run_{data_name}_"
     existing_runs = sorted([
         d for d in output_dir.iterdir()
         if d.is_dir() and d.name.startswith(dataset_prefix)
     ])
+    # An untagged prefix is a prefix of every tagged one, so filter tagged dirs
+    # out of the untagged search or `run_chicago_` would match
+    # `run_chicago_no_gnn_...` and resume an ablation as if it were the baseline.
+    if not run_tag:
+        existing_runs = [
+            d for d in existing_runs
+            if d.name[len(dataset_prefix):].isdigit()
+        ]
     if existing_runs:
         output_dir = existing_runs[-1]
         logger.info(f"Auto-resuming {data_name} in: {output_dir}")
     else:
-        output_dir = output_dir / f"run_{data_name}_{int(time.time())}"
+        output_dir = output_dir / f"{dataset_prefix}{int(time.time())}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"CIVIC-SAFE Training — {num_seeds} seed(s): {seeds}")
