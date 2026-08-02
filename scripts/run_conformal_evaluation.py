@@ -170,6 +170,7 @@ def load_model_from_checkpoint(
     num_categories: int,
     config: dict[str, Any],
     device: str = "cpu",
+    weights: str = "raw",
 ) -> CivicSafeModel:
     """Load a CivicSafeModel from a training checkpoint.
 
@@ -179,6 +180,8 @@ def load_model_from_checkpoint(
         num_categories: Number of crime categories (C dimension).
         config: Model configuration dictionary.
         device: Target device.
+        weights: Which parameter set to load — "raw" (model_state_dict) or
+            "ema" (ema_state_dict). Choose via validation, not test.
 
     Returns:
         Loaded model in eval mode.
@@ -201,26 +204,67 @@ def load_model_from_checkpoint(
 
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    # Handle different checkpoint formats
-    if "model_state_dict" in checkpoint:
-        state_dict = checkpoint["model_state_dict"]
-    elif "state_dict" in checkpoint:
-        state_dict = checkpoint["state_dict"]
+    # Handle different checkpoint formats.
+    #
+    # `weights` selects which parameter set to evaluate:
+    #   "raw"  -> model_state_dict (online SGD weights)
+    #   "ema"  -> ema_state_dict   (Polyak-averaged weights)
+    #
+    # This MUST be stated explicitly rather than left to key-order luck. This
+    # script used to read model_state_dict while evaluate_trained.py read
+    # ema_state_dict, so the two reported irreconcilable CRPS for the SAME
+    # checkpoint (Chicago seed_1024: 3.30 raw vs 4.63 ema).
+    #
+    # Note the EMA weights here are not trustworthy by default: the trainer uses
+    # decay=0.999 (≈1000-step horizon) but only runs ~10 optimizer steps/epoch,
+    # so EMA barely converges within a run and retains a large fraction of the
+    # initial snapshot. Pick the weight set on VALIDATION data, never on test.
+    if weights == "ema":
+        if "ema_state_dict" not in checkpoint:
+            raise KeyError(f"{checkpoint_path} has no 'ema_state_dict'.")
+        state_dict = checkpoint["ema_state_dict"]
+        weights_source = "ema_state_dict"
+    elif weights == "raw":
+        if "model_state_dict" in checkpoint:
+            state_dict = checkpoint["model_state_dict"]
+            weights_source = "model_state_dict"
+        elif "state_dict" in checkpoint:
+            state_dict = checkpoint["state_dict"]
+            weights_source = "state_dict"
+        else:
+            state_dict = checkpoint
+            weights_source = "raw_toplevel"
     else:
-        state_dict = checkpoint
+        raise ValueError(f"weights must be 'raw' or 'ema', got {weights!r}")
 
-    # Handle EMA model state dicts (AveragedModel wraps keys with 'module.')
+    # Handle EMA model state dicts (AveragedModel wraps keys with 'module.'
+    # and adds a non-parameter 'n_averaged' buffer that the bare model lacks).
     cleaned_state_dict = {}
     for key, value in state_dict.items():
+        if key == "n_averaged":
+            continue
         clean_key = key.replace("module.", "")
         cleaned_state_dict[clean_key] = value
 
-    model.load_state_dict(cleaned_state_dict, strict=False)
+    # strict=True: a silent key mismatch here would leave layers at random init
+    # and still "work", quietly reporting garbage metrics. Fail loudly instead.
+    missing, unexpected = model.load_state_dict(cleaned_state_dict, strict=False)
+    if missing:
+        raise RuntimeError(
+            f"Checkpoint {checkpoint_path} is missing {len(missing)} model keys "
+            f"(first few: {list(missing)[:5]}). Refusing to evaluate a partially "
+            f"initialised model."
+        )
+    if unexpected:
+        logger.warning(f"  Unexpected keys ignored: {list(unexpected)[:5]}")
     model = model.to(device)
     model.eval()
 
     num_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"  Loaded model: {num_params:,} parameters from {checkpoint_path.name}")
+    logger.info(
+        f"  Loaded model: {num_params:,} parameters from {checkpoint_path.name} "
+        f"[weights={weights_source}]"
+    )
     return model
 
 
@@ -317,22 +361,52 @@ def load_demographic_groups(
                 break
 
         if income_col is not None and len(df) >= num_spatial_units:
-            incomes = df[income_col].values[:num_spatial_units]
-            # Replace NaN/negative with median
-            valid_mask = np.isfinite(incomes) & (incomes > 0)
-            if valid_mask.sum() > 0:
-                median_income = np.median(incomes[valid_mask])
-                incomes[~valid_mask] = median_income
-            # Quartile assignment
-            quartiles = np.digitize(
-                incomes,
-                bins=np.percentile(incomes, [25, 50, 75]),
+            # Align rows to the panel's spatial index rather than trusting CSV
+            # row order. `spatial_unit` ids are not guaranteed to be 0..S-1 in
+            # order (NYC precinct ids start 1, 5, ...), so positional slicing
+            # can assign a unit's income to the wrong spatial cell.
+            if "spatial_unit" in df.columns:
+                df = df.sort_values("spatial_unit").reset_index(drop=True)
+            incomes = np.asarray(
+                df[income_col].values[:num_spatial_units], dtype=np.float64
             )
+
+            # Replace NaN/non-positive with the median of the valid entries.
+            valid_mask = np.isfinite(incomes) & (incomes > 0)
+            n_imputed = int((~valid_mask).sum())
+            if valid_mask.sum() > 0:
+                median_income = float(np.median(incomes[valid_mask]))
+                incomes[~valid_mask] = median_income
+
+            # Quartile assignment via RANK, not value-bin edges.
+            #
+            # np.digitize on raw values collapses ties into a single bin: every
+            # unit imputed to the median lands on the same side of the p50 edge,
+            # which on NYC produced Q1=20, Q2=4, Q3=34, Q4=20. A 4-unit group is
+            # only 4*26*3 = 312 calibration points, inflating the ECRC Hoeffding
+            # slack to eps = sqrt(ln(2/delta_g)/(2*n_g)) = 0.0902. That drove
+            # adjusted_alpha to its 0.01 floor => 98.7% coverage at width 34
+            # instead of the target 90%. Ranking splits ties evenly so all four
+            # groups stay ~S/4 and eps stays comparable across groups and cities.
+            order = np.argsort(np.argsort(incomes, kind="stable"), kind="stable")
+            quartiles = np.minimum(
+                (order * 4) // max(len(incomes), 1), 3
+            ).astype(np.int64)
+
+            counts_per_q = [int(np.sum(quartiles == k)) for k in range(4)]
             logger.info(
                 f"  Demographic groups from {demo_path.name}: "
-                f"Q1={np.sum(quartiles==0)}, Q2={np.sum(quartiles==1)}, "
-                f"Q3={np.sum(quartiles==2)}, Q4={np.sum(quartiles==3)}"
+                f"Q1={counts_per_q[0]}, Q2={counts_per_q[1]}, "
+                f"Q3={counts_per_q[2]}, Q4={counts_per_q[3]}"
+                + (f" ({n_imputed} imputed to median)" if n_imputed else "")
             )
+            if n_imputed:
+                logger.warning(
+                    f"  {n_imputed}/{num_spatial_units} units had missing/invalid "
+                    f"income and were imputed to the median. Income-quartile "
+                    f"fairness groups for those units are not meaningful — report "
+                    f"this caveat alongside any disparity number."
+                )
             return torch.tensor(quartiles, dtype=torch.long)
 
     # Fallback: equal-size geographic groups
@@ -465,6 +539,7 @@ def run_conformal_evaluation(
     checkpoint_path: str | None = None,
     alpha: float = ALPHA_DEFAULT,
     device: str = "cpu",
+    weights: str = "auto",
 ) -> dict[str, Any]:
     """Execute the complete conformal calibration + evaluation pipeline.
 
@@ -473,6 +548,8 @@ def run_conformal_evaluation(
         checkpoint_path: Path to checkpoint, or None for auto-discovery.
         alpha: Nominal miscoverage level (default 0.1 for 90% coverage).
         device: Computation device.
+        weights: Checkpoint parameter set — "auto" (pick by validation CRPS),
+            "raw" (model_state_dict) or "ema" (ema_state_dict).
 
     Returns:
         Complete evaluation results dictionary.
@@ -525,8 +602,10 @@ def run_conformal_evaluation(
     # ─── Step 2: Create chronological splits ───
     logger.info("\n[2/7] Creating chronological splits...")
     splits = create_chronological_splits(counts, features)
+    val_dataset = splits["val"]
     cal_dataset = splits["cal"]
     test_dataset = splits["test"]
+    logger.info(f"  Validation set: {len(val_dataset)} windows")
     logger.info(f"  Calibration set: {len(cal_dataset)} windows")
     logger.info(f"  Test set: {len(test_dataset)} windows")
 
@@ -552,16 +631,70 @@ def run_conformal_evaluation(
         if not all_ckpts:
             raise FileNotFoundError(f"No checkpoints found for {data_name}")
 
+    # ─── Weight-set selection on VALIDATION data ───
+    #
+    # best.pt stores two parameter sets: the online weights (model_state_dict)
+    # and the Polyak-averaged ones (ema_state_dict). They do not perform
+    # equally here: the trainer uses EMA decay 0.999 (~1000-step horizon) but
+    # only ~10 optimizer steps/epoch, so the EMA never converges and keeps a
+    # large share of its initial snapshot. Empirically it is much worse.
+    #
+    # Which to report cannot be decided on the test set — that is tuning on
+    # test. Decide on 2022-H1 validation, which is disjoint from both the
+    # calibration (2022-H2) and test (2023) windows, then use that choice
+    # everywhere downstream.
+    if weights == "auto":
+        logger.info("\n  ─── WEIGHT-SET SELECTION (on validation, 2022 H1) ───")
+        probe_ckpt = all_ckpts[0]
+        val_scores: dict[str, float] = {}
+        for cand in ("raw", "ema"):
+            try:
+                probe_model = load_model_from_checkpoint(
+                    probe_ckpt, F + C, C, config, device, weights=cand
+                )
+            except KeyError as exc:
+                logger.info(f"    {cand:>3}: unavailable ({exc})")
+                continue
+            probe_res = run_rolling_inference(
+                probe_model, val_dataset, edge_queen, edge_knn, device
+            )
+            val_crps = crps_zinb(
+                probe_res["y"].reshape(-1), probe_res["pi"].reshape(-1),
+                probe_res["mu"].reshape(-1), probe_res["r"].reshape(-1),
+            ).mean().item()
+            val_scores[cand] = val_crps
+            logger.info(f"    {cand:>3}: validation CRPS = {val_crps:.4f}")
+            del probe_model
+
+        if not val_scores:
+            raise RuntimeError(f"No usable weight set found in {probe_ckpt}")
+        weights = min(val_scores, key=lambda k: val_scores[k])
+        logger.info(
+            f"  Selected weights='{weights}' (lowest validation CRPS). "
+            f"Test set was NOT used for this choice."
+        )
+        if len(val_scores) == 2:
+            gap = abs(val_scores["raw"] - val_scores["ema"])
+            if gap > 0.25:
+                logger.warning(
+                    f"  Large raw/EMA validation gap ({gap:.4f}). EMA decay 0.999 "
+                    f"is likely mistuned for this run length (~10 steps/epoch); "
+                    f"consider decay≈0.99 or EMA-per-epoch for future runs."
+                )
+
     # ─── Step 4-5: Ensemble inference (EMOS-style) ───
     K = len(all_ckpts)
     logger.info(f"\n[3-5/7] Ensemble inference with {K} seed(s)...")
+    logger.info(f"  Using weight set: '{weights}' for all {K} seed(s)")
 
     cal_results_list = []
     test_results_list = []
 
     for i, ckpt in enumerate(all_ckpts):
         logger.info(f"\n  --- Seed {i+1}/{K}: {ckpt.parent.name}/{ckpt.name} ---")
-        model_i = load_model_from_checkpoint(ckpt, F + C, C, config, device)
+        model_i = load_model_from_checkpoint(
+            ckpt, F + C, C, config, device, weights=weights
+        )
 
         cal_res = run_rolling_inference(model_i, cal_dataset, edge_queen, edge_knn, device)
         test_res = run_rolling_inference(model_i, test_dataset, edge_queen, edge_knn, device)
@@ -754,6 +887,26 @@ def run_conformal_evaluation(
         fit_kwargs: dict[str, Any] = {}
         if method_name in ("mondrian", "equalized_coverage", "ecrc", "adaptive_ecrc"):
             fit_kwargs["groups"] = groups_cal
+        if method_name == "weighted_cp":
+            # Decay by WEEK, not by flat array position.
+            #
+            # y_cal is (N_windows, S, C) flattened, so the default
+            # time_deltas=arange(n,0,-1) treats each (unit, category) cell as its
+            # own time step: deltas run to ~6000 and exp(-0.05*6000) underflows,
+            # clamping 97% of points to min_weight. Effective sample size
+            # collapsed to ~42 of 6006, and the "weighted" method silently
+            # degenerated to uniform weights — which is exactly why weighted_cp
+            # reported numbers bit-identical to split_cp. Weeks are the axis
+            # along which non-stationarity actually occurs.
+            n_cal_windows = cal_results["y"].shape[0]
+            week_index = torch.arange(n_cal_windows, dtype=torch.float32)
+            # Most recent calibration week has delta 0.
+            week_delta = (n_cal_windows - 1) - week_index          # (N,)
+            fit_kwargs["time_deltas"] = (
+                week_delta.view(-1, 1, 1)
+                .expand(n_cal_windows, S, C)
+                .reshape(-1)
+            )
 
         try:
             calibrator.fit(y_cal, pi_cal, mu_cal, r_cal, **fit_kwargs)
@@ -971,14 +1124,37 @@ def run_conformal_evaluation(
     logger.info(f"  PIT bins: {pit_freq.tolist()}")
     logger.info(f"  Uniform reference: {uniform_freq:.4f}")
     logger.info(f"  Max deviation from uniform: {pit_deviation:.4f}")
-    # Chi-squared test for uniformity
+    # Chi-squared test for uniformity.
+    #
+    # Interpret with care and report the EFFECT SIZE, not just the p-value. The
+    # test assumes i.i.d. draws, but PIT values here are one per
+    # (week, unit, category) cell and are strongly correlated in space and time,
+    # so the effective sample size is far below n. At n>12k even a ~1% deviation
+    # from uniform returns p<1e-10. Reporting "miscalibrated" off that p-value
+    # alone overstates the problem: a max bin deviation of ~0.015 against a 0.10
+    # reference is a well-calibrated forecast by any practical standard.
     from scipy import stats as sp_stats
     chi2_stat, chi2_p = sp_stats.chisquare(pit_hist)
-    logger.info(f"  Chi-squared test: stat={chi2_stat:.2f}, p={chi2_p:.4f}")
+    n_pit = int(np.sum(pit_hist))
+    # Cramer's V for a 1-D goodness-of-fit table: sqrt(chi2 / (n * df)).
+    n_bins = len(pit_hist)
+    cramers_v = float(np.sqrt(chi2_stat / (n_pit * (n_bins - 1)))) if n_pit else 0.0
+    logger.info(f"  Chi-squared test: stat={chi2_stat:.2f}, p={chi2_p:.4f} (n={n_pit})")
+    logger.info(f"  Effect size (Cramer's V): {cramers_v:.4f}  [<0.1 = negligible]")
     if chi2_p > 0.05:
         logger.info("  ✅ PIT histogram is consistent with uniform (well-calibrated)")
+    elif pit_deviation < 0.02 and cramers_v < 0.1:
+        logger.info(
+            "  ✅ PIT deviation is negligible in magnitude "
+            f"(max {pit_deviation:.4f} vs {uniform_freq:.2f} reference). "
+            "Chi-squared rejects only because n is large and PIT cells are "
+            "spatiotemporally correlated — not evidence of practical miscalibration."
+        )
     else:
-        logger.info("  ⚠️ PIT histogram deviates from uniform (miscalibrated)")
+        logger.info(
+            f"  ⚠️ PIT histogram deviates from uniform "
+            f"(max dev {pit_deviation:.4f}, V={cramers_v:.4f})"
+        )
 
     # ─── Compute point forecast metrics on test set ───
     test_metrics = compute_all_metrics(y_test, pi_test, mu_test, r_test)
@@ -1083,6 +1259,7 @@ def run_conformal_evaluation(
             "dataset": data_name,
             "checkpoint": str(all_ckpts) if K > 1 else str(all_ckpts[0]),
             "num_ensemble_seeds": K,
+            "weights_source": weights,
             "alpha": alpha,
             "timestamp": datetime.now().isoformat(),
             "panel_hash": panel_hash,
@@ -1170,14 +1347,64 @@ def run_conformal_evaluation(
     logger.info("  EXIT CRITERIA CHECK")
     logger.info("=" * 70)
 
-    # Find the best calibrator (highest coverage, then lowest width)
+    # Find the best calibrator.
+    #
+    # Selecting by max(coverage) is wrong: coverage is trivially maximised by
+    # emitting absurdly wide intervals, so it always crowned the most
+    # OVER-covered method (NYC ecrc: 98.7% coverage at width 34.0) over a
+    # well-calibrated one (split_cp: 90.5% at width 17.4). Conformal prediction
+    # targets coverage >= 1-alpha with the SMALLEST width; among methods that
+    # are valid, narrower is strictly better. So: filter to methods that hit the
+    # coverage floor, then pick minimum mean width. Overcoverage is reported as
+    # a diagnostic rather than rewarded.
+    COVERAGE_TOL = 0.01
+    coverage_floor = 1.0 - alpha - COVERAGE_TOL
+
+    candidates = {
+        m: c for m, c in all_coverage_results.items()
+        if isinstance(c, dict) and "marginal_coverage" in c
+    }
+    valid = {
+        m: c for m, c in candidates.items()
+        if c["marginal_coverage"] >= coverage_floor
+    }
+
     best_method = None
-    best_coverage = 0.0
-    for method, cov in all_coverage_results.items():
-        if isinstance(cov, dict) and "marginal_coverage" in cov:
-            if cov["marginal_coverage"] > best_coverage:
-                best_coverage = cov["marginal_coverage"]
-                best_method = method
+    if valid:
+        # Efficiency-optimal among valid calibrators.
+        best_method = min(
+            valid, key=lambda m: valid[m].get("mean_width", float("inf"))
+        )
+        selection_rule = "min width s.t. coverage >= 1-alpha"
+    elif candidates:
+        # Nothing reached the floor — fall back to the closest to target so the
+        # exit-criteria check below reports a genuine failure instead of hiding it.
+        best_method = min(
+            candidates,
+            key=lambda m: abs(candidates[m]["marginal_coverage"] - (1.0 - alpha)),
+        )
+        selection_rule = "closest to target (NO method met coverage floor)"
+
+    if best_method:
+        logger.info(f"  Selection rule: {selection_rule}")
+        # Efficiency table: makes over/under-coverage explicit for the paper.
+        logger.info(
+            f"  {'method':<24} {'coverage':>9} {'width':>8} {'disparity':>10}  status"
+        )
+        for m in sorted(candidates, key=lambda k: candidates[k].get("mean_width", 0.0)):
+            c = candidates[m]
+            cov_m = c["marginal_coverage"]
+            if cov_m < coverage_floor:
+                status = "UNDER-COVERS"
+            elif cov_m > (1.0 - alpha) + 0.03:
+                status = "over-covers (inefficient)"
+            else:
+                status = "well-calibrated"
+            logger.info(
+                f"  {m:<24} {cov_m:>9.4f} {c.get('mean_width', float('nan')):>8.2f} "
+                f"{c.get('coverage_disparity', 0.0):>10.4f}  {status}"
+                + ("  <-- selected" if m == best_method else "")
+            )
 
     if best_method:
         best_results = all_coverage_results[best_method]
@@ -1201,6 +1428,19 @@ def run_conformal_evaluation(
             logger.warning(
                 f"  ⚠ COVERAGE DISPARITY EXCEEDS THRESHOLD: "
                 f"{disparity:.4f} > {COVERAGE_DISPARITY_THRESHOLD}"
+            )
+            passed_all = False
+
+        # Overcoverage is not a pass. Intervals far wider than needed are
+        # useless operationally and a reviewer will read >97% at alpha=0.1 as
+        # a calibration failure, not a strength.
+        if best_results["marginal_coverage"] > (1.0 - alpha) + 0.03:
+            logger.warning(
+                f"  ⚠ SUBSTANTIAL OVERCOVERAGE: "
+                f"{best_results['marginal_coverage']:.4f} >> {1 - alpha:.2f} target "
+                f"(width {best_results.get('mean_width', float('nan')):.2f}). "
+                f"Intervals are wider than necessary; check group sizes feeding "
+                f"the ECRC Hoeffding slack."
             )
             passed_all = False
 
@@ -1282,14 +1522,31 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
 
     lines.append("")
 
-    # Per-category breakdown for best method
-    best_method = None
-    best_cov_val = 0.0
-    for method, cov in coverage.items():
-        if isinstance(cov, dict) and "marginal_coverage" in cov:
-            if cov["marginal_coverage"] > best_cov_val:
-                best_cov_val = cov["marginal_coverage"]
-                best_method = method
+    # Per-category breakdown for best method.
+    # Must use the SAME rule as the exit-criteria check (min width subject to
+    # coverage >= 1-alpha), otherwise the markdown report advertises a different
+    # "best calibrator" than the console summary.
+    _alpha = results.get("metadata", {}).get("alpha", 0.1)
+    _floor = 1.0 - _alpha - 0.01
+    _cands = {
+        m: c for m, c in coverage.items()
+        if isinstance(c, dict) and "marginal_coverage" in c
+    }
+    _valid = {
+        m: c for m, c in _cands.items() if c["marginal_coverage"] >= _floor
+    }
+    if _valid:
+        best_method = min(
+            _valid, key=lambda m: _valid[m].get("mean_width", float("inf"))
+        )
+    elif _cands:
+        best_method = min(
+            _cands,
+            key=lambda m: abs(_cands[m]["marginal_coverage"] - (1.0 - _alpha)),
+        )
+    else:
+        best_method = None
+    best_cov_val = _cands[best_method]["marginal_coverage"] if best_method else 0.0
 
     if best_method and "per_category" in coverage[best_method]:
         lines.append(f"### Per-Category Coverage ({best_method})")
@@ -1376,6 +1633,16 @@ def main() -> None:
         "--device", type=str, default=None,
         help="Device (default: auto-detect cuda/cpu)"
     )
+    parser.add_argument(
+        "--weights", type=str, default="auto",
+        choices=["auto", "raw", "ema"],
+        help=(
+            "Which checkpoint parameter set to evaluate. 'auto' (default) picks "
+            "whichever scores lower CRPS on the 2022-H1 VALIDATION split, so the "
+            "choice never touches the test set. 'raw'=model_state_dict, "
+            "'ema'=ema_state_dict."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -1393,6 +1660,7 @@ def main() -> None:
         checkpoint_path=args.checkpoint,
         alpha=args.alpha,
         device=device,
+        weights=args.weights,
     )
 
     # Final summary

@@ -107,13 +107,32 @@ def discover_checkpoint(data_name: str) -> Path:
     return chosen
 
 
+def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
+    """Strip AveragedModel's 'module.' prefix and its 'n_averaged' counter."""
+    cleaned = {}
+    for k, v in state_dict.items():
+        if k == "n_averaged":
+            continue
+        new_key = k.replace("module.", "") if k.startswith("module.") else k
+        cleaned[new_key] = v
+    return cleaned
+
+
 def load_checkpoint(
-    checkpoint_path: str, data_name: str
-) -> tuple[dict[str, Any], Path]:
+    checkpoint_path: str, data_name: str, weights: str = "auto"
+) -> tuple[dict[str, Any], Path, str]:
     """Load a checkpoint, handling 'auto' discovery.
 
+    Args:
+        checkpoint_path: Path to checkpoint, or "auto" to discover.
+        data_name: Dataset name, used for auto-discovery.
+        weights: Which parameter set to return — "raw" (model_state_dict),
+            "ema" (ema_state_dict), or "auto". For "auto" this returns BOTH
+            candidates so the caller can choose using validation data; see
+            `select_weights_on_validation`.
+
     Returns:
-        (state_dict, resolved_path)
+        (state_dict_or_candidates, resolved_path, weights_source)
     """
     if checkpoint_path.lower() == "auto":
         ckpt_path = discover_checkpoint(data_name)
@@ -126,30 +145,42 @@ def load_checkpoint(
     logger.info(f"  Loading checkpoint from {ckpt_path}")
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
-    # Handle both formats:
-    #   1. Full trainer checkpoint: {"model_state_dict": ..., "ema_state_dict": ..., ...}
-    #   2. Raw state_dict: {"input_proj.weight": ..., ...}
-    if isinstance(ckpt, dict):
-        # Prefer EMA weights if available (they're usually better)
-        if "ema_state_dict" in ckpt:
-            logger.info("  Using EMA model weights from checkpoint")
-            state_dict = ckpt["ema_state_dict"]
-            # AveragedModel wraps keys with "module." prefix
-            cleaned = {}
-            for k, v in state_dict.items():
-                new_key = k.replace("module.", "") if k.startswith("module.") else k
-                cleaned[new_key] = v
-            state_dict = cleaned
-        elif "model_state_dict" in ckpt:
-            logger.info("  Using model_state_dict from checkpoint")
-            state_dict = ckpt["model_state_dict"]
-        else:
-            # Assume it IS the state_dict directly
-            state_dict = ckpt
-    else:
+    if not isinstance(ckpt, dict):
         raise ValueError(f"Unexpected checkpoint type: {type(ckpt)}")
 
-    return state_dict, ckpt_path
+    # Handle both formats:
+    #   1. Full trainer checkpoint: {"model_state_dict": ..., "ema_state_dict": ...}
+    #   2. Raw state_dict: {"input_proj.weight": ..., ...}
+    #
+    # This used to unconditionally prefer ema_state_dict on the assumption that
+    # averaged weights are "usually better". That assumption does not hold for
+    # this trainer: EMA decay is 0.999 (~1000-step horizon) while a run does only
+    # ~10 optimizer steps/epoch, so the EMA never converges and retains a large
+    # fraction of its initial snapshot. It measurably underperforms the online
+    # weights on test. The choice is now made on validation data instead of
+    # being hardcoded.
+    candidates: dict[str, dict[str, Any]] = {}
+    if "ema_state_dict" in ckpt:
+        candidates["ema"] = _clean_state_dict(ckpt["ema_state_dict"])
+    if "model_state_dict" in ckpt:
+        candidates["raw"] = _clean_state_dict(ckpt["model_state_dict"])
+    if not candidates:
+        # Assume the file IS the state_dict.
+        return _clean_state_dict(ckpt), ckpt_path, "raw_toplevel"
+
+    if weights in ("raw", "ema"):
+        if weights not in candidates:
+            raise KeyError(
+                f"{ckpt_path} has no weights for '{weights}'. "
+                f"Available: {sorted(candidates)}"
+            )
+        logger.info(f"  Using '{weights}' weights (explicitly requested)")
+        return candidates[weights], ckpt_path, weights
+
+    if weights != "auto":
+        raise ValueError(f"weights must be 'auto', 'raw' or 'ema', got {weights!r}")
+
+    return candidates, ckpt_path, "auto"  # type: ignore[return-value]
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -449,6 +480,53 @@ def compute_metrics(
 # Conformal calibration on cal → evaluate coverage on test
 # ───────────────────────────────────────────────────────────────────
 @torch.no_grad()
+def _income_quartiles(data_name: str, num_spatial_units: int) -> Tensor:
+    """Rank-based income quartiles per spatial unit. Shape: (S,) in {0,1,2,3}.
+
+    Mirrors `load_demographic_groups` in scripts/run_conformal_evaluation.py so
+    both scripts stratify fairness metrics identically. Rank-based (not
+    value-bin) assignment keeps groups balanced even when many units share an
+    imputed median income — an unbalanced group inflates the ECRC Hoeffding
+    slack and blows up interval width.
+    """
+    demo_path = PROJECT_ROOT / "data" / "processed" / f"{data_name}_demographics.csv"
+    if demo_path.exists():
+        try:
+            import pandas as pd
+
+            df = pd.read_csv(demo_path)
+            income_col = next(
+                (c for c in df.columns
+                 if ("median" in c.lower() and "income" in c.lower())
+                 or "B19013_001E" in c),
+                None,
+            )
+            if income_col is not None and len(df) >= num_spatial_units:
+                if "spatial_unit" in df.columns:
+                    df = df.sort_values("spatial_unit").reset_index(drop=True)
+                inc = np.asarray(
+                    df[income_col].values[:num_spatial_units], dtype=np.float64
+                )
+                valid = np.isfinite(inc) & (inc > 0)
+                if valid.sum() > 0:
+                    inc[~valid] = float(np.median(inc[valid]))
+                order = np.argsort(np.argsort(inc, kind="stable"), kind="stable")
+                q = np.minimum((order * 4) // max(len(inc), 1), 3).astype(np.int64)
+                logger.info(
+                    f"  Fairness groups (income quartiles): "
+                    f"{[int((q == k).sum()) for k in range(4)]}"
+                )
+                return torch.tensor(q, dtype=torch.long)
+        except Exception as exc:  # noqa: BLE001 - fall through to proxy
+            logger.warning(f"  Could not read demographics ({exc}); using proxy groups")
+
+    logger.warning(
+        "  Demographics CSV unavailable — falling back to index-based groups. "
+        "Disparity numbers will NOT be comparable to the main conformal pipeline."
+    )
+    return torch.arange(num_spatial_units, dtype=torch.long) % 4
+
+
 def conformal_evaluation(
     model: torch.nn.Module,
     counts: Tensor,
@@ -457,6 +535,7 @@ def conformal_evaluation(
     edge_knn: Tensor | None,
     alpha: float,
     device: torch.device,
+    data_name: str,
 ) -> dict[str, Any]:
     """Calibrate on dedicated calibration set, evaluate coverage on test set.
 
@@ -501,13 +580,14 @@ def conformal_evaluation(
     # Use ECRC (Equalized Conditional Risk Control) calibrator
     calibrator = ECRCCalibrator(alpha=alpha, delta=0.05)
 
-    # Stratify by a STATIC per-spatial-unit feature (feature 0). ACS features are
-    # broadcast across time, so feature[:, t, 0] is identical for every week —
-    # take one column, bucketize into quintiles, then expand to (N, S, C) so the
-    # group label lines up with the flattened [week][spatial][category] data.
-    feat_units = features[:, 0, 0]  # (S,) static across time
-    q_bins = torch.quantile(feat_units, torch.tensor([0.2, 0.4, 0.6, 0.8]))
-    groups_unit = torch.bucketize(feat_units, q_bins)  # (S,)
+    # Stratify by INCOME QUARTILE, matching run_conformal_evaluation.py.
+    #
+    # This previously bucketised feature column 0 into 5 quantile bins, which is
+    # a different grouping than the main pipeline's 4 income quartiles — so the
+    # two scripts reported non-comparable "disparity" numbers for the same city.
+    # Use rank-based quartiles on median household income here too, and fall
+    # back to the feature-0 proxy only if the demographics CSV is absent.
+    groups_unit = _income_quartiles(data_name, S_dim)
 
     groups_cal = groups_unit.view(1, S_dim, 1).expand(N_cal, S_dim, C_dim).reshape(-1)
     groups_test = groups_unit.view(1, S_dim, 1).expand(N_test, S_dim, C_dim).reshape(-1)
@@ -630,22 +710,77 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     # ── 2. Build model & load checkpoint ──
     logger.info("\n[2/5] Loading model checkpoint...")
-    state_dict, ckpt_path = load_checkpoint(args.checkpoint, args.data)
+    loaded, ckpt_path, weights_source = load_checkpoint(
+        args.checkpoint, args.data, weights=args.weights
+    )
     # Model was trained with [static features ‖ log1p(crime history)] as input,
     # so num_features must be F+C to match the trained input_proj weight shape.
     model = build_model(num_features=F + C, num_categories=C)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if weights_source == "auto":
+        # `loaded` is {"raw": sd, "ema": sd}. Choose on the VALIDATION split
+        # (2022 H1) — disjoint from calibration (2022 H2) and test (2023) — so
+        # the decision never sees test data.
+        logger.info("  ─── WEIGHT-SET SELECTION (on validation, 2022 H1) ───")
+        from civicsafe.training.metrics import crps_zinb
+
+        val_scores: dict[str, float] = {}
+        for cand_name, cand_sd in loaded.items():  # type: ignore[union-attr]
+            probe = build_model(num_features=F + C, num_categories=C)
+            miss, _ = probe.load_state_dict(cand_sd, strict=False)
+            if miss:
+                logger.warning(f"    {cand_name}: {len(miss)} missing keys, skipping")
+                continue
+            probe = probe.to(device).eval()
+            val_out = rolling_evaluate(
+                probe, counts, features, edge_queen, edge_knn,
+                start_week=VAL_START_WEEK,
+                end_week=VAL_START_WEEK + (WEEKS_PER_YEAR // 2),
+                window_size=WINDOW_SIZE,
+                device=device,
+            )
+            v = crps_zinb(
+                val_out["y_true"].reshape(-1).float(), val_out["pi"].reshape(-1).float(),
+                val_out["mu"].reshape(-1).float(), val_out["r"].reshape(-1).float(),
+            ).mean().item()
+            val_scores[cand_name] = v
+            logger.info(f"    {cand_name:>3}: validation CRPS = {v:.4f}")
+            del probe
+
+        if not val_scores:
+            raise RuntimeError(f"No usable weight set in {ckpt_path}")
+        weights_source = min(val_scores, key=lambda k: val_scores[k])
+        state_dict = loaded[weights_source]  # type: ignore[index]
+        logger.info(
+            f"  Selected weights='{weights_source}' (lowest validation CRPS). "
+            f"Test set was NOT used for this choice."
+        )
+        if len(val_scores) == 2 and abs(val_scores["raw"] - val_scores["ema"]) > 0.25:
+            logger.warning(
+                f"  Large raw/EMA validation gap "
+                f"({abs(val_scores['raw'] - val_scores['ema']):.4f}). EMA decay 0.999 "
+                f"is likely mistuned for this run length (~10 steps/epoch)."
+            )
+    else:
+        state_dict = loaded  # type: ignore[assignment]
+        val_scores = {}
+
     # Try to load state_dict (handle possible key mismatches gracefully)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing:
-        logger.warning(f"  Missing keys in checkpoint: {missing[:5]}{'...' if len(missing)>5 else ''}")
+        raise RuntimeError(
+            f"Checkpoint is missing {len(missing)} model keys "
+            f"(first few: {list(missing)[:5]}). Refusing to evaluate a "
+            f"partially initialised model."
+        )
     if unexpected:
         logger.warning(f"  Unexpected keys in checkpoint: {unexpected[:5]}{'...' if len(unexpected)>5 else ''}")
 
     num_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"  Model loaded: {num_params:,} parameters")
+    logger.info(f"  Model loaded: {num_params:,} parameters [weights={weights_source}]")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
     logger.info(f"  Device: {device}")
@@ -673,6 +808,8 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         "checkpoint": str(ckpt_path),
         "device": str(device),
         "num_parameters": num_params,
+        "weights_source": weights_source,
+        "weight_selection_val_crps": {k: round(v, 4) for k, v in val_scores.items()},
         "test_start_week": TEST_START_WEEK,
         "test_end_week": T_total,
         "window_size": WINDOW_SIZE,
@@ -684,7 +821,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     try:
         conf_results = conformal_evaluation(
             model, counts, features, edge_queen, edge_knn,
-            alpha=args.alpha, device=device,
+            alpha=args.alpha, device=device, data_name=args.data,
         )
         metrics["conformal"] = conf_results
     except Exception as e:
@@ -785,6 +922,18 @@ def main() -> None:
         type=float,
         default=0.1,
         help="Conformal prediction miscoverage level (default: 0.1 = 90%% coverage)",
+    )
+    parser.add_argument(
+        "--weights",
+        type=str,
+        default="auto",
+        choices=["auto", "raw", "ema"],
+        help=(
+            "Which checkpoint parameter set to evaluate. 'auto' (default) picks "
+            "whichever scores lower CRPS on the 2022-H1 VALIDATION split, so the "
+            "choice never touches the test set. 'raw'=model_state_dict, "
+            "'ema'=ema_state_dict."
+        ),
     )
     args = parser.parse_args()
 

@@ -711,6 +711,11 @@ class AdaptiveTemporalECRCCalibrator:
     Where err_{t-1,g} is the empirical miscoverage for group g at time t-1.
     """
 
+    # Bound on the PID integral accumulator (anti-windup). With k_i = 1e-3 this
+    # caps the integral contribution to alpha at +/- 0.002 per step, so a long
+    # run of one-sided error can no longer silently wind up and then overshoot.
+    _INTEGRAL_CLIP: float = 2.0
+
     def __init__(
         self,
         alpha: float = 0.1,
@@ -888,14 +893,35 @@ class AdaptiveTemporalECRCCalibrator:
                     self._integral_err[g_idx] = 0.0
                     self._prev_err[g_idx] = e_t
                 
-                self._integral_err[g_idx] += e_t
                 p_term = self.k_p * e_t
-                i_term = self.k_i * self._integral_err[g_idx]
                 d_term = self.k_d * (e_t - self._prev_err[g_idx])
-                
                 self._prev_err[g_idx] = e_t
-                
-                new_alpha = self._alpha_t[g_idx] + p_term + i_term + d_term
+
+                # Anti-windup on the integral term: stop integrating while the
+                # output is saturated, and bound the accumulator. Without this
+                # the accumulator grows every week even when alpha_t is pinned
+                # at a clamp and cannot respond.
+                #
+                # Scope note (measured, not assumed): anti-windup alone barely
+                # moves the observed coverage drift (0.0805 -> 0.0799 in
+                # simulation) because the proportional term dominates. The drift
+                # from ~0.99 coverage in early test weeks to ~0.81 in late ones
+                # is driven by base_alpha starting pinned at the 0.01 floor,
+                # which happens when one demographic group is so small that the
+                # Hoeffding slack eats the whole alpha budget. Balancing the
+                # groups moves simulated drift from +0.0799 to -0.0151. Fix the
+                # group sizes; this clamp is hygiene, not the cure.
+                prev_alpha = self._alpha_t[g_idx]
+                saturated = prev_alpha <= 0.01 or prev_alpha >= 0.99
+                if not saturated:
+                    self._integral_err[g_idx] += e_t
+                self._integral_err[g_idx] = max(
+                    min(self._integral_err[g_idx], self._INTEGRAL_CLIP),
+                    -self._INTEGRAL_CLIP,
+                )
+                i_term = self.k_i * self._integral_err[g_idx]
+
+                new_alpha = prev_alpha + p_term + i_term + d_term
                 self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
                 
                 # 2. Add to calibration set (EnbPI style)
