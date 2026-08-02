@@ -123,7 +123,8 @@ def load_baseline_series(data: str) -> dict[str, tuple[list[int], list[float]]]:
     )
     if deep:
         for name, metrics in deep.items():
-            if not isinstance(metrics, dict):
+            # "_meta" and friends are run metadata, not forecasters.
+            if name.startswith("_") or not isinstance(metrics, dict):
                 continue
             s = _as_series(metrics.get("per_week"))
             if s is not None:

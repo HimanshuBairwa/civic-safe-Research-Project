@@ -1306,9 +1306,26 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / f"{data_name}_deep_baselines.json"
 
+    results["_meta"] = {
+        "seed": SEED,
+        "epochs": baseline_epochs,
+        "data": data_name,
+    }
+
     with open(out_file, "w") as f:
         json.dump(results, f, indent=2)
     logger.info(f"Results saved to {out_file}")
+
+    # Also write a seed-stamped copy. Without this, running a second seed
+    # silently overwrites the first and the baselines can only ever be reported
+    # as a single-seed point estimate -- while CIVIC-SAFE is reported as a
+    # multi-seed mean. That asymmetry is exactly the kind of thing a reviewer
+    # reads as the margin being an artifact of ensembling rather than
+    # architecture.
+    seed_file = output_dir / f"{data_name}_deep_baselines_seed{SEED}.json"
+    with open(seed_file, "w") as f:
+        json.dump(results, f, indent=2)
+    logger.info(f"Seed-stamped copy saved to {seed_file}")
 
     # --- Pretty-print comparison table ---
     print("\n" + "=" * 78)
@@ -1318,6 +1335,8 @@ def main() -> None:
     print(header)
     print("-" * 78)
     for name, m in results.items():
+        if name.startswith("_") or "crps" not in m:
+            continue
         row = (
             f"{name:<20} "
             f"{m.get('crps', float('nan')):>10.4f} "
