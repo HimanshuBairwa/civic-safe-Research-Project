@@ -47,6 +47,14 @@ def main() -> int:
     ap.add_argument("--smoke-first", action="store_true",
                     help="run a 2-epoch/1-seed training check per city BEFORE the "
                          "full run; abort the full train if the smoke fails")
+    ap.add_argument("--no-eval", action="store_true",
+                    help="skip the evaluation phase (metrics, baselines, "
+                         "ablations, significance) and stop after training")
+    ap.add_argument("--baseline-seeds", type=int, nargs="*", default=[42, 137, 256],
+                    help="seeds for the deep baselines; >1 is what makes the "
+                         "margin over them separable from seed noise")
+    ap.add_argument("--ablation-seeds", type=int, default=3,
+                    help="seeds per ablation variant")
     ap.add_argument("--india-data", type=str,
                     default=os.environ.get("OICC_INDIA_DATA", ""),
                     help="path to crime-detection-ai/data (India NCRB)")
@@ -150,6 +158,60 @@ def main() -> int:
                       f"training.epochs={args.epochs}"],
                      f"GNN training {city} ({args.seeds} seeds x {args.epochs} ep)")
             results.append((f"train {city}", ok))
+
+    # 3. Evaluation phase ----------------------------------------------------
+    #
+    # Training alone produces checkpoints and nothing a paper can cite. This
+    # phase turns them into the actual artifacts: test metrics, baselines at a
+    # MATCHED budget, ablations, seed-matched aggregation, and significance
+    # tests. Ordering matters -- significance consumes the per-week CRPS series
+    # that evaluation and the baselines write, so it must run last.
+    if not args.oicc_only and not args.no_eval:
+        ev = camp / "eval"; ev.mkdir(exist_ok=True)
+        for city in ("chicago", "nyc"):
+            results.append((f"evaluate {city}",
+                run([py, "scripts/evaluate_trained.py", "--checkpoint", "auto",
+                     "--data", city],
+                    f"test-set evaluation {city}", ev / f"eval_{city}.txt")))
+
+            results.append((f"conformal {city}",
+                run([py, "scripts/run_conformal_evaluation.py", "--data", city],
+                    f"conformal coverage {city}", ev / f"conformal_{city}.txt")))
+
+            results.append((f"classical baselines {city}",
+                run([py, "scripts/baselines.py", f"data={city}"],
+                    f"classical baselines {city}", ev / f"baselines_{city}.txt")))
+
+            # Baselines get the SAME epoch budget as CIVIC-SAFE. A 50-epoch
+            # baseline against a 200-epoch proposed model is not a comparison,
+            # and multiple seeds are what make the margin separable from noise.
+            for seed in args.baseline_seeds:
+                results.append((f"deep baselines {city} seed{seed}",
+                    run([py, "scripts/deep_baselines.py", f"data={city}",
+                         f"epochs={args.epochs}", f"seed={seed}"],
+                        f"deep baselines {city} (seed {seed}, {args.epochs} ep)",
+                        ev / f"deep_baselines_{city}_seed{seed}.txt")))
+
+            results.append((f"ablations {city}",
+                run([py, "scripts/run_ablations.py", "--data", city,
+                     "--seeds", str(args.ablation_seeds),
+                     "--epochs", str(args.epochs)],
+                    f"ablation study {city}", ev / f"ablations_{city}.txt")))
+
+            results.append((f"ablation table {city}",
+                run([py, "scripts/ablation_study.py", "--data", city],
+                    f"ablation LaTeX table {city}", ev / f"ablation_table_{city}.txt")))
+
+            results.append((f"seed-matched {city}",
+                run([py, "scripts/aggregate_baseline_seeds.py", "--data", city],
+                    f"seed-matched aggregation {city}",
+                    ev / f"seed_matched_{city}.txt")))
+
+            # Last: needs the per-week CRPS series written above.
+            results.append((f"significance {city}",
+                run([py, "scripts/significance_tests.py", "--data", city],
+                    f"Diebold-Mariano vs baselines {city}",
+                    ev / f"significance_{city}.txt")))
 
     # summary
     print("\n" + "=" * 70 + "\nCAMPAIGN SUMMARY\n" + "=" * 70)
