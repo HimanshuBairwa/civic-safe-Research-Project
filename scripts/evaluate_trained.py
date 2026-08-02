@@ -342,6 +342,13 @@ def rolling_evaluate(
         Dict with stacked tensors:
             y_true: (N_weeks, S, C)
             pi, mu, r: (N_weeks, S, C)
+            week_idx: (N_weeks,) absolute panel week index of each row
+
+        ``week_idx`` records which weeks were ACTUALLY evaluated. Weeks with
+        insufficient history are skipped, so row i is not in general week
+        ``start_week + i``. Anything comparing this model's per-week errors
+        against another forecaster's must join on this index rather than
+        assuming positional alignment.
     """
     model.eval()
     edge_queen = edge_queen.to(device)
@@ -349,6 +356,7 @@ def rolling_evaluate(
         edge_knn = edge_knn.to(device)
 
     all_y, all_pi, all_mu, all_r = [], [], [], []
+    weeks: list[int] = []
 
     T_total = counts.shape[1]
     actual_end = min(end_week, T_total)
@@ -375,6 +383,7 @@ def rolling_evaluate(
         all_pi.append(output["pi"].cpu())              # (S, C)
         all_mu.append(output["mu"].cpu())              # (S, C)
         all_r.append(output["r"].cpu())                # (S, C)
+        weeks.append(t)
 
         if (t - start_week + 1) % 10 == 0 or t == actual_end - 1:
             logger.info(f"    Evaluated week {t} ({t - start_week + 1}/{n_steps})")
@@ -384,6 +393,7 @@ def rolling_evaluate(
         "pi": torch.stack(all_pi),     # (N, S, C)
         "mu": torch.stack(all_mu),     # (N, S, C)
         "r": torch.stack(all_r),       # (N, S, C)
+        "week_idx": torch.tensor(weeks, dtype=torch.long),  # (N,)
     }
 
 
@@ -391,15 +401,19 @@ def rolling_evaluate(
 # Metrics computation
 # ───────────────────────────────────────────────────────────────────
 def compute_metrics(
-    y_true: Tensor, pi: Tensor, mu: Tensor, r: Tensor
+    y_true: Tensor, pi: Tensor, mu: Tensor, r: Tensor,
+    week_idx: Tensor | None = None,
 ) -> dict[str, Any]:
     """Compute comprehensive metrics.
 
     Args:
         y_true, pi, mu, r: each (N, S, C)
+        week_idx: (N,) absolute panel week index for each row. When supplied, a
+            ``per_week`` block is emitted carrying the CRPS series needed for
+            Diebold-Mariano testing against a baseline.
 
     Returns:
-        Nested dict with overall, per_category, per_spatial metrics.
+        Nested dict with overall, per_category, per_spatial, per_week metrics.
     """
     from civicsafe.training.metrics import (
         brier_zero_inflation,
@@ -502,6 +516,36 @@ def compute_metrics(
         "mean_spatial_mae": round(float(np.mean(spatial_mae)), 4),
         "std_spatial_mae": round(float(np.std(spatial_mae)), 4),
     }
+
+    # ── Per-week CRPS series (input to the Diebold-Mariano test) ──
+    #
+    # DM compares two forecasters' loss *series*, not their means: it needs the
+    # week-by-week CRPS so it can estimate the variance of the loss differential
+    # with a HAC correction for autocorrelation. A single scalar CRPS cannot
+    # support any claim of statistical significance.
+    #
+    # Weeks are carried explicitly because the comparison must join on week
+    # index -- two forecasters can cover different week sets (different lookback
+    # requirements, a skipped week) and positional zip would silently compare
+    # week 261 against week 262.
+    crps_per_cell = crps_zinb(
+        y_true.reshape(-1).float(), pi_flat, mu_flat, r_flat
+    ).reshape(N, S, C)
+    week_crps = crps_per_cell.mean(dim=(1, 2))  # (N,) -- mean over units+cats
+    per_week: dict[str, Any] = {
+        "crps": [round(float(v), 6) for v in week_crps.tolist()],
+        "n_weeks": int(N),
+        "aggregation": "mean over spatial units and categories",
+    }
+    if week_idx is not None:
+        wi = [int(w) for w in week_idx.tolist()]
+        if len(wi) != N:
+            raise ValueError(
+                f"week_idx has {len(wi)} entries but metrics have {N} rows; "
+                f"refusing to emit a misaligned per-week series."
+            )
+        per_week["week_index"] = wi
+    results["per_week"] = per_week
 
     return results
 
@@ -830,7 +874,8 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     # ── 4. Compute metrics ──
     logger.info("\n[4/5] Computing metrics...")
     metrics = compute_metrics(
-        test_out["y_true"], test_out["pi"], test_out["mu"], test_out["r"]
+        test_out["y_true"], test_out["pi"], test_out["mu"], test_out["r"],
+        week_idx=test_out.get("week_idx"),
     )
 
     # Add metadata

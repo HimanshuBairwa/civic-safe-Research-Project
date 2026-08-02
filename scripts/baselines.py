@@ -17,6 +17,7 @@ import logging
 import sys
 import warnings
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -40,25 +41,78 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger(__name__)
 
 
-def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+def compute_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    week_index: list[int] | None = None,
+) -> dict[str, float]:
     """Compute MAE, RMSE, and proper CRPS for deterministic point forecasts.
-    
+
     For point forecasts, CRPS is computed by wrapping them as Poisson(lambda=y_pred)
     and evaluating against the ZINB CRPS formula. This ensures fair comparison
     with the probabilistic CIVIC-SAFE model.
+
+    Args:
+        y_true: Ground truth counts, shape (T, S, C).
+        y_pred: Point forecasts, shape (T, S, C).
+        week_index: Absolute panel week index for each of the T rows. When
+            given, a ``per_week`` block carrying the CRPS series is added so
+            this baseline can enter the Diebold-Mariano comparison.
     """
     mae = np.abs(y_true - y_pred).mean()
     rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
-    
+
     # Proper CRPS via Poisson approximation: pi=0, mu=y_pred, r=1000 (NB→Poisson)
     from civicsafe.training.metrics import crps_zinb
     y_t = torch.tensor(y_true.flatten(), dtype=torch.float32)
     pi_t = torch.zeros_like(y_t)
     mu_t = torch.tensor(y_pred.flatten(), dtype=torch.float32).clamp(min=0.01)
     r_t = torch.full_like(y_t, 1000.0)
-    crps = crps_zinb(y_t, pi_t, mu_t, r_t).mean().item()
-    
-    return {"crps": float(crps), "mae": float(mae), "rmse": float(rmse)}
+    cell_crps = crps_zinb(y_t, pi_t, mu_t, r_t)
+    crps = cell_crps.mean().item()
+
+    out: dict[str, Any] = {
+        "crps": float(crps), "mae": float(mae), "rmse": float(rmse)
+    }
+
+    # Per-week CRPS series: the loss trajectory a significance test consumes.
+    # Reshaping back to y_true's layout recovers the week axis; averaging the
+    # remaining axes matches evaluate_trained.py's aggregation exactly, so the
+    # two series are term-by-term comparable.
+    if week_index is not None:
+        n_weeks = y_true.shape[0]
+        if len(week_index) != n_weeks:
+            logger.warning(
+                f"  week_index has {len(week_index)} entries but predictions "
+                f"have {n_weeks} rows; per-week CRPS not emitted."
+            )
+        else:
+            per_week_crps = cell_crps.reshape(n_weeks, -1).mean(dim=1)
+            out["per_week"] = {
+                "week_index": [int(w) for w in week_index],
+                "crps": [round(float(v), 6) for v in per_week_crps.tolist()],
+                "n_weeks": int(n_weeks),
+                "aggregation": "mean over spatial units and categories",
+            }
+
+    return out
+
+
+def _weeks_of(ds) -> list[int]:
+    """Absolute panel week index of every item in a CrimeWindowDataset.
+
+    Every baseline here iterates the dataset in order, so item i's target is
+    week ``valid_targets[i]``. Exporting these lets the significance test JOIN
+    on week rather than trust that two forecasters happened to cover the same
+    range in the same order.
+    """
+    return [int(w) for w in getattr(ds, "valid_targets", [])]
+
+
+def _log_scalars(m: dict) -> dict:
+    """Drop nested blocks so a log line stays one line, not a 53-week dump."""
+    return {k: (round(v, 4) if isinstance(v, float) else v)
+            for k, v in m.items() if not isinstance(v, dict)}
 
 
 def get_adjacency_matrix(edge_index: torch.Tensor, num_nodes: int) -> torch.Tensor:
@@ -123,7 +177,7 @@ def run_historical_average(test_ds) -> dict[str, float]:
         
     preds = np.stack(preds)
     targets = np.stack(targets)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def run_seasonal_naive(test_ds) -> dict[str, float]:
@@ -149,7 +203,7 @@ def run_seasonal_naive(test_ds) -> dict[str, float]:
 
     preds = np.stack(preds)
     targets = np.stack(targets)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def run_lag1_persistence(test_ds) -> dict[str, float]:
@@ -168,7 +222,7 @@ def run_lag1_persistence(test_ds) -> dict[str, float]:
 
     preds = np.stack(preds)
     targets = np.stack(targets)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def run_starima(train_ds, test_ds, adj) -> dict[str, float]:
@@ -207,7 +261,7 @@ def run_starima(train_ds, test_ds, adj) -> dict[str, float]:
             preds[:, s, c] = pred_cs
             
     preds = np.clip(preds, a_min=0, a_max=None)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def run_zinb(train_ds, test_ds, adj) -> dict[str, float] | None:
@@ -248,7 +302,7 @@ def run_zinb(train_ds, test_ds, adj) -> dict[str, float] | None:
         preds[:, :, c] = pred_c.reshape(T_te, S)
         
     preds = np.clip(preds, a_min=0, a_max=None)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def run_xgboost(train_ds, test_ds, adj) -> dict[str, float]:
@@ -274,7 +328,7 @@ def run_xgboost(train_ds, test_ds, adj) -> dict[str, float]:
         preds[:, :, c] = pred_c.reshape(T_te, S)
         
     preds = np.clip(preds, a_min=0, a_max=None)
-    return compute_metrics(targets, preds)
+    return compute_metrics(targets, preds, week_index=_weeks_of(test_ds))
 
 
 def main():
@@ -337,49 +391,69 @@ def main():
     logger.info("Running Historical Average (HA)...")
     res_ha = run_historical_average(splits["test"])
     results["HA"] = res_ha
-    logger.info(f"  HA Results: {res_ha}")
+    logger.info(f"  HA Results: {_log_scalars(res_ha)}")
 
     # 2. Seasonal Naive (same week last year — the strongest naive baseline)
     logger.info("Running Seasonal Naive (lag-52)...")
     res_sn = run_seasonal_naive(splits["test"])
     results["Seasonal_Naive"] = res_sn
-    logger.info(f"  Seasonal Naive Results: {res_sn}")
+    logger.info(f"  Seasonal Naive Results: {_log_scalars(res_sn)}")
 
     # 3. Lag-1 Persistence
     logger.info("Running Lag-1 Persistence...")
     res_l1 = run_lag1_persistence(splits["test"])
     results["Lag1_Persistence"] = res_l1
-    logger.info(f"  Lag-1 Results: {res_l1}")
+    logger.info(f"  Lag-1 Results: {_log_scalars(res_l1)}")
     
     # 4. STARIMA
     logger.info("Running STARIMA...")
     res_starima = run_starima(splits["train"], splits["test"], adj)
     results["STARIMA"] = res_starima
-    logger.info(f"  STARIMA Results: {res_starima}")
+    logger.info(f"  STARIMA Results: {_log_scalars(res_starima)}")
     
     # 5. ZINB
     logger.info("Running ZINB Regression...")
     res_zinb = run_zinb(splits["train"], splits["test"], adj)
     if res_zinb:
         results["ZINB"] = res_zinb
-        logger.info(f"  ZINB Results: {res_zinb}")
+        logger.info(f"  ZINB Results: {_log_scalars(res_zinb)}")
         
     # 6. XGBoost
     logger.info("Running Spatiotemporal XGBoost...")
     res_xgb = run_xgboost(splits["train"], splits["test"], adj)
     results["XGBoost"] = res_xgb
-    logger.info(f"  XGBoost Results: {res_xgb}")
+    logger.info(f"  XGBoost Results: {_log_scalars(res_xgb)}")
     
     # Compile and save results
     output_dir = project_root / "outputs" / "baselines"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    df = pd.DataFrame(results).T
+    # The CSV stays scalar-only: a nested per-week dict would be stringified
+    # into a single cell and become unparseable. The series go to a sidecar
+    # JSON that the significance step reads.
+    scalar_results = {
+        name: {k: v for k, v in m.items() if not isinstance(v, dict)}
+        for name, m in results.items()
+    }
+    df = pd.DataFrame(scalar_results).T
     df.index.name = "Model"
     out_file = output_dir / f"{data_name}_baselines.csv"
     df.to_csv(out_file)
     logger.info(f"Results saved to {out_file}")
-    
+
+    per_week = {
+        name: m["per_week"] for name, m in results.items() if "per_week" in m
+    }
+    if per_week:
+        import json
+
+        pw_file = output_dir / f"{data_name}_baselines_per_week.json"
+        with open(pw_file, "w", encoding="utf-8") as f:
+            json.dump(per_week, f, indent=2)
+        logger.info(
+            f"Per-week CRPS series ({len(per_week)} baselines) saved to {pw_file}"
+        )
+
     print("\n" + "=" * 60)
     print(f"  BASELINE RESULTS ({data_name.upper()}) - TEST SET (2023)")
     print("=" * 60)

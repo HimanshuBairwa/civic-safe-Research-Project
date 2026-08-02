@@ -909,6 +909,12 @@ def evaluate_model(
       - CRPS (primary metric)
       - MAE, RMSE (point forecast accuracy)
       - Brier score (zero-inflation calibration)
+      - ``per_week``: the CRPS series keyed by absolute week index
+
+    The per-week series is what makes a significance test possible. Comparing
+    two scalar CRPS values says nothing about whether a gap is larger than the
+    week-to-week noise; the Diebold-Mariano test needs both loss series, aligned
+    on the same weeks.
 
     Args:
         model: Trained model.
@@ -919,13 +925,22 @@ def evaluate_model(
         is_graph_model: Whether to use graph collation.
 
     Returns:
-        Dictionary of metric name → value.
+        Dictionary of metric name → value, plus a ``per_week`` sub-dict.
     """
     model.eval()
     collate = _collate_graph if is_graph_model else _collate_flat
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, collate_fn=collate)
 
+    # Absolute panel week index of each dataset item. With shuffle=False the
+    # DataLoader walks items in order, so batch b holds items
+    # [b*batch_size, (b+1)*batch_size) -- that is what lets us label each row's
+    # week without threading the index through the collate functions (which the
+    # trainer also uses, and which we do not want to change here).
+    valid_targets = list(getattr(test_ds, "valid_targets", []))
+
     all_y, all_pi, all_mu, all_r = [], [], [], []
+    row_weeks: list[int] = []
+    item_cursor = 0
 
     for batch in test_loader:
         # Same log1p convention as training (see note in train_model).
@@ -949,13 +964,55 @@ def evaluate_model(
         all_mu.append(mu.cpu())
         all_r.append(r.cpu())
 
+        # Label every row in this batch with its week. Both collate paths end up
+        # with rows ordered [item][spatial_unit], so each item contributes a
+        # contiguous run of S rows.
+        n_items = min(batch_size, max(len(valid_targets) - item_cursor, 0))
+        if n_items > 0 and tc.shape[0] % n_items == 0:
+            s_per_item = tc.shape[0] // n_items
+            for j in range(n_items):
+                row_weeks.extend([valid_targets[item_cursor + j]] * s_per_item)
+        item_cursor += n_items
+
     y = torch.cat(all_y, dim=0)
     pi = torch.cat(all_pi, dim=0)
     mu = torch.cat(all_mu, dim=0)
     r = torch.cat(all_r, dim=0)
 
     metrics = compute_all_metrics(y, pi, mu, r)
-    logger.info(f"  [{model_name}] Test metrics: {metrics}")
+
+    # --- Per-week CRPS series, for Diebold-Mariano against CIVIC-SAFE ---
+    if len(row_weeks) == y.shape[0]:
+        cell_crps = crps_zinb(
+            y.reshape(-1).float(),
+            pi.reshape(-1).float(),
+            mu.reshape(-1).float(),
+            r.reshape(-1).float(),
+        ).reshape(y.shape)
+        # Mean over every non-week axis, matching evaluate_trained.py's
+        # "mean over spatial units and categories" so the two series are
+        # comparable term by term.
+        wk = torch.tensor(row_weeks, dtype=torch.long)
+        uniq = torch.unique(wk, sorted=True)
+        row_means = cell_crps.reshape(y.shape[0], -1).mean(dim=1)
+        series = [
+            round(float(row_means[wk == w].mean()), 6) for w in uniq
+        ]
+        metrics["per_week"] = {
+            "week_index": [int(w) for w in uniq.tolist()],
+            "crps": series,
+            "n_weeks": int(uniq.numel()),
+            "aggregation": "mean over spatial units and categories",
+        }
+    else:
+        logger.warning(
+            f"  [{model_name}] could not label rows with weeks "
+            f"({len(row_weeks)} labels vs {y.shape[0]} rows); "
+            f"per-week CRPS not emitted, significance test will skip this baseline."
+        )
+
+    _scalars = {k: v for k, v in metrics.items() if not isinstance(v, dict)}
+    logger.info(f"  [{model_name}] Test metrics: {_scalars}")
     return metrics
 
 
