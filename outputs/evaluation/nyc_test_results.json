@@ -1,0 +1,113 @@
+{
+  "overall": {
+    "mae": 5.1942,
+    "rmse": 9.1159,
+    "mape_pct": 51.19,
+    "crps": 3.7704,
+    "brier_zero": 0.084071,
+    "n_test_weeks": 53,
+    "n_spatial_units": 78,
+    "n_categories": 3
+  },
+  "per_category": {
+    "violent": {
+      "mae": 3.4555,
+      "rmse": 4.802,
+      "mape_pct": 48.66,
+      "crps": 2.4785,
+      "brier_zero": 0.019891
+    },
+    "property": {
+      "mae": 10.218,
+      "rmse": 14.7532,
+      "mape_pct": 37.39,
+      "crps": 7.5386,
+      "brier_zero": 0.007731
+    },
+    "drug": {
+      "mae": 1.9093,
+      "rmse": 2.9294,
+      "mape_pct": 72.8,
+      "crps": 1.2941,
+      "brier_zero": 0.22459
+    }
+  },
+  "per_spatial": {
+    "best_units": [
+      {
+        "unit": 73,
+        "mae": 0.0291
+      },
+      {
+        "unit": 12,
+        "mae": 0.7325
+      },
+      {
+        "unit": 57,
+        "mae": 2.4442
+      },
+      {
+        "unit": 77,
+        "mae": 2.6233
+      },
+      {
+        "unit": 41,
+        "mae": 2.7855
+      }
+    ],
+    "worst_units": [
+      {
+        "unit": 7,
+        "mae": 16.535
+      },
+      {
+        "unit": 0,
+        "mae": 12.7798
+      },
+      {
+        "unit": 66,
+        "mae": 11.5073
+      },
+      {
+        "unit": 65,
+        "mae": 9.0323
+      },
+      {
+        "unit": 15,
+        "mae": 8.8808
+      }
+    ],
+    "mean_spatial_mae": 5.1942,
+    "std_spatial_mae": 2.392
+  },
+  "metadata": {
+    "data": "nyc",
+    "checkpoint": "/workspace/civic-safe-Research-Project/outputs/run_nyc_1785346837/seed_1024/best.pt",
+    "device": "cuda",
+    "num_parameters": 689033,
+    "weights_source": "raw",
+    "weight_selection_val_crps": {
+      "ema": 5.5531,
+      "raw": 3.3105
+    },
+    "test_start_week": 260,
+    "test_end_week": 313,
+    "window_size": 52,
+    "timestamp": "2026-08-02T04:41:52"
+  },
+  "conformal": {
+    "method": "ecrc",
+    "alpha": 0.1,
+    "target_coverage": 0.9,
+    "test_coverage": 0.9423,
+    "avg_interval_width": 20.96,
+    "median_interval_width": 17.0,
+    "mean_group_threshold": 2.5,
+    "hoeffding_epsilon": 0.0414,
+    "n_cal": 6084,
+    "n_test": 12402,
+    "coverage_violent": 0.9548,
+    "coverage_property": 0.8822,
+    "coverage_drug": 0.9901
+  }
+}
