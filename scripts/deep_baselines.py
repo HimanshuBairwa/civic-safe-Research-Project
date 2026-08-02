@@ -805,7 +805,13 @@ def train_model(
         train_steps = 0
 
         for batch in train_loader:
-            ic = batch["input_counts"].to(device)
+            # log1p the count history, matching CIVIC-SAFE's input convention
+            # (trainer.py / evaluate_trained.py). Feeding raw counts (mean ~20,
+            # max >100) alongside z-scored features would handicap the baseline
+            # against the proposed model and inflate our reported margin. A
+            # baseline comparison is only meaningful when every model sees the
+            # same input representation.
+            ic = torch.log1p(batch["input_counts"].float()).to(device)
             iff = batch["input_features"].to(device)
             tc = batch["target_counts"].to(device)
 
@@ -840,7 +846,8 @@ def train_model(
 
         with torch.no_grad():
             for batch in val_loader:
-                ic = batch["input_counts"].to(device)
+                # Same log1p convention as training (see note above).
+                ic = torch.log1p(batch["input_counts"].float()).to(device)
                 iff = batch["input_features"].to(device)
                 tc = batch["target_counts"].to(device)
 
@@ -921,7 +928,8 @@ def evaluate_model(
     all_y, all_pi, all_mu, all_r = [], [], [], []
 
     for batch in test_loader:
-        ic = batch["input_counts"].to(device)
+        # Same log1p convention as training (see note in train_model).
+        ic = torch.log1p(batch["input_counts"].float()).to(device)
         iff = batch["input_features"].to(device)
         tc = batch["target_counts"].to(device)
 
@@ -999,7 +1007,22 @@ def main() -> None:
         sys.exit(1)
 
     # --- Reproducibility ---
+    # Seed and training budget are overridable so baselines can be granted the
+    # SAME allowance as CIVIC-SAFE (200 epochs). Baselines trained for 50 epochs
+    # against a 200-epoch proposed model is not a defensible comparison — a
+    # reviewer will read the margin as a compute artifact. Usage:
+    #   python scripts/deep_baselines.py data=nyc epochs=200 seed=42
     SEED = 42
+    baseline_epochs = 50
+    for arg in parsed.args:
+        if arg.startswith("seed="):
+            SEED = int(arg.split("=", 1)[1])
+        elif arg.startswith("epochs="):
+            baseline_epochs = int(arg.split("=", 1)[1])
+    logger.info(
+        f"Baseline training budget: epochs={baseline_epochs}, seed={SEED} "
+        f"(CIVIC-SAFE uses 200 epochs; pass epochs=200 for a matched comparison)"
+    )
     torch.manual_seed(SEED)
     np.random.seed(SEED)
     if torch.cuda.is_available():
@@ -1085,7 +1108,7 @@ def main() -> None:
         loss_fn=nb_nll_loss,  # NB NLL (not used directly — handled inside train_model)
         model_name="LSTM_NB",
         device=device,
-        lr=1e-3, epochs=50, patience=10,
+        lr=1e-3, epochs=baseline_epochs, patience=10,
     )
     lstm_time = time.time() - t0
 
@@ -1119,7 +1142,7 @@ def main() -> None:
         loss_fn=crps_loss_fn,  # CRPS loss — same as CIVIC-SAFE
         model_name="TFT_ZINB",
         device=device,
-        lr=1e-3, epochs=50, patience=10,
+        lr=1e-3, epochs=baseline_epochs, patience=10,
     )
     tft_time = time.time() - t0
 
@@ -1164,7 +1187,7 @@ def main() -> None:
         loss_fn=crps_loss_fn,
         model_name="GraphWaveNet",
         device=device,
-        lr=1e-3, epochs=50, patience=10,
+        lr=1e-3, epochs=baseline_epochs, patience=10,
         batch_size=2,  # Smaller batch — graph model uses more memory
         is_graph_model=True,
     )
@@ -1206,7 +1229,7 @@ def main() -> None:
         loss_fn=crps_loss_fn,
         model_name="STZINB_GNN",
         device=device,
-        lr=1e-3, epochs=50, patience=10,
+        lr=1e-3, epochs=baseline_epochs, patience=10,
         batch_size=2,
         is_graph_model=True,
     )
