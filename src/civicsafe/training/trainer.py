@@ -2,7 +2,7 @@
 
 Native PyTorch training loop with:
   - BFloat16 mixed precision (A100-optimized, no GradScaler needed)
-  - EMA model averaging (decay=0.999)
+  - EMA model averaging (decay auto-scaled to run length; see ema_decay)
   - Per-step cosine warmup scheduler
   - Configurable loss: CRPS-direct / ZINB NLL / blended + λ·diversity penalty
   - Gradient clipping (global norm)
@@ -121,14 +121,47 @@ class Trainer:
             min_lr=sched_cfg.get("min_lr", 1e-6),
         )
 
-        # --- EMA model (decay=0.999, uses PyTorch native API) ---
+        # --- EMA model ---
+        # Decay must be matched to the number of optimizer steps in the run.
+        # An EMA with decay d has an effective horizon of ~1/(1-d) steps, so
+        # d=0.999 needs >>1000 steps to converge. This project trains on ~156
+        # windows at batch_size 16 => ~10 steps/epoch, so a 200-epoch run is
+        # only ~2000 steps and a hardcoded 0.999 leaves the average still ~13%
+        # weighted on the initial random snapshot (~60% at a typical epoch-50
+        # early stop). That made the EMA weights measurably WORSE than the
+        # online weights and produced contradictory CRPS between eval scripts.
+        #
+        # Default now adapts to run length: target a horizon of ~1/5 of total
+        # steps, clamped to [0.9, 0.999]. Override with training.ema_decay.
+        ema_cfg_decay = train_cfg.get("ema_decay", None)
+        total_steps = max(steps_per_epoch, 1) * max(self.epochs, 1)
+        if ema_cfg_decay is None:
+            target_horizon = max(total_steps / 5.0, 10.0)
+            ema_decay = min(max(1.0 - 1.0 / target_horizon, 0.9), 0.999)
+        else:
+            ema_decay = float(ema_cfg_decay)
+
+        eff_horizon = 1.0 / max(1.0 - ema_decay, 1e-12)
+        if eff_horizon > total_steps:
+            logger.warning(
+                f"EMA decay {ema_decay:.5f} implies a ~{eff_horizon:.0f}-step "
+                f"horizon but this run is only {total_steps} steps. The EMA will "
+                f"not converge and will retain "
+                f"{ema_decay ** total_steps * 100:.1f}% weight on the initial "
+                f"snapshot. Consider a smaller ema_decay."
+            )
+
         try:
             from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
             self.ema_model: nn.Module | None = AveragedModel(
                 self.model,
-                multi_avg_fn=get_ema_multi_avg_fn(decay=0.999),  # type: ignore[no-untyped-call]
+                multi_avg_fn=get_ema_multi_avg_fn(decay=ema_decay),  # type: ignore[no-untyped-call]
                 use_buffers=True,
+            )
+            logger.info(
+                f"EMA enabled: decay={ema_decay:.5f} "
+                f"(~{eff_horizon:.0f}-step horizon over {total_steps} total steps)"
             )
         except (ImportError, TypeError, AttributeError):
             # Fallback for older PyTorch versions
