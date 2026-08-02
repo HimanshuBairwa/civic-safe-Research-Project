@@ -402,12 +402,10 @@ class TestTrainerSmoke:
                 "edge_knn": edge_knn,
             }
 
-        loader = torch.utils.data.DataLoader(
-            ds, batch_size=4, collate_fn=collate_fn, drop_last=True
-        )
-
+        # The trainer now concatenates log1p(counts) onto the static features
+        # (commit 072fc14), so the model input width is F + C, not F.
         model = CivicSafeModel(
-            num_features=F,
+            num_features=F + C,
             hidden_dim=32,
             spatial_layers=1,
             spatial_heads=4,
@@ -416,6 +414,10 @@ class TestTrainerSmoke:
             temporal_ff_dim=64,
             num_categories=C,
             max_seq_len=10,
+        )
+
+        loader = torch.utils.data.DataLoader(
+            ds, batch_size=4, collate_fn=collate_fn, drop_last=True
         )
 
         config = {

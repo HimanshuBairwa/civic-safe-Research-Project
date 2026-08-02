@@ -58,54 +58,92 @@ def crps_zinb(
 
     B = y.shape[0]
 
-    # Auto-determine truncation point
+    # --- Truncation point ---------------------------------------------------
+    # The sum only needs to run far enough for F_ZINB to saturate at 1. It does
+    # NOT need to reach y: for k in (k_max, y) the summand is exactly
+    # (1 - 0)^2 = 1, and that stretch is added analytically after the loop. So
+    # the tensor stays small even when a single observation is enormous.
     if k_max is None:
-        # Conservative: μ + 10·σ where σ² = μ + μ²/r (NB variance)
-        max_mu = mu.max().item()
-        max_r = r.max().item()
-        variance = max_mu + max_mu**2 / max(max_r, 0.1)
-        k_max = min(int(max_mu + 10.0 * math.sqrt(variance)) + 1, 500)
+        # Conservative: max over observations of μ_i + 10·σ_i, where
+        # σ_i² = μ_i + μ_i²/r_i (NB variance).
+        #
+        # This must be computed PER OBSERVATION and then maxed. Pairing a
+        # batch-wide max_mu with a batch-wide max_r understates the spread of
+        # the cell that actually has large μ and small r -- the overdispersed
+        # cell whose CDF saturates slowest -- and the analytic tail below then
+        # charges that cell a full 1.0 per step while its true F is still well
+        # under 1.
+        sigma = (mu + mu**2 / r.clamp(min=0.1)).clamp(min=0.0).sqrt()
+        k_needed = (mu + 10.0 * sigma).max().item()
+        k_max = min(int(k_needed) + 1, 5000)
         k_max = max(k_max, 50)  # Floor at 50 for very low-count series
 
     device = y.device
     ks = torch.arange(0, k_max + 1, device=device, dtype=torch.float32)  # (K,)
 
-    # --- Compute NB PMF in log-space for numerical stability ---
-    # NB parameterization: total_count=r, probs=r/(r+μ) (success probability)
-    # PMF: P(X=k) = Γ(k+r)/(k!·Γ(r)) · p^r · (1-p)^k
-    # where p = r/(r+μ)
-    r_expanded = r.unsqueeze(-1)  # (B, 1)
-    mu_expanded = mu.unsqueeze(-1)  # (B, 1)
-    ks_expanded = ks.unsqueeze(0)  # (1, K)
+    # Chunk over observations so the (chunk, K) intermediates stay bounded no
+    # matter how large the batch or the truncation point is.
+    max_elems = 4_000_000
+    chunk = max(1, min(B, max_elems // (k_max + 1)))
+    summed = torch.empty(B, device=device, dtype=torch.float32)
+    F_edge = torch.empty(B, device=device, dtype=torch.float32)
 
-    # Log-space NB PMF
-    log_p = torch.log(r_expanded / (r_expanded + mu_expanded))  # log(r/(r+μ))
-    log_1mp = torch.log(mu_expanded / (r_expanded + mu_expanded))  # log(μ/(r+μ))
+    for lo in range(0, B, chunk):
+        hi = min(lo + chunk, B)
 
-    log_pmf = (
-        torch.lgamma(ks_expanded + r_expanded)
-        - torch.lgamma(ks_expanded + 1.0)
-        - torch.lgamma(r_expanded)
-        + r_expanded * log_p
-        + ks_expanded * log_1mp
-    )  # (B, K)
+        # --- Compute NB PMF in log-space for numerical stability ---
+        # NB parameterization: total_count=r, probs=r/(r+μ) (success probability)
+        # PMF: P(X=k) = Γ(k+r)/(k!·Γ(r)) · p^r · (1-p)^k
+        # where p = r/(r+μ)
+        r_expanded = r[lo:hi].unsqueeze(-1)  # (b, 1)
+        mu_expanded = mu[lo:hi].unsqueeze(-1)  # (b, 1)
+        ks_expanded = ks.unsqueeze(0)  # (1, K)
 
-    # CDF via cumulative sum of PMF
-    pmf = torch.exp(log_pmf)
-    # Numerical safety: ensure PMF sums to ≤1 and is non-negative
-    pmf = pmf.clamp(min=0.0)
-    F_nb = pmf.cumsum(dim=-1).clamp(max=1.0)  # (B, K)
+        # Log-space NB PMF
+        log_p = torch.log(r_expanded / (r_expanded + mu_expanded))  # log(r/(r+μ))
+        log_1mp = torch.log(mu_expanded / (r_expanded + mu_expanded))  # log(μ/(r+μ))
 
-    # --- ZINB CDF ---
-    # F_ZINB(k) = π + (1-π)·F_NB(k) for k ≥ 0
-    pi_expanded = pi.unsqueeze(-1)  # (B, 1)
-    F_zinb = pi_expanded + (1.0 - pi_expanded) * F_nb  # (B, K)
+        log_pmf = (
+            torch.lgamma(ks_expanded + r_expanded)
+            - torch.lgamma(ks_expanded + 1.0)
+            - torch.lgamma(r_expanded)
+            + r_expanded * log_p
+            + ks_expanded * log_1mp
+        )  # (b, K)
 
-    # --- CRPS via CDF summation ---
-    indicator = (ks_expanded >= y.unsqueeze(-1)).float()  # (B, K)
-    crps = ((F_zinb - indicator) ** 2).sum(dim=-1)  # (B,)
+        # CDF via cumulative sum of PMF
+        pmf = torch.exp(log_pmf)
+        # Numerical safety: ensure PMF sums to ≤1 and is non-negative
+        pmf = pmf.clamp(min=0.0)
+        F_nb = pmf.cumsum(dim=-1).clamp(max=1.0)  # (b, K)
 
-    return crps.reshape(orig_shape)  # type: ignore[no-any-return]
+        # --- ZINB CDF ---
+        # F_ZINB(k) = π + (1-π)·F_NB(k) for k ≥ 0
+        pi_expanded = pi[lo:hi].unsqueeze(-1)  # (b, 1)
+        F_zinb = pi_expanded + (1.0 - pi_expanded) * F_nb  # (b, K)
+
+        # --- CRPS via CDF summation ---
+        indicator = (ks_expanded >= y[lo:hi].unsqueeze(-1)).float()  # (b, K)
+        summed[lo:hi] = ((F_zinb - indicator) ** 2).sum(dim=-1)  # (b,)
+
+        # CDF level at the truncation boundary, for the analytic tail below.
+        F_edge[lo:hi] = F_zinb[:, -1]
+
+    # --- Analytic tail beyond the truncation point --------------------------
+    # For k_max < k < y the indicator is still 0 while F_ZINB has (very nearly)
+    # saturated, so each of those ceil(y) - 1 - k_max terms contributes
+    # F_ZINB(k)^2. Dropping them understates CRPS by up to ~y whenever a
+    # forecast is confidently wrong on a large count -- exactly the error a
+    # proper scoring rule exists to punish. Without this term the metric
+    # systematically flatters whichever model predicts the smallest counts.
+    #
+    # F_edge is used rather than a hard 1.0 so that an explicitly supplied
+    # k_max below the saturation point degrades gracefully instead of
+    # over-charging. With the auto k_max above, F_edge ~ 1 and this is exact.
+    n_tail = (torch.ceil(y) - 1.0 - float(k_max)).clamp(min=0.0)
+    tail = n_tail * F_edge**2
+
+    return (summed + tail).reshape(orig_shape)  # type: ignore[no-any-return]
 
 
 def mae_zinb(y: Tensor, pi: Tensor, mu: Tensor) -> Tensor:

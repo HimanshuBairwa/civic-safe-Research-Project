@@ -51,6 +51,13 @@ outputs/**/best.pt
 outputs/**/last.pt
 outputs/**/ema.pt
 
+# Synthetic/self-test artifacts must NEVER be mistaken for real results.
+# Scripts run against fixtures write here with the same filenames real runs
+# use; a stray `git add outputs` would then publish fabricated numbers.
+outputs/**/*_fixture*
+outputs/**/*_synthetic*
+outputs/_selftest/
+
 # W&B
 wandb/
 
