@@ -209,7 +209,7 @@ heteroskedastic miscalibration: the same count-offset is a large relative
 widening for drug and a negligible one for property, which is why every method
 inherited the spread.
 
-### The fix (implemented, commit 6a1a4f8)
+### The fix (implemented, commit 88db19c)
 
 The evaluation grouped **every** calibrator by demographic quartile and **none**
 by category. Two variants now exist, `mondrian_category` and
