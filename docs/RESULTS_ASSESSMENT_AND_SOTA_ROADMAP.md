@@ -277,11 +277,17 @@ This is the real gap, and it is about the comparison table, not the model.
    ensemble; the baselines are single fits. The per-seed table in section 1
    partly covers this (the worst seed still beats HA on Chicago), but the
    seed-matched aggregation exists in code and has not been run.
-5. **No competitive ST-GNN.** A reviewer will ask "compared to DCRNN?" and there
-   is currently no answer.
+5. **The ST-GNN baselines are implemented but have never been run.** Correcting
+   an earlier claim in this document that no competitive ST-GNN existed:
+   `scripts/deep_baselines.py` implements and runs four, at a matched epoch
+   budget -- `LSTM_NB`, `TFT_ZINB`, **`GraphWaveNet`** (Wu et al. 2019), and
+   `STZINB_GNN`. Graph WaveNet is a genuine published ST-GNN and an adequate
+   answer to "compared to what?". The gap is execution, not implementation.
 
-Everything in 1-4 is already wired into `scripts/run_full_campaign.py`. It is a
-compute run, not new code.
+**Everything in 1-5 is already wired into `scripts/run_full_campaign.py`. It is
+a compute run, not new code.** That is the single most important fact in this
+document: the reason the paper is not submittable is that a multi-hour job has
+not been run, not that anything remains to be built.
 
 ---
 
@@ -342,8 +348,11 @@ This run also regenerates every CRPS number on the **fixed** metric (section
 
 ### Phase 3 -- Strengthen the contribution
 
-8. **One competitive ST-GNN baseline** (DCRNN, STGCN, or AGCRN) at matched epoch
-   budget.
+8. **A second ST-GNN family, if a reviewer asks for one.** Phase 1 already runs
+   Graph WaveNet and STZINB-GNN at a matched budget, which covers the
+   "compared to what?" question. DCRNN or AGCRN would add a diffusion-based and
+   an adaptive-adjacency family respectively. Only worth it if Phase 1 shows the
+   margin over Graph WaveNet is thin.
 9. **Seasonal anchor on the mu head.** Currently `mu = softplus(mu_mlp(x))` with
    no residual mechanism -- the model predicts counts from scratch while the
    baselines remember last year. `mu(t) = softplus(log(anchor(t)) + h(t))` lets
@@ -359,12 +368,19 @@ This run also regenerates every CRPS number on the **fixed** metric (section
 
 ## 6. Honest ceiling
 
-The forecast block is now a real result: a significant, two-city win over both
-naive baselines, driven by architecture rather than ensembling. What it is *not*
-yet is a demonstrated win over the published ST-GNN state of the art, because no
-such baseline has been run. Until Phase 1 and item 8 land, the defensible claim
-is **"beats classical and naive baselines significantly on two cities,"** not
+The forecast block is a real result: a significant, two-city win over both naive
+baselines, driven by architecture rather than ensembling. What it is *not* yet is
+a **measured** win over the ST-GNN baselines -- not because none exist (Graph
+WaveNet and STZINB-GNN are implemented and wired into the campaign) but because
+that job has never been run. Until Phase 1 completes, the defensible claim is
+**"beats classical and naive baselines significantly on two cities,"** not
 "beats the state of the art."
+
+The distinction matters for how you talk about the work: the blocker is a compute
+run, not a missing contribution. After Phase 1 you will either have a
+state-of-the-art claim with the table to back it, or a specific number showing
+where Graph WaveNet wins -- and either outcome is publishable, because the OICC
+block does not depend on it.
 
 The OICC honest-measurement contribution (crime estimation under reporting bias)
 remains the paper's strongest and most novel component, and it stands
@@ -375,7 +391,8 @@ that genuinely works underneath it.
 Three things would make this top-tier and defensible:
 
 1. **The complete comparison table** with BH-corrected significance (Phase 1).
-2. **A fair fight against one real ST-GNN** (item 8).
+2. **The measured result against Graph WaveNet / STZINB-GNN** (also Phase 1 --
+   the code is there, it has simply never been executed).
 3. **The OICC block kept as the spine**, with the per-category coverage spread
    (section 3) reported as a fairness finding rather than hidden behind the
    marginal number -- now with a calibrator that actually repairs it.
