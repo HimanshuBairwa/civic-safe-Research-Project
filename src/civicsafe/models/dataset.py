@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -81,14 +82,30 @@ class CrimeWindowDataset(Dataset):  # type: ignore[type-arg]
         t = self.valid_targets[idx]
         w = self.window_size
 
-        input_counts = self.counts[:, t - w : t, :]
+        # Counts arrive as int64 (panel.py builds them with dtype=torch.long,
+        # correctly -- crime counts are integers). Emit float32 instead, because
+        # every consumer is doing float arithmetic on them and torch will not
+        # infer a float output dtype from an integer input:
+        #
+        #   input_counts.mean(dim=1)
+        #   RuntimeError: mean(): could not infer output dtype.
+        #                 Input dtype must be either a floating point ... Got: Long
+        #
+        # The main model never hit this because it reaches the counts through
+        # log1p, which promotes to float32 on its own. Baselines that average or
+        # regress on the raw window hit it immediately. Casting here fixes every
+        # consumer at once rather than sprinkling .float() at each call site, and
+        # it is provably neutral for the main path: log1p(long) and
+        # log1p(float32) are bit-identical (verified over random counts to 800).
+        # float32 also halves the memory of these windows versus int64.
+        input_counts = self.counts[:, t - w : t, :].float()
         if self.exclude_crime_history:
             input_counts = torch.zeros_like(input_counts)
 
         res = {
-            "input_counts": input_counts,  # (S, W, C)
+            "input_counts": input_counts,  # (S, W, C) float32
             "input_features": self.features[:, t - w : t, :],  # (S, W, F)
-            "target_counts": self.counts[:, t, :],  # (S, C)
+            "target_counts": self.counts[:, t, :].float(),  # (S, C) float32
         }
         if self.groups is not None:
             res["groups"] = self.groups  # (S,)

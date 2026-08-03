@@ -5,7 +5,9 @@ integrity verification, find_latest_checkpoint, and required-field checks.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+# Path is used at runtime below (script loading, isinstance checks), not just in
+# annotations, so it cannot live under TYPE_CHECKING.
+from pathlib import Path
 
 import pytest
 import torch
@@ -19,9 +21,6 @@ from civicsafe.utils.checkpointing import (
     save_checkpoint,
 )
 from civicsafe.utils.exceptions import CheckpointCorruptionError
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers — tiny model + optimizer + checkpoint factory
@@ -249,3 +248,120 @@ def test_latest_untagged_run_wins_among_several(tmp_path: Path) -> None:
         ["run_chicago_1785214452", "run_chicago_1785999999", "run_chicago_1785300000"],
     )
     assert _latest_untagged(tmp_path, "chicago").name == "run_chicago_1785999999"
+
+
+# ---------------------------------------------------------------------------
+# The REAL discovery functions, including the Priority-2 fallback
+#
+# The tests above pin the resolution *rule*. These load the actual scripts and
+# drive their real entry points, so a future edit to either script is caught
+# even if it diverges from the rule reimplemented above.
+# ---------------------------------------------------------------------------
+def _load_script(name: str):
+    """Import a file in scripts/ as a module (they are not an installed package)."""
+    import importlib.util
+
+    scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+    spec = importlib.util.spec_from_file_location(name, scripts_dir / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture()
+def project_with_ablations(tmp_path: Path) -> Path:
+    """A PROJECT_ROOT whose outputs/ holds the canonical run plus ablations.
+
+    Nested under its own directory (rather than renaming ``tmp_path``) because
+    ``tmp_path.parent`` is shared across tests in a session -- renaming into it
+    makes the second test to run collide with the first.
+    """
+    root = tmp_path / "root"
+    (root / "outputs").mkdir(parents=True)
+    _make_run_dirs(
+        root / "outputs",
+        [
+            "run_chicago_1785214452",  # canonical full model
+            "run_chicago_no_gatv2_1785300000",  # ablation, sorts later by name
+            "run_chicago_no_transformer_1785300001",  # ablation, sorts last
+            "run_nyc_1785346837",  # other city
+        ],
+    )
+    return root
+
+
+@pytest.mark.parametrize(
+    ("script", "fn_name"),
+    [
+        ("evaluate_trained", "discover_checkpoint"),
+        ("run_conformal_evaluation", "discover_all_checkpoints"),
+    ],
+)
+def test_real_discovery_skips_ablations(
+    project_with_ablations: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    script: str,
+    fn_name: str,
+) -> None:
+    """Both real entry points resolve the canonical untagged run, not an ablation."""
+    mod = _load_script(script)
+    monkeypatch.setattr(mod, "PROJECT_ROOT", project_with_ablations)
+
+    result = getattr(mod, fn_name)("chicago")
+    paths = [result] if isinstance(result, Path) else result
+    assert paths, f"{script}.{fn_name} found nothing"
+    for p in paths:
+        assert p.parent.parent.name == "run_chicago_1785214452", (
+            f"{script}.{fn_name} resolved {p.parent.parent.name}"
+        )
+
+
+@pytest.fixture()
+def legacy_outputs(tmp_path: Path) -> Path:
+    """Pre-city-prefix layout: run_<digits> plus legacy ablations and a city run.
+
+    This is what triggers the Priority-2 fallback -- there is no
+    ``run_chicago_<digits>`` at all, so dataset-scoped discovery finds nothing.
+    """
+    nested = tmp_path / "root"
+    (nested / "outputs").mkdir(parents=True)
+    _make_run_dirs(
+        nested / "outputs",
+        [
+            "run_1785100000",  # legacy full model, older
+            "run_1785200000",  # legacy full model, newest -> must win
+            "run_no_gatv2_1785300000",  # legacy ablation, sorts after by name
+            "run_nyc_1785400000",  # another city, sorts last of all
+        ],
+    )
+    return nested
+
+
+@pytest.mark.parametrize(
+    ("script", "fn_name"),
+    [
+        ("evaluate_trained", "discover_checkpoint"),
+        ("run_conformal_evaluation", "discover_all_checkpoints"),
+    ],
+)
+def test_fallback_path_still_excludes_tags_and_other_cities(
+    legacy_outputs: Path, monkeypatch: pytest.MonkeyPatch, script: str, fn_name: str
+) -> None:
+    """Priority-2 must not re-introduce the bug Priority-1 fixes.
+
+    The fallback fires exactly when no untagged run exists for the requested
+    city -- i.e. mid-regeneration, when ablations may be the only dirs on disk.
+    An unfiltered ``run_*`` glob there returns ``run_nyc_*`` for a Chicago
+    request, because 'nyc' sorts after both digits and 'no_gatv2'.
+    """
+    mod = _load_script(script)
+    monkeypatch.setattr(mod, "PROJECT_ROOT", legacy_outputs)
+
+    result = getattr(mod, fn_name)("chicago")
+    paths = [result] if isinstance(result, Path) else result
+    assert paths, f"{script}.{fn_name} found nothing in the legacy layout"
+    for p in paths:
+        assert p.parent.parent.name == "run_1785200000", (
+            f"{script}.{fn_name} fell through to {p.parent.parent.name}"
+        )
+

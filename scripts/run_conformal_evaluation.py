@@ -139,9 +139,21 @@ def discover_all_checkpoints(data_name: str) -> list[Path]:
         key=lambda p: p.name,
     )
 
-    # Priority 2: fall back to generic run_* directories (backward compat)
+    # Priority 2: generic run_* directories (backward compat, pre-city-prefix
+    # era). The untagged filter still applies: keep only dirs whose name after
+    # "run_" is all digits. Without it this fallback re-introduces the exact bug
+    # fixed above -- it would match another city's run (run_nyc_* for a chicago
+    # request) and every ablation dir, and it fires precisely when the untagged
+    # run for this city is missing, i.e. mid-regeneration when only ablations
+    # are on disk.
     if not run_dirs:
-        run_dirs = sorted(outputs_dir.glob("run_*"), key=lambda p: p.name)
+        run_dirs = sorted(
+            (
+                d for d in outputs_dir.glob("run_*")
+                if d.is_dir() and d.name[len("run_"):].isdigit()
+            ),
+            key=lambda p: p.name,
+        )
 
     if not run_dirs:
         raise FileNotFoundError(
@@ -155,7 +167,15 @@ def discover_all_checkpoints(data_name: str) -> list[Path]:
     seed_checkpoints = sorted(latest_run.glob("seed_*/best.pt"))
     
     if not seed_checkpoints:
-        # Fallback: search for any .pt files
+        # Last-resort fallback: any model-looking .pt anywhere under outputs/.
+        #
+        # This is UNSCOPED on purpose (it exists so a hand-placed checkpoint still
+        # works), which makes it the most dangerous path in this function: it can
+        # return another city's checkpoint or an ablation's, and it returns only
+        # ONE file, which silently collapses the multi-seed EMOS ensemble to a
+        # single model while the report still labels the number an ensemble CRPS.
+        # A quiet 5x reduction in the headline result is not acceptable, so warn
+        # loudly and name the file that was chosen.
         candidates = list(outputs_dir.rglob("*.pt"))
         candidates = [
             p for p in candidates
@@ -163,7 +183,20 @@ def discover_all_checkpoints(data_name: str) -> list[Path]:
             and "demographics" not in p.name and "calibrators" not in p.name
         ]
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return candidates[:1] if candidates else []
+        if not candidates:
+            return []
+        logger.warning(
+            f"  No seed_*/best.pt under {latest_run.name}. Falling back to the "
+            f"most recently modified checkpoint anywhere in outputs/: "
+            f"{candidates[0].relative_to(outputs_dir)}"
+        )
+        logger.warning(
+            "  This is a SINGLE checkpoint: the multi-seed EMOS ensemble is "
+            "DISABLED and any CRPS reported below is a single-model score, not "
+            "an ensemble score. It is also not scoped to "
+            f"--data {data_name}. Do not use this for headline numbers."
+        )
+        return candidates[:1]
     
     logger.info(f"  Found {len(seed_checkpoints)} seed checkpoints in {latest_run.name}")
     for ckpt in seed_checkpoints:

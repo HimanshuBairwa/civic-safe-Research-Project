@@ -724,16 +724,25 @@ class STZINBGNNModel(nn.Module):
     ) -> tuple[Tensor, Tensor, Tensor]:
         B, S, W, _ = counts.shape
         x = torch.cat([counts, features], dim=-1)  # (B, S, W, C+F)
-        
+
         x = self.fc_in(x)  # (B, S, W, H)
-        
+
         adj_norm = static_adj + torch.eye(S, device=static_adj.device)
         d = adj_norm.sum(1, keepdim=True)
         adj_norm = adj_norm / d
-        
-        x_sp = torch.einsum('ij,bsjh->bsih', adj_norm, x)
+
+        # Diffuse over the SPATIAL axis. x is (B, S, W, H), so the node axis is
+        # dim 1 and the window axis is dim 2. The subscripts must bind
+        # accordingly: 'ij,bjwh->biwh' contracts adj's column index j against
+        # the node axis. Writing 'bsjh' instead binds j to W, which silently
+        # diffuses across TIME using a spatial adjacency -- and crashes outright
+        # whenever S != W ("subscript j has size 52 ... does not broadcast with
+        # previously seen size 77"). It only ever type-checked because the
+        # default window_size (52) is close enough to a plausible node count to
+        # look reasonable; with S == W it would have run and been wrong.
+        x_sp = torch.einsum('ij,bjwh->biwh', adj_norm, x)
         x_sp = F.relu(self.spatial_conv(x_sp))
-        
+
         x_flat = x_sp.reshape(B * S, W, -1)
         lstm_out, _ = self.lstm(x_flat)
         h_last = lstm_out[:, -1, :]  # (B*S, H)
@@ -1140,14 +1149,77 @@ def main() -> None:
         """CRPS loss for ZINB outputs (same loss used by CIVIC-SAFE)."""
         return crps_zinb(y, pi, mu, r).mean()
 
+    def preflight(
+        name: str,
+        model: nn.Module,
+        is_graph_model: bool,
+        forward=None,
+    ) -> None:
+        """Run ONE forward+backward pass on a real batch before training starts.
+
+        STZINB-GNN shipped an einsum that contracted the window axis instead of
+        the spatial axis. It crashed on the first batch -- but only AFTER the
+        three earlier baselines had trained, so the campaign burned ~1000 s per
+        seed (x3 seeds x 2 cities) to surface a shape error that a single batch
+        exposes in under a second. Worse, the deep-baseline block is all-or-
+        nothing: the exception killed the whole script, so the three baselines
+        that DID train never got written to disk either.
+
+        This check runs every model on one real batch, on the real device, with
+        the real collate function and the real loss, and fails loudly and
+        immediately if anything is wrong. It is cheap insurance against a class
+        of error that otherwise costs GPU-hours to discover.
+        """
+        collate = _collate_graph if is_graph_model else _collate_flat
+        loader = DataLoader(
+            splits["train"], batch_size=2, shuffle=False, collate_fn=collate
+        )
+        batch = next(iter(loader))
+        ic = torch.log1p(batch["input_counts"].float()).to(device)
+        iff = batch["input_features"].to(device)
+        tc = batch["target_counts"].to(device)
+
+        model = model.to(device)
+        fwd = forward if forward is not None else model
+        pi, mu, r = fwd(ic, iff)
+
+        if not (pi.shape == mu.shape == r.shape == tc.shape):
+            raise RuntimeError(
+                f"[{name}] pre-flight shape mismatch: target {tuple(tc.shape)} "
+                f"but got pi {tuple(pi.shape)}, mu {tuple(mu.shape)}, "
+                f"r {tuple(r.shape)}"
+            )
+        loss = nb_nll_loss(tc, mu, r) if name == "LSTM_NB" else crps_loss_fn(tc, pi, mu, r)
+        if not torch.isfinite(loss):
+            raise RuntimeError(f"[{name}] pre-flight loss is not finite: {loss.item()}")
+        loss.backward()
+        n_grad = sum(
+            1 for p in model.parameters()
+            if p.grad is not None and torch.isfinite(p.grad).all() and p.grad.abs().sum() > 0
+        )
+        if n_grad == 0:
+            raise RuntimeError(f"[{name}] pre-flight produced no usable gradients")
+        model.zero_grad(set_to_none=True)
+        logger.info(
+            f"  [{name}] pre-flight OK: out {tuple(mu.shape)}, "
+            f"loss {loss.item():.4f}, {n_grad} tensors with gradient"
+        )
+
     results: dict[str, dict[str, float]] = {}
 
     # =====================================================================
-    # Baseline 1: LSTM with NB output head
+    # Build ALL models and pre-flight them BEFORE any training begins.
+    #
+    # Previously each model was constructed immediately before its own
+    # multi-hundred-second training call. A shape bug in the LAST model
+    # (STZINB-GNN) therefore surfaced only after the first three had trained,
+    # and because the exception propagated out of main(), the results dict was
+    # never written -- so three successfully-trained baselines were discarded
+    # along with the one that failed. Building and checking everything up front
+    # turns a ~1000 s failure into a ~2 s one and makes the failure total rather
+    # than silently partial.
     # =====================================================================
-    logger.info("=" * 70)
-    logger.info("Baseline 1: LSTM with Negative Binomial Output Head")
-    logger.info("=" * 70)
+    adj_device = adj.to(device)
 
     lstm_model = LSTMNBModel(
         input_dim=C + F_dim,
@@ -1156,8 +1228,66 @@ def main() -> None:
         num_categories=C,
         dropout=0.1,
     )
-    total_params = sum(p.numel() for p in lstm_model.parameters())
-    logger.info(f"  Parameters: {total_params:,}")
+
+    tft_model = SimplifiedTFTModel(
+        count_dim=C,
+        feature_dim=F_dim,
+        d_model=64,
+        nhead=4,
+        num_layers=2,
+        dropout=0.1,
+    )
+
+    gwnet_model = GraphWaveNetModel(
+        num_nodes=S,
+        input_dim=C + F_dim,
+        channels=32,
+        num_layers=4,
+        kernel_size=2,
+        num_categories=C,
+        embed_dim=16,
+        dropout=0.1,
+    )
+    # GraphWaveNet and STZINB need the static adjacency bound into forward().
+    gwnet_original_forward = gwnet_model.forward
+
+    def gwnet_forward_with_adj(counts: Tensor, features: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        return gwnet_original_forward(counts, features, static_adj=adj_device)
+
+    gwnet_model.forward = gwnet_forward_with_adj  # type: ignore[assignment]
+
+    stzinb_model = STZINBGNNModel(
+        num_nodes=S,
+        input_dim=C + F_dim,
+        hidden_dim=64,
+        num_categories=C,
+    )
+    stzinb_original_forward = stzinb_model.forward
+
+    def stzinb_forward_with_adj(counts: Tensor, features: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        return stzinb_original_forward(counts, features, static_adj=adj_device)
+
+    stzinb_model.forward = stzinb_forward_with_adj  # type: ignore[assignment]
+
+    logger.info("=" * 70)
+    logger.info("Pre-flight: one forward+backward per model before training")
+    logger.info("=" * 70)
+    for _name, _model, _is_graph in (
+        ("LSTM_NB", lstm_model, False),
+        ("TFT_ZINB", tft_model, False),
+        ("GraphWaveNet", gwnet_model, True),
+        ("STZINB_GNN", stzinb_model, True),
+    ):
+        n_params = sum(p.numel() for p in _model.parameters())
+        logger.info(f"  [{_name}] parameters: {n_params:,}")
+        preflight(_name, _model, _is_graph)
+
+    # =====================================================================
+    # Baseline 1: LSTM with NB output head
+    # =====================================================================
+    logger.info("=" * 70)
+    logger.info("Baseline 1: LSTM with Negative Binomial Output Head")
+    logger.info("=" * 70)
 
     t0 = time.time()
     lstm_model = train_model(
@@ -1182,17 +1312,6 @@ def main() -> None:
     logger.info("Baseline 2: Simplified Temporal Fusion Transformer")
     logger.info("=" * 70)
 
-    tft_model = SimplifiedTFTModel(
-        count_dim=C,
-        feature_dim=F_dim,
-        d_model=64,
-        nhead=4,
-        num_layers=2,
-        dropout=0.1,
-    )
-    total_params = sum(p.numel() for p in tft_model.parameters())
-    logger.info(f"  Parameters: {total_params:,}")
-
     t0 = time.time()
     tft_model = train_model(
         tft_model, splits["train"], splits["val"],
@@ -1215,28 +1334,6 @@ def main() -> None:
     logger.info("=" * 70)
     logger.info("Baseline 3: Graph WaveNet")
     logger.info("=" * 70)
-
-    gwnet_model = GraphWaveNetModel(
-        num_nodes=S,
-        input_dim=C + F_dim,
-        channels=32,
-        num_layers=4,
-        kernel_size=2,
-        num_categories=C,
-        embed_dim=16,
-        dropout=0.1,
-    )
-    total_params = sum(p.numel() for p in gwnet_model.parameters())
-    logger.info(f"  Parameters: {total_params:,}")
-
-    # GraphWaveNet needs static adjacency passed through the forward call
-    adj_device = adj.to(device)
-    original_forward = gwnet_model.forward
-
-    def gwnet_forward_with_adj(counts: Tensor, features: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        return original_forward(counts, features, static_adj=adj_device)
-
-    gwnet_model.forward = gwnet_forward_with_adj  # type: ignore[assignment]
 
     t0 = time.time()
     gwnet_model = train_model(
@@ -1263,22 +1360,6 @@ def main() -> None:
     logger.info("=" * 70)
     logger.info("Baseline 4: STZINB-GNN (Zhuang et al. 2022)")
     logger.info("=" * 70)
-
-    stzinb_model = STZINBGNNModel(
-        num_nodes=S,
-        input_dim=C + F_dim,
-        hidden_dim=64,
-        num_categories=C,
-    )
-    total_params = sum(p.numel() for p in stzinb_model.parameters())
-    logger.info(f"  Parameters: {total_params:,}")
-
-    stzinb_original_forward = stzinb_model.forward
-
-    def stzinb_forward_with_adj(counts: Tensor, features: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        return stzinb_original_forward(counts, features, static_adj=adj_device)
-
-    stzinb_model.forward = stzinb_forward_with_adj  # type: ignore[assignment]
 
     t0 = time.time()
     stzinb_model = train_model(

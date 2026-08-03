@@ -81,11 +81,15 @@ def discover_checkpoint(data_name: str) -> Path:
         key=lambda p: p.name,
     )
     
-    # Priority 2: generic run_* directories (backward compat)
+    # Priority 2: generic run_* directories (backward compat, pre-city-prefix era).
+    # Still apply the untagged filter: strip the leading "run_" and keep only
+    # dirs whose remainder is all digits, so ablations (run_no_gatv2_...) are
+    # excluded even in the fallback path.
     if not run_dirs:
         run_dirs = sorted(
             [d for d in outputs_dir.iterdir()
-             if d.is_dir() and d.name.startswith("run_")],
+             if d.is_dir() and d.name.startswith("run_")
+             and d.name[len("run_"):].isdigit()],
             key=lambda p: p.name,
         )
 

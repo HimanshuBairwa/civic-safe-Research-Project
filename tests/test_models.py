@@ -482,3 +482,68 @@ class TestDataset:
         ds = CrimeWindowDataset(counts, features, window_size=1)
         sample = ds[0]
         assert sample["input_counts"].shape == (5, 1, 3)
+
+    def test_emits_float_counts_from_integer_panel(self) -> None:
+        """The dataset must emit float counts even though the panel stores int64.
+
+        panel.py builds counts with ``dtype=torch.long`` (correct -- crime counts
+        are integers), but every consumer does float arithmetic on the window.
+        torch refuses to infer a float output dtype from an integer input, so a
+        long window makes plain averaging blow up:
+
+            input_counts.mean(dim=1)
+            RuntimeError: mean(): could not infer output dtype.
+                          Input dtype must be either a floating point ... Got: Long
+
+        The main model never hit this because it reaches counts through log1p,
+        which promotes on its own; the classical baselines hit it immediately.
+        Pin the contract here so the cast cannot be dropped again.
+        """
+        counts = torch.randint(0, 60, (5, 20, 3), dtype=torch.long)
+        features = torch.randn(5, 20, 4)
+        ds = CrimeWindowDataset(counts, features, window_size=10)
+        sample = ds[0]
+
+        assert sample["input_counts"].dtype == torch.float32
+        assert sample["target_counts"].dtype == torch.float32
+        # The operation that used to crash, exercised directly.
+        assert sample["input_counts"].mean(dim=1).shape == (5, 3)
+
+    def test_float_cast_preserves_count_values_exactly(self) -> None:
+        """The cast must be value-preserving, not just dtype-correct.
+
+        Weekly counts are far below float32's 2**24 exact-integer limit, so this
+        is lossless -- and log1p(long) equals log1p(float32) bitwise, which is
+        why the fix cannot move any already-published main-model number.
+        """
+        counts = torch.randint(0, 800, (4, 15, 3), dtype=torch.long)
+        features = torch.randn(4, 15, 4)
+        ds = CrimeWindowDataset(counts, features, window_size=5)
+        sample = ds[3]
+
+        t = ds.valid_targets[3]
+        assert torch.equal(sample["input_counts"].long(), counts[:, t - 5 : t, :])
+        assert torch.equal(sample["target_counts"].long(), counts[:, t, :])
+        assert torch.equal(
+            torch.log1p(sample["input_counts"]),
+            torch.log1p(counts[:, t - 5 : t, :].float()),
+        )
+
+    def test_exclude_crime_history_zeroes_the_window(self) -> None:
+        """The ablation path must run at all: it used torch without importing it.
+
+        ``exclude_crime_history=True`` called ``torch.zeros_like`` while the
+        module only imported ``Tensor`` from torch, so the no-crime-history
+        ablation raised NameError the first time it was ever exercised.
+        """
+        counts = torch.randint(1, 60, (5, 20, 3), dtype=torch.long)
+        features = torch.randn(5, 20, 4)
+        ds = CrimeWindowDataset(
+            counts, features, window_size=10, exclude_crime_history=True
+        )
+        sample = ds[0]
+
+        assert sample["input_counts"].dtype == torch.float32
+        assert torch.count_nonzero(sample["input_counts"]) == 0
+        # Targets must NOT be zeroed -- only the model's view of history is.
+        assert torch.count_nonzero(sample["target_counts"]) > 0
