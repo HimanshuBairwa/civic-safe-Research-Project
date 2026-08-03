@@ -21,7 +21,7 @@ table** so a reviewer cannot dismiss the win.
 The 2026-08-02 draft stated the model *loses* to seasonal-naive (CRPSS -2.52).
 That was read off `chicago_conformal_results.json` **before** the real server
 results were pulled -- the file at that path was the quarantined 2026-06-16
-pre-`072fc14` artifact, from a checkpoint that never saw a crime count. The claim
+pre-`155bbf7` artifact, from a checkpoint that never saw a crime count. The claim
 was retracted. The genuine stale file now lives at
 `outputs/_stale_pre_log1p/chicago_conformal_results_JUNE16.json` (CRPSS -2.5171,
 timestamp 2026-06-16) and the real results are at
@@ -29,7 +29,8 @@ timestamp 2026-06-16) and the real results are at
 
 **Provenance check before citing any artifact:** read
 `metadata.checkpoint`. A `C:\Users\...` path is a local toy run; `/workspace/...`
-is the A100. Also confirm `metadata.timestamp` is post-`072fc14` (2026-07-28).
+is the A100. Also confirm `metadata.timestamp` is post-`155bbf7` (2026-07-28),
+the commit that started feeding log1p crime history into the model input.
 
 ---
 
@@ -103,7 +104,7 @@ With 5 seeds that is worth one sentence, not a section.
 
 ## 2. Bugs found and fixed this session
 
-### 2.1 CRPS truncation, no analytic tail (FIXED, commit 85810cb)
+### 2.1 CRPS truncation, no analytic tail (FIXED, commit 02dec72)
 
 `crps_zinb` truncated its CDF sum at a `k_max` derived only from the predicted
 distribution, never from `y`. A confidently-wrong forecast on a large count lost
