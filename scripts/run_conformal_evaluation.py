@@ -866,11 +866,49 @@ def run_conformal_evaluation(
         n_test_windows, S, C
     ).reshape(-1)
 
+    # ─── Grouping axes ───
+    # Until the category axis was added, EVERY calibrator here conditioned on
+    # the demographic axis alone. That leaves per-category coverage
+    # uncontrolled, and it is not uniform: property undercovers (Chicago 0.859,
+    # NYC 0.863) while drug overcovers (0.990 / 0.956).
+    #
+    # The cause is category-specific overconfidence in the ZINB head, not the
+    # marginal-vs-conditional gap. On a perfectly specified model, split CP
+    # reproduces drug OVER-coverage (0.958 — you cannot build a discrete
+    # interval on a near-zero series that covers exactly 90%) but puts property
+    # at 0.909, on target. Inflating predicted r on property alone reproduces
+    # the observed pattern (property 0.771, violent 0.969, drug 0.996).
+    # Calibration/test drift is ruled out: property FALLS between the windows
+    # (Chicago -4.8%, NYC -8.1%), which would over-cover, not under-cover.
+    #
+    # A single additive threshold cannot repair this — the same count offset is
+    # a large relative widening for drug and a negligible one for property —
+    # which is why every demographic-grouped method inherits the same spread.
+    # Conditioning Mondrian on category does repair it (property 0.734 → 0.902
+    # on the synthetic analogue, coverage spread 0.266 → 0.051) because each
+    # category then gets its own threshold. Grouping on the demographic axis
+    # does NOT help (0.734 → 0.737): the axis has to match the axis the defect
+    # lives on.
+    cat_index = torch.arange(C, dtype=torch.long)
+    cat_cal = cat_index.view(1, 1, C).expand(n_cal_windows, S, C).reshape(-1)
+    cat_test = cat_index.view(1, 1, C).expand(n_test_windows, S, C).reshape(-1)
+
+    # Interaction axis: demographic quartile x category, id = demo * C + cat.
+    grouping_axes: dict[str, tuple[Tensor, Tensor]] = {
+        "demographic": (groups_cal, groups_test),
+        "category": (cat_cal, cat_test),
+        "demo_x_category": (groups_cal * C + cat_cal, groups_test * C + cat_test),
+    }
+
     # ─── Fit ALL calibration methods ───
     calibrator_configs = {
         "split_cp": SplitConformalCalibrator(alpha=alpha),
         "weighted_cp": WeightedConformalCalibrator(alpha=alpha, decay_rate=0.05),
         "mondrian": MondrianConformalCalibrator(alpha=alpha, min_group_size=20),
+        "mondrian_category": MondrianConformalCalibrator(alpha=alpha, min_group_size=20),
+        "mondrian_demo_x_category": MondrianConformalCalibrator(
+            alpha=alpha, min_group_size=20
+        ),
         "equalized_coverage": EqualizedCoverageCalibrator(alpha=alpha, lambda_eq=1.0),
         "ecrc": ECRCCalibrator(alpha=alpha, delta=0.05, group_type="demographic"),
         "adaptive_ecrc": AdaptiveTemporalECRCCalibrator(
@@ -878,15 +916,26 @@ def run_conformal_evaluation(
         ),
     }
 
+    # Which axis each method CONDITIONS ON. Reporting is always on the
+    # demographic axis (below) so disparity stays comparable across methods.
+    calibration_axis = {
+        "mondrian": "demographic",
+        "mondrian_category": "category",
+        "mondrian_demo_x_category": "demo_x_category",
+        "equalized_coverage": "demographic",
+        "ecrc": "demographic",
+        "adaptive_ecrc": "demographic",
+    }
+
     all_coverage_results: dict[str, Any] = {}
 
     for method_name, calibrator in calibrator_configs.items():
         logger.info(f"\n  ─── {method_name.upper()} ───")
 
-        # Fit
+        # Fit — on whichever axis this method conditions on.
         fit_kwargs: dict[str, Any] = {}
-        if method_name in ("mondrian", "equalized_coverage", "ecrc", "adaptive_ecrc"):
-            fit_kwargs["groups"] = groups_cal
+        if method_name in calibration_axis:
+            fit_kwargs["groups"] = grouping_axes[calibration_axis[method_name]][0]
         if method_name == "weighted_cp":
             # Decay by WEEK, not by flat array position.
             #
@@ -917,8 +966,9 @@ def run_conformal_evaluation(
 
         # Predict
         predict_kwargs: dict[str, Any] = {}
-        if method_name in ("mondrian", "ecrc", "adaptive_ecrc"):
-            predict_kwargs["groups"] = groups_test
+        if method_name in ("mondrian", "mondrian_category",
+                           "mondrian_demo_x_category", "ecrc", "adaptive_ecrc"):
+            predict_kwargs["groups"] = grouping_axes[calibration_axis[method_name]][1]
 
         try:
             intervals = calibrator.predict(pi_test, mu_test, r_test, **predict_kwargs)
@@ -927,11 +977,16 @@ def run_conformal_evaluation(
             all_coverage_results[method_name] = {"error": str(e)}
             continue
 
-        # Compute coverage metrics
+        # Compute coverage metrics.
+        # Reported on the DEMOGRAPHIC axis for every method regardless of what
+        # it calibrated on, so `coverage_disparity` stays comparable — a
+        # category-conditioned method reporting category disparity would look
+        # artificially good against a demographic-conditioned one.
         coverage = compute_coverage_metrics(
             y_test, intervals["lower"], intervals["upper"],
             groups=groups_test, alpha=alpha,
         )
+        coverage["calibration_axis"] = calibration_axis.get(method_name, "none")
 
         # Per-category coverage
         per_cat: dict[str, dict[str, float]] = {}
@@ -960,6 +1015,16 @@ def run_conformal_evaluation(
             f"Width: {coverage['mean_width']:.2f} | "
             f"Disparity: {coverage.get('coverage_disparity', 0):.4f}"
         )
+        # Category spread is the diagnostic that motivated the category axis;
+        # surface it in the log instead of leaving it buried in the JSON.
+        if per_cat:
+            cat_covs = {k: v["coverage"] for k, v in per_cat.items()}
+            spread = max(cat_covs.values()) - min(cat_covs.values())
+            logger.info(
+                "  Per-category: "
+                + " | ".join(f"{k} {v:.4f}" for k, v in cat_covs.items())
+                + f"  (spread {spread:.4f})"
+            )
 
     # ─── Rolling Adaptive ECRC (the REAL adaptive evaluation) ───
     # The loop above evaluates Adaptive ECRC on the full test set without

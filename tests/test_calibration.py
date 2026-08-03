@@ -474,6 +474,128 @@ class TestMondrianConformal:
         # The tiny group should fallback to global threshold
         assert cal._group_thresholds[99] == cal._global_threshold
 
+    def test_category_conditioning_repairs_category_specific_overconfidence(
+        self,
+    ) -> None:
+        """Mondrian on the CATEGORY axis repairs per-category undercoverage.
+
+        Regression test for the real finding on Chicago/NYC: property
+        undercovered (0.859 / 0.863) while drug overcovered (0.990 / 0.956),
+        under EVERY shipped calibration method -- because every one of them
+        conditioned on demographic quartile and none on crime category.
+
+        The cause is category-specific overconfidence in the ZINB head, not
+        the marginal-vs-conditional coverage gap. This test builds a model
+        whose defect is known exactly: the head reports r inflated 6x on
+        category 1 only, i.e. it claims less dispersion than the truth has.
+
+        A single additive conformal threshold cannot repair that -- the same
+        count offset is a large relative widening for a near-zero series and a
+        negligible one for a high-count series -- so split CP leaves category 1
+        badly undercovered. Conditioning on category gives each one its own
+        threshold and restores it.
+
+        Grouping by DEMOGRAPHIC quartile is asserted NOT to fix it, which is
+        the whole point: the axis has to match the axis the defect lives on.
+        """
+        torch.manual_seed(0)
+
+        S, C = 77, 3
+        n_cal, n_test = 26, 53
+
+        # (mean, true dispersion) roughly matching the Chicago category split.
+        profiles = [(20.0, 3.0), (45.0, 2.5), (2.0, 1.5)]
+        # The head is overconfident on category 1 (property) alone.
+        r_inflation = [1.0, 6.0, 1.0]
+
+        def _sample(n_windows: int) -> dict[str, Tensor]:
+            mu = torch.empty(n_windows, S, C)
+            r_true = torch.empty(n_windows, S, C)
+            r_pred = torch.empty(n_windows, S, C)
+            for c, (m, rt) in enumerate(profiles):
+                mu[..., c] = m
+                r_true[..., c] = rt
+                r_pred[..., c] = rt * r_inflation[c]
+            # y ~ NB(mu, r_true); the model is right about mu, wrong about r.
+            y = torch.distributions.NegativeBinomial(
+                total_count=r_true, probs=mu / (mu + r_true)
+            ).sample()
+            return {
+                "y": y.reshape(-1),
+                "pi": torch.zeros(n_windows * S * C),
+                "mu": mu.reshape(-1),
+                "r": r_pred.reshape(-1),
+                "cat": torch.arange(C).view(1, 1, C)
+                .expand(n_windows, S, C).reshape(-1),
+                "demo": (torch.arange(S) % 4).view(1, S, 1)
+                .expand(n_windows, S, C).reshape(-1),
+            }
+
+        cal_d, test_d = _sample(n_cal), _sample(n_test)
+
+        def _per_category_coverage(lower: Tensor, upper: Tensor) -> list[float]:
+            covered = (test_d["y"] >= lower) & (test_d["y"] <= upper)
+            return [
+                covered[test_d["cat"] == c].float().mean().item()
+                for c in range(C)
+            ]
+
+        # --- Split CP: one global threshold ---------------------------------
+        split = SplitConformalCalibrator(alpha=0.1)
+        split.fit(cal_d["y"], cal_d["pi"], cal_d["mu"], cal_d["r"])
+        iv = split.predict(test_d["pi"], test_d["mu"], test_d["r"])
+        cov_split = _per_category_coverage(iv["lower"], iv["upper"])
+
+        # --- Mondrian on the DEMOGRAPHIC axis (what shipped) ----------------
+        demo = MondrianConformalCalibrator(alpha=0.1, min_group_size=20)
+        demo.fit(
+            cal_d["y"], cal_d["pi"], cal_d["mu"], cal_d["r"],
+            groups=cal_d["demo"],
+        )
+        iv = demo.predict(
+            test_d["pi"], test_d["mu"], test_d["r"], groups=test_d["demo"]
+        )
+        cov_demo = _per_category_coverage(iv["lower"], iv["upper"])
+
+        # --- Mondrian on the CATEGORY axis (the fix) ------------------------
+        bycat = MondrianConformalCalibrator(alpha=0.1, min_group_size=20)
+        bycat.fit(
+            cal_d["y"], cal_d["pi"], cal_d["mu"], cal_d["r"],
+            groups=cal_d["cat"],
+        )
+        iv = bycat.predict(
+            test_d["pi"], test_d["mu"], test_d["r"], groups=test_d["cat"]
+        )
+        cov_cat = _per_category_coverage(iv["lower"], iv["upper"])
+
+        # The overconfident category is badly undercovered without the
+        # category axis. 0.85 is a loose bound; the observed value is ~0.77.
+        assert cov_split[1] < 0.85, (
+            f"expected the overconfident category to undercover under split "
+            f"CP, got {cov_split[1]:.4f}"
+        )
+        # Conditioning on the WRONG axis does not help.
+        assert cov_demo[1] < 0.85, (
+            f"demographic grouping should not repair a category-axis defect, "
+            f"got {cov_demo[1]:.4f}"
+        )
+        # Conditioning on the RIGHT axis does.
+        assert cov_cat[1] >= 0.86, (
+            f"category grouping should restore coverage on the overconfident "
+            f"category, got {cov_cat[1]:.4f} (split CP: {cov_split[1]:.4f})"
+        )
+        # And it must be an improvement, not a uniform widening that drags
+        # every category up.
+        assert cov_cat[1] - cov_split[1] > 0.05
+
+        # Category spread shrinks -- the headline symptom.
+        spread_split = max(cov_split) - min(cov_split)
+        spread_cat = max(cov_cat) - min(cov_cat)
+        assert spread_cat < spread_split, (
+            f"category conditioning should shrink the coverage spread: "
+            f"{spread_split:.4f} -> {spread_cat:.4f}"
+        )
+
 
 # ============================================================
 # Equalized Coverage Tests

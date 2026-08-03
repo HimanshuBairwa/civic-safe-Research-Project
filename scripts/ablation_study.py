@@ -436,6 +436,8 @@ def generate_conformal_table(results: dict[str, Any] | None = None) -> str:
         "split_cp": "Split CP",
         "weighted_cp": "Weighted CP",
         "mondrian": "Mondrian CP",
+        "mondrian_category": "Mondrian CP (category)",
+        "mondrian_demo_x_category": r"Mondrian CP (demo $\times$ category)",
         "equalized_coverage": "Equalized CP",
         "ecrc": r"\textsc{ECRC} (Ours)",
         "adaptive_ecrc": "Adaptive ECRC",

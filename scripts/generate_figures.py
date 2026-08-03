@@ -53,11 +53,16 @@ COLORS = {
     'neutral': '#607D8B',    # Blue-grey
 }
 
-# Consistent palette for the six conformal methods
+# Consistent palette for the conformal methods.
+# The two mondrian_* variants condition on the crime-category axis rather than
+# the demographic one; they share the mondrian green family so the grouping
+# family is readable at a glance.
 METHOD_COLORS = {
     'split_cp': '#2196F3',
     'weighted_cp': '#FF9800',
     'mondrian': '#4CAF50',
+    'mondrian_category': '#2E7D32',
+    'mondrian_demo_x_category': '#81C784',
     'equalized_coverage': '#9C27B0',
     'ecrc': '#F44336',
     'adaptive_ecrc': '#00BCD4',
@@ -66,6 +71,8 @@ METHOD_LABELS = {
     'split_cp': 'Split CP',
     'weighted_cp': 'Weighted CP',
     'mondrian': 'Mondrian',
+    'mondrian_category': 'Mondrian (cat)',
+    'mondrian_demo_x_category': 'Mondrian (demo x cat)',
     'equalized_coverage': 'Equalized',
     'ecrc': 'ECRC',
     'adaptive_ecrc': 'Adaptive ECRC',
