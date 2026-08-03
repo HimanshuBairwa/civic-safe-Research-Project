@@ -67,10 +67,17 @@ def discover_checkpoint(data_name: str) -> Path:
         raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
 
     # Priority 1: dataset-specific run directories
+    #
+    # Untagged (run_chicago_1785214452) is the canonical full model; tagged
+    # (run_chicago_no_gatv2_...) are ablations and probes. The untagged prefix is
+    # a prefix of every tagged one and name-sorting puts letters after digits, so
+    # an unfiltered search would pick an ablation as "most recent" and report it
+    # as the headline model. Same filter as train.py:377 / run_ablations.py:126.
     dataset_prefix = f"run_{data_name}_"
     run_dirs = sorted(
         [d for d in outputs_dir.iterdir()
-         if d.is_dir() and d.name.startswith(dataset_prefix)],
+         if d.is_dir() and d.name.startswith(dataset_prefix)
+         and d.name[len(dataset_prefix):].isdigit()],
         key=lambda p: p.name,
     )
     

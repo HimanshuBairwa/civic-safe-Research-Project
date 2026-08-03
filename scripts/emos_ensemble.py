@@ -146,9 +146,17 @@ def main():
         run_dir = Path(args.run_dir)
     else:
         outputs_dir = project_root / "outputs"
-        run_dirs = sorted(outputs_dir.glob("run_*"))
+        # Must be dataset-scoped and untagged: a bare run_* glob ignores --data
+        # (picking an NYC run for a Chicago request, since "nyc" > "chicago")
+        # and also matches tagged ablation dirs, which sort after the untagged
+        # timestamp. Same filter as train.py:377 / run_ablations.py:126.
+        prefix = f"run_{args.data}_"
+        run_dirs = sorted(
+            d for d in outputs_dir.glob(f"{prefix}*")
+            if d.is_dir() and d.name[len(prefix):].isdigit()
+        )
         if not run_dirs:
-            logger.error("No run directories found. Train first.")
+            logger.error(f"No run directories matching {prefix}* found. Train first.")
             sys.exit(1)
         run_dir = run_dirs[-1]
     

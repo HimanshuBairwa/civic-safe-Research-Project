@@ -122,16 +122,27 @@ def discover_all_checkpoints(data_name: str) -> list[Path]:
         raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
     
     # Priority 1: dataset-specific run directories (run_chicago_*, run_nyc_*)
+    #
+    # The canonical full-model run is UNTAGGED: run_{city}_{timestamp}. Ablations
+    # and probes are TAGGED: run_{city}_{tag}_{timestamp}. Because the untagged
+    # prefix is a prefix of every tagged one, a bare glob matches both, and
+    # sorting by name then puts tags AFTER the digits -- so `run_dirs[-1]` would
+    # resolve to `run_chicago_no_transformer_...` once ablations exist and
+    # silently report an ablation as the headline model. Keep only untagged dirs,
+    # matching the filter train.py:377 and run_ablations.py:126 already apply.
     dataset_prefix = f"run_{data_name}_"
     run_dirs = sorted(
-        outputs_dir.glob(f"{dataset_prefix}*"),
+        (
+            d for d in outputs_dir.glob(f"{dataset_prefix}*")
+            if d.is_dir() and d.name[len(dataset_prefix):].isdigit()
+        ),
         key=lambda p: p.name,
     )
-    
+
     # Priority 2: fall back to generic run_* directories (backward compat)
     if not run_dirs:
         run_dirs = sorted(outputs_dir.glob("run_*"), key=lambda p: p.name)
-    
+
     if not run_dirs:
         raise FileNotFoundError(
             f"No run directories found under {outputs_dir} "

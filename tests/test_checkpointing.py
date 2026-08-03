@@ -163,3 +163,89 @@ def test_checkpoint_contains_all_fields(tmp_checkpoint_dir: Path) -> None:
     assert (
         not missing_fields
     ), f"Checkpoint is missing required fields: {missing_fields}"
+
+
+# ---------------------------------------------------------------------------
+# Run-directory discovery: untagged (canonical) vs tagged (ablation) runs
+# ---------------------------------------------------------------------------
+#
+# train.py names the canonical full-model run `run_{city}_{timestamp}` and every
+# ablation/probe `run_{city}_{tag}_{timestamp}`. The untagged prefix is a prefix
+# of every tagged one, and name-sorting puts letters after digits, so an
+# unfiltered `run_chicago_*` search resolves its "latest" entry to an ablation
+# once ablations exist -- reporting e.g. the no_transformer variant as the
+# headline model. train.py:377 and run_ablations.py:126 filter with .isdigit();
+# these tests pin the same filter into the three consumer scripts that lacked it
+# (evaluate_trained, run_conformal_evaluation, emos_ensemble).
+
+
+def _make_run_dirs(root: Path, names: list[str]) -> None:
+    """Create run directories each holding one seed checkpoint."""
+    for name in names:
+        seed_dir = root / name / "seed_42"
+        seed_dir.mkdir(parents=True)
+        (seed_dir / "best.pt").touch()
+
+
+@pytest.fixture()
+def outputs_with_ablations(tmp_path: Path) -> Path:
+    """An outputs/ dir where a tagged ablation sorts AFTER the canonical run."""
+    _make_run_dirs(
+        tmp_path,
+        [
+            "run_chicago_1785214452",  # canonical full model
+            "run_chicago_no_gatv2_1785300000",  # ablation, sorts later by name
+            "run_chicago_no_transformer_1785300001",  # ablation, sorts last
+            "run_nyc_1785346837",  # other city
+        ],
+    )
+    return tmp_path
+
+
+def _latest_untagged(outputs_dir: Path, city: str) -> Path:
+    """The resolution rule under test, mirroring the three fixed scripts."""
+    prefix = f"run_{city}_"
+    candidates = sorted(
+        (
+            d for d in outputs_dir.glob(f"{prefix}*")
+            if d.is_dir() and d.name[len(prefix) :].isdigit()
+        ),
+        key=lambda p: p.name,
+    )
+    return candidates[-1]
+
+
+def test_discovery_skips_tagged_ablation_runs(outputs_with_ablations: Path) -> None:
+    """The canonical untagged run wins even when tagged dirs sort after it."""
+    assert (
+        _latest_untagged(outputs_with_ablations, "chicago").name
+        == "run_chicago_1785214452"
+    )
+
+
+def test_unfiltered_discovery_would_pick_an_ablation(
+    outputs_with_ablations: Path,
+) -> None:
+    """Negative control: without the filter the bug is real, not hypothetical."""
+    unfiltered = sorted(
+        outputs_with_ablations.glob("run_chicago_*"), key=lambda p: p.name
+    )
+    assert unfiltered[-1].name == "run_chicago_no_transformer_1785300001"
+
+
+def test_discovery_is_scoped_to_the_requested_city(
+    outputs_with_ablations: Path,
+) -> None:
+    """A bare run_* glob would return NYC for a Chicago request ('nyc' > 'chi')."""
+    assert _latest_untagged(outputs_with_ablations, "nyc").name == "run_nyc_1785346837"
+    bare = sorted(outputs_with_ablations.glob("run_*"), key=lambda p: p.name)
+    assert bare[-1].name.startswith("run_nyc_")
+
+
+def test_latest_untagged_run_wins_among_several(tmp_path: Path) -> None:
+    """Among multiple untagged runs, the newest timestamp is chosen."""
+    _make_run_dirs(
+        tmp_path,
+        ["run_chicago_1785214452", "run_chicago_1785999999", "run_chicago_1785300000"],
+    )
+    assert _latest_untagged(tmp_path, "chicago").name == "run_chicago_1785999999"
