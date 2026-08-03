@@ -16,10 +16,10 @@ Parameterisation throughout:
 
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import Tensor
+
+from civicsafe.utils.numerics import nb_k_max
 
 
 # ---------------------------------------------------------------------------
@@ -101,11 +101,7 @@ def zinb_cdf(
     r = r.float().clamp(min=0.1)
 
     if k_max is None:
-        max_mu = mu.max().item()
-        max_r = r.max().item()
-        variance = max_mu + max_mu**2 / max(max_r, 0.1)
-        k_max = min(int(max_mu + 10.0 * math.sqrt(variance)) + 1, 500)
-        k_max = max(k_max, 50)
+        k_max = nb_k_max(mu, r)
 
     device = mu.device
     ks = torch.arange(0, k_max + 1, device=device, dtype=torch.float32)
@@ -146,11 +142,7 @@ def zinb_cdf_full(
     r = r.float().clamp(min=0.1)
 
     if k_max is None:
-        max_mu = mu.max().item()
-        max_r = r.max().item()
-        variance = max_mu + max_mu**2 / max(max_r, 0.1)
-        k_max = min(int(max_mu + 10.0 * math.sqrt(variance)) + 1, 500)
-        k_max = max(k_max, 50)
+        k_max = nb_k_max(mu, r)
 
     device = mu.device
     ks = torch.arange(0, k_max + 1, device=device, dtype=torch.float32)
@@ -193,8 +185,31 @@ def zinb_ppf(
     indices = torch.searchsorted(F_zinb, q.unsqueeze(-1))  # (B, 1)
     indices = indices.squeeze(-1)  # (B,)
 
-    # Clamp to valid range
     K = ks.shape[0]
+
+    # --- Saturation guard ---------------------------------------------------
+    # If the grid does not reach the requested quantile, searchsorted returns K
+    # and the clamp below silently pins the answer to the grid edge. That is a
+    # SILENT, ONE-SIDED failure: upper quantiles come back too small, prediction
+    # intervals come back too narrow, and coverage is understated on exactly the
+    # high-count overdispersed cells the interval exists to cover. It is never
+    # visible in the output -- the returned value looks like a legitimate
+    # quantile. Fail loudly instead.
+    #
+    # This is a real bug that shipped: pairing batch-max mu with batch-max r
+    # understated the variance of the large-mu/small-r cell, so a cell whose
+    # true 95th percentile was 154 came back as 125.
+    if bool((indices >= K).any()):
+        n_sat = int((indices >= K).sum().item())
+        worst_q = float(q[indices >= K].max().item())
+        raise ValueError(
+            f"zinb_ppf: CDF grid saturated for {n_sat} of {indices.numel()} "
+            f"elements (k_max={K - 1}, largest unreached quantile level "
+            f"{worst_q:.6f}). The returned quantiles would be silently clipped "
+            f"to the grid edge, producing intervals that are too narrow. "
+            f"Increase k_max (auto-rule: civicsafe.utils.numerics.nb_k_max)."
+        )
+
     indices = indices.clamp(0, K - 1)
 
     return indices.float()

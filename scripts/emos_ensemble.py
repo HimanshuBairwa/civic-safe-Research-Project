@@ -27,12 +27,15 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import sys
 from pathlib import Path
 
 import torch
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from civicsafe.utils.numerics import nb_k_max  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,15 +68,18 @@ def crps_mixture_zinb(
     K = len(pi_list)
     B = y.shape[0]
     device = y.device
-    
-    # Auto-determine truncation
+
+    # Auto-determine truncation.
+    #
+    # Uses the shared per-observation rule, maxed over the ensemble members. The
+    # old code paired batch-max mu with batch-max r, which understates the
+    # variance of the large-mu/small-r cell (see nb_k_max docstring), and then
+    # dropped the tail past k_max entirely -- so a confidently-wrong forecast on
+    # a large count lost most of its penalty and the score flattered whichever
+    # member predicted the smallest counts.
     if k_max is None:
-        max_mu = max(m.max().item() for m in mu_list)
-        max_r = max(r.max().item() for r in r_list)
-        variance = max_mu + max_mu**2 / max(max_r, 0.1)
-        k_max = min(int(max_mu + 10.0 * math.sqrt(variance)) + 1, 500)
-        k_max = max(k_max, 50)
-    
+        k_max = max(nb_k_max(mu, r) for mu, r in zip(mu_list, r_list))
+
     # Build grid: (1, k_max+1)
     grid = torch.arange(k_max + 1, device=device, dtype=torch.float32).unsqueeze(0)
     
@@ -102,15 +108,28 @@ def crps_mixture_zinb(
         nb_pmf = log_pmf.exp()
         
         # ZINB CDF: pi + (1-pi) * cumsum(NB_PMF)
-        nb_cdf = nb_pmf.cumsum(dim=1)
+        nb_cdf = nb_pmf.cumsum(dim=1).clamp(max=1.0)
         zinb_cdf = pi.unsqueeze(1) + (1.0 - pi.unsqueeze(1)) * nb_cdf
-        
+
         mixture_cdf += zinb_cdf / K
-    
+
     # CRPS computation
     indicator = (y.unsqueeze(1) <= grid).float()
     crps = ((mixture_cdf - indicator) ** 2).sum(dim=1)
-    
+
+    # --- Analytic tail beyond the truncation point --------------------------
+    # For k_max < k < y the indicator is still 0 while F_mix has (very nearly)
+    # saturated, so each of those ceil(y) - 1 - k_max terms contributes
+    # F_mix(k)^2. Dropping them understates CRPS by up to ~y whenever the
+    # ensemble is confidently wrong on a large count -- exactly the error a
+    # proper scoring rule exists to punish.
+    #
+    # The edge CDF level is used rather than a hard 1.0 so that an explicitly
+    # supplied k_max below saturation degrades gracefully instead of
+    # over-charging. With the auto k_max above, F_edge ~ 1 and this is exact.
+    n_tail = (torch.ceil(y) - 1.0 - float(k_max)).clamp(min=0.0)
+    crps = crps + n_tail * mixture_cdf[:, -1] ** 2
+
     return crps
 
 

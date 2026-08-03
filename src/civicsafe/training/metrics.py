@@ -16,11 +16,12 @@ References:
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import torch
 from torch import Tensor
+
+from civicsafe.utils.numerics import nb_k_max
 
 
 def crps_zinb(
@@ -64,19 +65,13 @@ def crps_zinb(
     # (1 - 0)^2 = 1, and that stretch is added analytically after the loop. So
     # the tensor stays small even when a single observation is enormous.
     if k_max is None:
-        # Conservative: max over observations of μ_i + 10·σ_i, where
-        # σ_i² = μ_i + μ_i²/r_i (NB variance).
-        #
-        # This must be computed PER OBSERVATION and then maxed. Pairing a
-        # batch-wide max_mu with a batch-wide max_r understates the spread of
-        # the cell that actually has large μ and small r -- the overdispersed
-        # cell whose CDF saturates slowest -- and the analytic tail below then
-        # charges that cell a full 1.0 per step while its true F is still well
-        # under 1.
-        sigma = (mu + mu**2 / r.clamp(min=0.1)).clamp(min=0.0).sqrt()
-        k_needed = (mu + 10.0 * sigma).max().item()
-        k_max = min(int(k_needed) + 1, 5000)
-        k_max = max(k_max, 50)  # Floor at 50 for very low-count series
+        # Shared per-observation rule (see nb_k_max). It must be per-observation
+        # and then maxed: pairing a batch-wide max_mu with a batch-wide max_r
+        # understates the spread of the cell that actually has large mu and
+        # small r -- the overdispersed cell whose CDF saturates slowest -- and
+        # the analytic tail below then charges that cell a full 1.0 per step
+        # while its true F is still well under 1.
+        k_max = nb_k_max(mu, r)
 
     device = y.device
     ks = torch.arange(0, k_max + 1, device=device, dtype=torch.float32)  # (K,)

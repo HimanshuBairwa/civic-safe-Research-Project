@@ -9,6 +9,8 @@ from typing import Final
 import torch
 from torch import Tensor
 
+__all__ = ["NUMERICAL_EPS", "LOG_FLOOR", "nb_k_max", "safe_log", "safe_divide", "log_sum_exp", "clamp_probabilities"]
+
 # ---------------------------------------------------------------------------
 # Named constants
 # ---------------------------------------------------------------------------
@@ -97,3 +99,30 @@ def clamp_probabilities(
         Clamped tensor of same shape and dtype.
     """
     return torch.clamp(tensor, min=eps, max=1.0 - eps).to(tensor.dtype)
+
+
+def nb_k_max(mu: Tensor, r: Tensor, tail_sigma: float = 10.0,
+             cap: int = 5000, floor: int = 50) -> int:
+    """Shared truncation point for NB/ZINB CDF grids.
+
+    The rule is computed PER OBSERVATION and then maxed. Pairing a batch-wide
+    max_mu with a batch-wide max_r understates the spread of the cell that
+    actually has large mu and small r -- the overdispersed cell whose CDF
+    saturates slowest -- and a downstream analytic tail (CRPS) or quantile
+    lookup (PPF) then charges that cell full price while its true CDF is still
+    well under 1.
+
+    mu: NB means. Shape: (B,).
+    r:  NB dispersion (total_count). Shape: (B,).
+    tail_sigma: how many standard deviations past the mean to cover.
+    cap: hard upper bound on the returned grid size (memory guard).
+    floor: minimum grid size for very low-count series.
+
+    Returns the integer k_max.
+    """
+    mu_safe = mu.float().clamp(min=1e-6)
+    r_safe = r.float().clamp(min=0.1)
+    # NB variance: mu + mu^2/r. Per-observation, then maxed.
+    sigma = (mu_safe + mu_safe**2 / r_safe).clamp(min=0.0).sqrt()
+    k_needed = (mu_safe + tail_sigma * sigma).max().item()
+    return max(min(int(k_needed) + 1, cap), floor)

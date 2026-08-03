@@ -179,6 +179,88 @@ class TestZINBDistribution:
 
         assert width_90 >= width_80, "90% interval should be wider than 80%"
 
+    def test_ppf_exact_on_heterogeneous_batch(self) -> None:
+        """PPF must match scipy when the batch mixes dispersion regimes.
+
+        Regression: k_max was derived by pairing the batch-max mu with the
+        batch-max r. Larger r means SMALLER variance, so that pairing produces
+        the smallest plausible spread for the largest mean -- it understates the
+        grid needed by the large-mu/small-r cell, whose CDF saturates slowest.
+        searchsorted then ran off the end and the result was silently clamped to
+        the grid edge: the true 95th percentile of NB(mu=40, r=0.5) is 154, and
+        the old code returned 125 (the grid edge).
+
+        Every homogeneous-batch test passed while this was broken, because the
+        bug needs one cell to set max_r and a DIFFERENT cell to set max_mu.
+        """
+        pytest.importorskip("scipy")
+        from scipy.stats import nbinom
+
+        # cell 0: large mean, heavy overdispersion (sets max_mu)
+        # cell 1: small mean, tight       (sets max_r)
+        pi = torch.tensor([0.0, 0.0])
+        mu = torch.tensor([40.0, 5.0])
+        r = torch.tensor([0.5, 50.0])
+
+        for level in (0.05, 0.5, 0.95, 0.99):
+            q = torch.full((2,), level)
+            got = zinb_ppf(q, pi, mu, r)
+            for i in range(2):
+                expected = nbinom.ppf(
+                    level, r[i].item(), r[i].item() / (r[i].item() + mu[i].item())
+                )
+                assert got[i].item() == pytest.approx(expected, abs=1.0), (
+                    f"cell {i} at q={level}: got {got[i].item()}, scipy {expected}"
+                )
+
+    def test_ppf_raises_rather_than_clipping_silently(self) -> None:
+        """An under-sized explicit k_max must fail loudly, not clip.
+
+        Silently pinning an upper quantile to the grid edge yields intervals
+        that are too narrow and coverage that is understated -- with no
+        indication in the output that anything went wrong.
+        """
+        pi = torch.tensor([0.0])
+        mu = torch.tensor([40.0])
+        r = torch.tensor([0.5])
+
+        with pytest.raises(ValueError, match="saturated"):
+            zinb_ppf(torch.tensor([0.99]), pi, mu, r, k_max=20)
+
+    def test_ppf_pair_width_exact_under_mixed_dispersion(self) -> None:
+        """Interval width must equal the true quantile spread, not the grid edge.
+
+        Asserting only the ORDERING (overdispersed wider than tight) is not
+        enough to catch the clipping bug: with mu=[40,40], r=[0.5,100] the old
+        rule gave k_max=115, and the clipped width 115-0=115 still exceeded the
+        tight cell's 53-28=25, so an ordering assertion passed on broken code.
+        Pin the actual values -- cell 0's true 95th percentile is 154.
+        """
+        pytest.importorskip("scipy")
+        from scipy.stats import nbinom
+
+        pi = torch.zeros(2)
+        mu = torch.tensor([40.0, 40.0])
+        r = torch.tensor([0.5, 100.0])  # cell 0 far more dispersed
+
+        lo, hi = zinb_ppf_pair(0.1, pi, mu, r)
+
+        for i in range(2):
+            ri, mi = r[i].item(), mu[i].item()
+            exp_lo = nbinom.ppf(0.05, ri, ri / (ri + mi))
+            exp_hi = nbinom.ppf(0.95, ri, ri / (ri + mi))
+            assert lo[i].item() == pytest.approx(exp_lo, abs=1.0)
+            assert hi[i].item() == pytest.approx(exp_hi, abs=1.0), (
+                f"cell {i} upper bound {hi[i].item()} != scipy {exp_hi} "
+                f"(grid-edge clipping regression)"
+            )
+
+        width = hi - lo
+        assert width[0] > width[1], (
+            f"overdispersed width {width[0].item()} should exceed "
+            f"tight width {width[1].item()}"
+        )
+
 
 # ============================================================
 # Non-Conformity Score Tests
