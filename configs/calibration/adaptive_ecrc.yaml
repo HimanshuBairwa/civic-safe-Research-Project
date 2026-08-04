@@ -15,6 +15,18 @@
 #   2. Adapts to temporal distribution shift (ACI component)
 #   3. Maintains a sliding window of calibration scores (EnbPI style)
 #
+# -----------------------------------------------------------------------------
+# REQUIRED USAGE: fit() -> update() -> predict(), NOT fit() -> predict()
+# -----------------------------------------------------------------------------
+# Point 2 above is conditional on calling update(). fit() initialises every
+# alpha_t to the constant max(alpha - epsilon, 0.01), which is exactly what
+# ECRCCalibrator.fit() computes, so a fit-then-predict pipeline emits intervals
+# that are byte-identical to plain ECRC while being reported as "adaptive".
+# That is how a duplicate row shipped in the Chicago results table; the
+# evaluation script now excludes the static variant and evaluates only the
+# rolling loop (adaptive_ecrc_rolling), which calls update() per week.
+# predict() logs a warning if no update() has occurred.
+#
 # References:
 #   - Gibbs & Candes (2021): Adaptive Conformal Inference Under Distribution Shift
 #   - Feldman et al. (2021): Achieving Risk Control via Online Learning

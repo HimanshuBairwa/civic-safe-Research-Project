@@ -57,6 +57,7 @@ from civicsafe.calibration.conformal import (
     ECRCCalibrator,
     EqualizedCoverageCalibrator,
     MondrianConformalCalibrator,
+    RandomizedSplitConformalCalibrator,
     SplitConformalCalibrator,
     WeightedConformalCalibrator,
     compute_cqr_scores,
@@ -1010,6 +1011,14 @@ def run_conformal_evaluation(
     # ─── Fit ALL calibration methods ───
     calibrator_configs = {
         "split_cp": SplitConformalCalibrator(alpha=alpha),
+        # Exact-guarantee counterpart to split_cp. The integer CQR score is
+        # degenerate on this panel (>90% of scores <= 0, threshold pins to 0.0,
+        # correction becomes the identity), so split_cp's reported coverage is
+        # the RAW ZINB interval. This conformalizes the randomized PIT instead.
+        # Seeded so the run is reproducible; the seed is recorded in metadata.
+        "randomized_split_cp": RandomizedSplitConformalCalibrator(
+            alpha=alpha, seed=0
+        ),
         "weighted_cp": WeightedConformalCalibrator(alpha=alpha, decay_rate=0.05),
         "mondrian": MondrianConformalCalibrator(alpha=alpha, min_group_size=20),
         "mondrian_category": MondrianConformalCalibrator(alpha=alpha, min_group_size=20),
@@ -1018,9 +1027,13 @@ def run_conformal_evaluation(
         ),
         "equalized_coverage": EqualizedCoverageCalibrator(alpha=alpha, lambda_eq=1.0),
         "ecrc": ECRCCalibrator(alpha=alpha, delta=0.05, group_type="demographic"),
-        "adaptive_ecrc": AdaptiveTemporalECRCCalibrator(
-            alpha=alpha, gamma=0.05, delta=0.05, group_type="demographic"
-        ),
+        # NOTE: adaptive_ecrc is deliberately NOT listed here. Fitted and then
+        # asked to predict without any update() call, its per-group alpha_t
+        # never moves off the initial base_alpha, which equals ECRC's
+        # adjusted_alpha -- so it returned output byte-identical to ecrc while
+        # being advertised as a distinct "adaptive" method. The genuine
+        # temporal evaluation is adaptive_ecrc_rolling below, which calls
+        # update() week by week.
     }
 
     # Which axis each method CONDITIONS ON. Reporting is always on the
@@ -1031,7 +1044,6 @@ def run_conformal_evaluation(
         "mondrian_demo_x_category": "demo_x_category",
         "equalized_coverage": "demographic",
         "ecrc": "demographic",
-        "adaptive_ecrc": "demographic",
     }
 
     all_coverage_results: dict[str, Any] = {}
@@ -1074,7 +1086,7 @@ def run_conformal_evaluation(
         # Predict
         predict_kwargs: dict[str, Any] = {}
         if method_name in ("mondrian", "mondrian_category",
-                           "mondrian_demo_x_category", "ecrc", "adaptive_ecrc"):
+                           "mondrian_demo_x_category", "ecrc"):
             predict_kwargs["groups"] = grouping_axes[calibration_axis[method_name]][1]
 
         try:
@@ -1094,6 +1106,31 @@ def run_conformal_evaluation(
             groups=groups_test, alpha=alpha,
         )
         coverage["calibration_axis"] = calibration_axis.get(method_name, "none")
+
+        # Degeneracy flag: on a discrete panel the integer CQR threshold can pin
+        # to exactly 0, making the correction the identity and the "calibrated"
+        # coverage nothing but the raw ZINB interval. Record it per method so a
+        # reader of the JSON can tell a real calibration from a no-op without
+        # re-deriving the threshold.
+        thr = getattr(calibrator, "_threshold", None)
+        if thr is not None:
+            coverage["calibration_threshold"] = float(thr)
+            coverage["calibration_is_degenerate"] = bool(abs(float(thr)) < 1e-9)
+
+        # For the randomized calibrator, also record the coverage that actually
+        # carries the exact finite-sample guarantee. The integer interval still
+        # overcovers (lattice ceiling), so BOTH numbers are reported: this one
+        # is what the theory certifies, `marginal_coverage` is what an analyst
+        # acts on. Quoting only one of them would misstate the result.
+        if isinstance(calibrator, RandomizedSplitConformalCalibrator):
+            coverage["pit_space_coverage"] = calibrator.coverage_in_pit_space(
+                y_test, pi_test, mu_test, r_test
+            )
+            coverage["pit_band"] = [
+                float(calibrator._lo_level),  # type: ignore[arg-type]
+                float(calibrator._hi_level),  # type: ignore[arg-type]
+            ]
+            coverage["pit_randomization_seed"] = calibrator.seed
 
         # Per-category coverage
         per_cat: dict[str, dict[str, float]] = {}
@@ -1122,6 +1159,17 @@ def run_conformal_evaluation(
             f"Width: {coverage['mean_width']:.2f} | "
             f"Disparity: {coverage.get('coverage_disparity', 0):.4f}"
         )
+        if coverage.get("calibration_is_degenerate"):
+            logger.warning(
+                "  ^ threshold pinned to 0.0 — this coverage is the RAW ZINB "
+                "interval, not a calibrated one (see randomized_split_cp)"
+            )
+        if "pit_space_coverage" in coverage:
+            logger.info(
+                f"  PIT-space coverage: {coverage['pit_space_coverage']:.4f} "
+                f"(target {1-alpha:.2f}) — this is the exact guarantee; the "
+                f"integer interval above is conservative by construction"
+            )
         # Category spread is the diagnostic that motivated the category axis;
         # surface it in the log instead of leaving it buried in the JSON.
         if per_cat:

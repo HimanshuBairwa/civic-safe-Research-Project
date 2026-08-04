@@ -434,6 +434,7 @@ def generate_conformal_table(results: dict[str, Any] | None = None) -> str:
 
     method_display = {
         "split_cp": "Split CP",
+        "randomized_split_cp": "Split CP (randomized PIT)",
         "weighted_cp": "Weighted CP",
         "mondrian": "Mondrian CP",
         "mondrian_category": "Mondrian CP (category)",
@@ -441,6 +442,7 @@ def generate_conformal_table(results: dict[str, Any] | None = None) -> str:
         "equalized_coverage": "Equalized CP",
         "ecrc": r"\textsc{ECRC} (Ours)",
         "adaptive_ecrc": "Adaptive ECRC",
+        "adaptive_ecrc_rolling": "Adaptive ECRC (rolling)",
     }
 
     rows: list[dict[str, str]] = []

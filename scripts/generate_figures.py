@@ -59,6 +59,7 @@ COLORS = {
 # family is readable at a glance.
 METHOD_COLORS = {
     'split_cp': '#2196F3',
+    'randomized_split_cp': '#1565C0',
     'weighted_cp': '#FF9800',
     'mondrian': '#4CAF50',
     'mondrian_category': '#2E7D32',
@@ -66,9 +67,11 @@ METHOD_COLORS = {
     'equalized_coverage': '#9C27B0',
     'ecrc': '#F44336',
     'adaptive_ecrc': '#00BCD4',
+    'adaptive_ecrc_rolling': '#0097A7',
 }
 METHOD_LABELS = {
     'split_cp': 'Split CP',
+    'randomized_split_cp': 'Split CP (randomized)',
     'weighted_cp': 'Weighted CP',
     'mondrian': 'Mondrian',
     'mondrian_category': 'Mondrian (cat)',
@@ -76,6 +79,7 @@ METHOD_LABELS = {
     'equalized_coverage': 'Equalized',
     'ecrc': 'ECRC',
     'adaptive_ecrc': 'Adaptive ECRC',
+    'adaptive_ecrc_rolling': 'Adaptive ECRC (rolling)',
 }
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
