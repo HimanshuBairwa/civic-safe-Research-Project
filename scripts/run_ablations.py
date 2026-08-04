@@ -83,6 +83,11 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "overrides": ["model.ablations.zero_inflation=false"],
         "desc": "ZINB -> plain NB (zero-inflation head disabled)",
     },
+    "no_level_anchor": {
+        "overrides": ["model.ablations.level_anchor=false"],
+        "desc": "mu predicted absolutely instead of as a correction on the "
+                "trailing mean (pre-anchoring architecture)",
+    },
     "loss_nll": {
         "overrides": ["training.loss_fn=nll"],
         "desc": "Train on ZINB NLL instead of CRPS",

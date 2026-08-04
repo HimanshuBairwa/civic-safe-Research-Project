@@ -22,6 +22,17 @@ model:
     use_gnn: true         # Set to false to replace GATv2 with MLP
     use_transformer: true # Set to false to replace Transformer with MLP
 
+    # Level anchoring: predict mu as a multiplicative correction on the
+    # trailing 52-week mean instead of an absolute level.
+    #   mu = anchor * exp(clamp(mu_mlp(h), -3, 3))
+    # At init the correction is exp(0)=1, so the model starts exactly at the
+    # rolling historical-average forecast and learns only the departure from
+    # it. Without this the head must reconstruct each cell's absolute level
+    # from scratch, and it loses to a plain trailing mean (Chicago test CRPS
+    # 3.2291 model vs 2.9322 rolling HA). Turn OFF to reproduce the
+    # pre-anchoring architecture.
+    level_anchor: true
+
   # ---------------------------------------------------------------------------
   # Spatial Encoder — Graph Attention Network (GAT)
   # ---------------------------------------------------------------------------

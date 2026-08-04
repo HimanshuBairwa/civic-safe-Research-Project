@@ -234,9 +234,28 @@ def load_model_from_checkpoint(
     spatial_cfg = model_cfg.get("spatial", {})
     temporal_cfg = model_cfg.get("temporal", {})
 
+    # Load the checkpoint BEFORE constructing the model: the trainer records an
+    # `arch` fingerprint describing the model it actually trained, and some of
+    # those toggles change forward() behaviour without changing any parameter
+    # shape. `level_anchor` is the dangerous case -- an anchored and an
+    # unanchored head have byte-identical state dicts, so a mismatch loads
+    # cleanly under strict=True and then silently rescales every mu. Rebuilding
+    # from the config alone would reintroduce exactly that class of bug (cf. the
+    # raw-vs-ema divergence documented below, which had the same root cause:
+    # this script inferring what evaluate_trained.py was told).
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    arch = checkpoint.get("arch", {}) if isinstance(checkpoint, dict) else {}
+    ablations = model_cfg.get("ablations", {})
+
+    def _toggle(name: str, default: bool = True) -> bool:
+        """Prefer the checkpoint's recorded architecture over the config."""
+        if name in arch:
+            return bool(arch[name])
+        return bool(ablations.get(name, default))
+
     model = CivicSafeModel(
         num_features=num_features,
-        hidden_dim=spatial_cfg.get("hidden_dim", 128),
+        hidden_dim=arch.get("hidden_dim", spatial_cfg.get("hidden_dim", 128)),
         spatial_layers=spatial_cfg.get("num_layers", 2),
         spatial_heads=spatial_cfg.get("num_heads", 4),
         temporal_layers=temporal_cfg.get("num_layers", 2),
@@ -244,9 +263,11 @@ def load_model_from_checkpoint(
         temporal_ff_dim=temporal_cfg.get("dim_feedforward", 512),
         num_categories=num_categories,
         max_seq_len=temporal_cfg.get("max_seq_len", 52),
+        use_gnn=_toggle("use_gnn"),
+        use_transformer=_toggle("use_transformer"),
+        zero_inflation=_toggle("zero_inflation"),
+        level_anchor=_toggle("level_anchor", default=False),
     )
-
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     # Handle different checkpoint formats.
     #
@@ -468,22 +489,49 @@ def compute_baseline_crps(
     counts: Tensor,
     test_start: int = 260,
     train_end: int = 208,
+    window_size: int = 52,
 ) -> dict[str, float]:
-    """Compute CRPS for two naive baselines: Historical Average and Seasonal Naive.
+    """Compute CRPS for the naive baselines: Historical Average and Seasonal Naive.
 
-    Historical Average: predict E[Y] = mean of training period per unit per category.
-    Seasonal Naive: predict Y(t-52) = same week last year (strongest naive baseline).
+    Historical Average comes in two flavours and they are NOT interchangeable:
 
-    Both baselines model predictions as Poisson(lambda) for CRPS computation:
-    CRPS is computed via the ZINB CDF formula with pi=0, r=1000 (Poisson limit).
+      rolling (reported as ``ha_crps``, the honest one)
+          For test week t, predict the mean of weeks [t-52, t). Updates every
+          week, so it tracks level drift. This matches baselines.py:174
+          (``item["input_counts"].mean(dim=1)``) and is what a reviewer means
+          by "historical average".
+
+      frozen (reported as ``ha_crps_frozen``, for transparency only)
+          A single mean over the training period [0, 208), held constant across
+          all 53 test weeks. Cannot track drift.
+
+    On Chicago the gap is large -- rolling 2.9322 vs frozen 3.8781 -- because
+    the panel level moves substantially over a 53-week horizon. Skill scores
+    were previously computed against the frozen variant, which inflated CRPSS
+    vs HA from a genuine loss into an apparent 16.7% win. Both are emitted now
+    and the skill score uses the rolling one; a model that cannot beat a
+    trailing mean has no forecasting claim to make.
+
+    Seasonal Naive: predict Y(t-52) = same week last year. Unaffected by this
+    distinction (4.4008 here vs 4.4013 in baselines.py -- the residual is the
+    window-alignment convention, not a definitional disagreement), which is
+    what localizes the discrepancy to the HA definition.
+
+    All point-prediction baselines are scored through the same ZINB-CRPS with
+    pi=0, r=1000 (the Poisson limit), so the comparison isolates the
+    conditional mean rather than rewarding the model for its richer
+    distributional form.
 
     Args:
         counts: Full crime count tensor. Shape: (S, T, C)
         test_start: First week of test set.
         train_end: Last week of training set (exclusive).
+        window_size: Trailing window for the rolling HA. Must match the
+            model's input window so the two see identical history.
 
     Returns:
-        Dictionary with 'ha_crps' and 'seasonal_naive_crps'.
+        Dictionary with 'ha_crps' (rolling), 'ha_crps_frozen', and
+        'seasonal_naive_crps'.
     """
     train_counts = counts[:, :train_end, :].float()  # (S, train_T, C)
     test_counts = counts[:, test_start:, :].float()   # (S, test_T, C)
@@ -495,10 +543,24 @@ def compute_baseline_crps(
     pi_zero = torch.zeros_like(y_flat)
     r_large = torch.full_like(y_flat, 1000.0)  # r→∞ gives Poisson
 
-    # --- Baseline 1: Historical Average ---
+    # --- Baseline 1a: Historical Average, ROLLING (the honest baseline) ---
+    # Predict each test week from the mean of the preceding `window_size`
+    # weeks. Built by stacking per-week trailing means so it is obvious that
+    # only past data is used -- no test week contributes to its own prediction.
+    rolling_means = torch.stack(
+        [
+            counts[:, t - window_size : t, :].float().mean(dim=1)  # (S, C)
+            for t in range(test_start, test_start + test_T)
+        ],
+        dim=1,
+    )  # (S, test_T, C)
+    mu_ha_rolling = rolling_means.reshape(-1).clamp(min=0.01)
+    ha_crps_rolling = crps_zinb(y_flat, pi_zero, mu_ha_rolling, r_large).mean().item()
+
+    # --- Baseline 1b: Historical Average, FROZEN (reported for transparency) ---
     hist_mean = train_counts.mean(dim=1, keepdim=True)  # (S, 1, C)
-    mu_ha = hist_mean.expand_as(test_counts).reshape(-1).clamp(min=0.01)
-    ha_crps = crps_zinb(y_flat, pi_zero, mu_ha, r_large).mean().item()
+    mu_ha_frozen = hist_mean.expand_as(test_counts).reshape(-1).clamp(min=0.01)
+    ha_crps_frozen = crps_zinb(y_flat, pi_zero, mu_ha_frozen, r_large).mean().item()
 
     # --- Baseline 2: Seasonal Naive (Y(t-52) = same week last year) ---
     # For test week t (starting at test_start=260), seasonal prediction = Y(t-52)
@@ -508,7 +570,8 @@ def compute_baseline_crps(
     sn_crps = crps_zinb(y_flat, pi_zero, mu_sn, r_large).mean().item()
 
     return {
-        "ha_crps": ha_crps,
+        "ha_crps": ha_crps_rolling,
+        "ha_crps_frozen": ha_crps_frozen,
         "seasonal_naive_crps": sn_crps,
     }
 
@@ -1160,20 +1223,45 @@ def run_conformal_evaluation(
     # ─── Compute baseline CRPS and CRPSS ───
     logger.info("\n  ─── CRPS SKILL SCORE ───")
     baselines = compute_baseline_crps(counts)
-    ha_crps = baselines["ha_crps"]
+    ha_crps = baselines["ha_crps"]                 # rolling — the honest one
+    ha_crps_frozen = baselines["ha_crps_frozen"]   # reported for transparency
     sn_crps = baselines["seasonal_naive_crps"]
     model_crps = crps_zinb(y_test, pi_test, mu_test, r_test).mean().item()
 
-    # CRPSS against Historical Average (weaker baseline)
+    # CRPSS against the ROLLING historical average. On this panel the rolling
+    # mean is the STRONGEST naive baseline, not the weakest -- it beats
+    # seasonal-naive by ~33% because week-to-week level is far more predictive
+    # than same-week-last-year. Gating only on seasonal-naive would let a model
+    # that loses to a trailing mean report a passing skill score.
     crpss_ha = 1.0 - (model_crps / ha_crps) if ha_crps > 0 else 0.0
-    # CRPSS against Seasonal Naive (the harder baseline — the one reviewers check)
+    crpss_ha_frozen = (
+        1.0 - (model_crps / ha_crps_frozen) if ha_crps_frozen > 0 else 0.0
+    )
+    # CRPSS against Seasonal Naive
     crpss_sn = 1.0 - (model_crps / sn_crps) if sn_crps > 0 else 0.0
 
-    logger.info(f"  Baseline CRPS (historical average): {ha_crps:.4f}")
-    logger.info(f"  Baseline CRPS (seasonal naive):     {sn_crps:.4f}")
-    logger.info(f"  Model CRPS:                          {model_crps:.4f}")
-    logger.info(f"  CRPSS vs HA:                         {crpss_ha:.4f}")
-    logger.info(f"  CRPSS vs Seasonal Naive:             {crpss_sn:.4f} (threshold: ≥{CRPSS_SKILL_THRESHOLD})")
+    logger.info(f"  Baseline CRPS (HA, rolling {test_dataset.window_size}w): {ha_crps:.4f}  <- honest HA")
+    logger.info(f"  Baseline CRPS (HA, frozen train mean):  {ha_crps_frozen:.4f}  (transparency only)")
+    logger.info(f"  Baseline CRPS (seasonal naive):         {sn_crps:.4f}")
+    logger.info(f"  Model CRPS:                             {model_crps:.4f}")
+    logger.info(f"  CRPSS vs HA (rolling):                  {crpss_ha:+.4f} (threshold: >={CRPSS_SKILL_THRESHOLD})")
+    logger.info(f"  CRPSS vs HA (frozen):                   {crpss_ha_frozen:+.4f}")
+    logger.info(f"  CRPSS vs Seasonal Naive:                {crpss_sn:+.4f} (threshold: >={CRPSS_SKILL_THRESHOLD})")
+
+    # The gate is the MINIMUM skill across both naive baselines. A model only
+    # earns a forecasting claim if it beats every naive competitor, not the
+    # most convenient one.
+    crpss_primary = min(crpss_ha, crpss_sn)
+    if crpss_primary < CRPSS_SKILL_THRESHOLD:
+        logger.warning(
+            f"  GATE NOT MET: min(CRPSS) = {crpss_primary:+.4f} < "
+            f"{CRPSS_SKILL_THRESHOLD}. The binding baseline is "
+            f"{'rolling HA' if crpss_ha < crpss_sn else 'seasonal naive'}."
+        )
+    else:
+        logger.info(
+            f"  GATE MET: min(CRPSS) = {crpss_primary:+.4f} >= {CRPSS_SKILL_THRESHOLD}"
+        )
 
     # ─── Post-hoc Recalibration ───
     logger.info("\n  ─── POST-HOC RECALIBRATION ───")
@@ -1201,6 +1289,16 @@ def run_conformal_evaluation(
     logger.info("\n  ─── PER-CATEGORY CRPSS ───")
     y_test_3d = test_results["y"]  # (N_windows, S, C)
     per_cat_crpss = {}
+    # Rolling HA per (week, unit, category), aligned to the model's own target
+    # weeks. Shared across categories so it is computed once and sliced, and so
+    # it provably matches the aggregate rolling HA above.
+    rolling_ha_3d = torch.stack(
+        [
+            counts[:, t - test_dataset.window_size : t, :].float().mean(dim=1)  # (S, C)
+            for t in test_dataset.valid_targets[:test_results["y"].shape[0]]
+        ],
+        dim=0,
+    )  # (N_windows, S, C)
     for c_idx in range(C):
         cat_name = CATEGORY_NAMES.get(c_idx, f"cat_{c_idx}")
         # Extract per-category data
@@ -1209,10 +1307,8 @@ def run_conformal_evaluation(
         mu_c = test_results["mu"][:, :, c_idx].reshape(-1)
         r_c = test_results["r"][:, :, c_idx].reshape(-1)
         model_crps_c = crps_zinb(y_c, pi_c, mu_c, r_c).mean().item()
-        # Baseline: HA per category
-        ha_mean_c = counts[:, :208, c_idx].float().mean(dim=1)  # (S,)
-        n_test_win = test_results["y"].shape[0]
-        ha_mu_c = ha_mean_c.unsqueeze(0).expand(n_test_win, -1).reshape(-1).clamp(min=0.01)
+        # Baseline: rolling HA per category (same definition as the headline)
+        ha_mu_c = rolling_ha_3d[:, :, c_idx].reshape(-1).clamp(min=0.01)
         ha_crps_c = crps_zinb(
             y_c, torch.zeros_like(y_c), ha_mu_c, torch.full_like(y_c, 1000.0)
         ).mean().item()
@@ -1321,12 +1417,23 @@ def run_conformal_evaluation(
     # Compute per-timestep CRPS for model and baseline
     crps_per_obs_model = crps_zinb(y_test, pi_test, mu_test, r_test)
     
-    # Historical Average baseline CRPS per observation
-    # HA predicts the training-period mean for each (S, C) cell
-    ha_pred_flat = counts[:, :208, :].float().mean(dim=1)  # (S, C)
-    ha_pred_expanded = ha_pred_flat.unsqueeze(0).expand(
-        n_test_windows, S, C
-    ).reshape(-1)
+    # Historical Average baseline CRPS per observation.
+    # Must use the SAME rolling definition as compute_baseline_crps, or the
+    # DM test certifies superiority over the frozen straw man while the skill
+    # score is quoted against the rolling one -- two different baselines
+    # reported side by side as if they were the same comparison.
+    #
+    # Week indices come from the dataset itself rather than hardcoded splits:
+    # `valid_targets` is precisely the sequence of target weeks that produced
+    # y_test, in order, so the baseline is aligned with the model's
+    # predictions by construction instead of by an assumption about 260.
+    ha_pred_expanded = torch.stack(
+        [
+            counts[:, t - test_dataset.window_size : t, :].float().mean(dim=1)  # (S, C)
+            for t in test_dataset.valid_targets[:n_test_windows]
+        ],
+        dim=0,
+    ).reshape(-1)  # (n_windows*S*C,)
     # Poisson approx CRPS for HA: pi=0, mu=ha_pred, r=1000 (NB->Poisson)
     crps_per_obs_ha = crps_zinb(
         y_test,
@@ -1383,12 +1490,22 @@ def run_conformal_evaluation(
         "point_forecast_metrics": test_metrics,
         "skill_scores": {
             "baseline_crps_ha": ha_crps,
+            "baseline_crps_ha_frozen": ha_crps_frozen,
+            "crpss_vs_ha_frozen": crpss_ha_frozen,
             "baseline_crps_seasonal_naive": sn_crps,
             "model_crps": model_crps,
             "crpss_vs_ha": crpss_ha,
             "crpss_vs_seasonal_naive": crpss_sn,
-            "crpss": crpss_sn,  # Primary skill score is vs seasonal-naive
-            "crpss_passes_threshold": crpss_sn >= CRPSS_SKILL_THRESHOLD,
+            # Primary skill score is the MINIMUM over the naive family, so the
+            # gate is decided by whichever naive baseline is hardest to beat.
+            # This used to be crpss_sn alone, which passed at 0.2662 on Chicago
+            # while the model was simultaneously 9.2% WORSE than a rolling
+            # 52-week mean -- a passing gate on a losing forecaster.
+            "crpss": crpss_primary,
+            "crpss_binding_baseline": (
+                "ha_rolling" if crpss_ha < crpss_sn else "seasonal_naive"
+            ),
+            "crpss_passes_threshold": crpss_primary >= CRPSS_SKILL_THRESHOLD,
         },
         "per_category_crpss": per_cat_crpss,
         "calibration_diagnostics": {
@@ -1601,12 +1718,15 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
         f"",
         f"| Component | Value |",
         f"|-----------|-------|",
-        f"| Baseline CRPS (Historical Average) | {skill.get('baseline_crps_ha', skill.get('baseline_crps', 'N/A')):.4f} |",
+        f"| Baseline CRPS (Historical Average, rolling) | {skill.get('baseline_crps_ha', skill.get('baseline_crps', 'N/A')):.4f} |",
+        f"| Baseline CRPS (Historical Average, frozen) | {skill.get('baseline_crps_ha_frozen', float('nan')):.4f} |",
         f"| Baseline CRPS (Seasonal Naive) | {skill.get('baseline_crps_seasonal_naive', 'N/A')} |",
         f"| Model CRPS | {skill['model_crps']:.4f} |",
-        f"| CRPSS vs HA | {skill.get('crpss_vs_ha', skill.get('crpss', 0)):.4f} |",
-        f"| **CRPSS vs Seasonal Naive** | **{skill.get('crpss_vs_seasonal_naive', skill.get('crpss', 0)):.4f}** |",
-        f"| Threshold (≥0.10 vs SN) | {'✓ PASS' if skill['crpss_passes_threshold'] else '✗ FAIL'} |",
+        f"| CRPSS vs HA (rolling) | {skill.get('crpss_vs_ha', skill.get('crpss', 0)):+.4f} |",
+        f"| CRPSS vs Seasonal Naive | {skill.get('crpss_vs_seasonal_naive', skill.get('crpss', 0)):+.4f} |",
+        f"| **CRPSS (min over naive family)** | **{skill.get('crpss', 0):+.4f}** |",
+        f"| Binding baseline | {skill.get('crpss_binding_baseline', 'N/A')} |",
+        f"| Threshold (≥0.10 vs ALL naive) | {'✓ PASS' if skill['crpss_passes_threshold'] else '✗ FAIL'} |",
         f"",
         f"## Coverage Results by Calibration Method",
         f"",

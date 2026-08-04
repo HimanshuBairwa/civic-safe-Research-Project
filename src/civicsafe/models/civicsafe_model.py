@@ -147,6 +147,15 @@ class CivicSafeModel(nn.Module):
         use_transformer: If False, replace the causal Transformer with a
             per-step MLP plus causal mean pooling (temporal ablation).
         zero_inflation: If False, the ZINB head emits pi=0 (pure NB ablation).
+        level_anchor: If True, the ZINB head predicts a multiplicative
+            correction on the trailing mean of the crime-history channels
+            instead of an absolute level. Requires that the caller append
+            log1p(counts) as the final ``num_categories`` feature channels,
+            which every call site in this repo already does.
+        anchor_floor: Lower bound applied to the anchor before it multiplies
+            exp(delta). Prevents a permanently-dead cell: an all-zero history
+            would otherwise give anchor=0, hence mu=0 for any delta, hence
+            zero gradient into mu_mlp forever.
     """
 
     def __init__(
@@ -174,12 +183,17 @@ class CivicSafeModel(nn.Module):
         use_gnn: bool = True,
         use_transformer: bool = True,
         zero_inflation: bool = True,
+        level_anchor: bool = False,
+        anchor_floor: float = 0.05,
     ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.use_gnn = use_gnn
         self.use_transformer = use_transformer
+        self.level_anchor = level_anchor
+        self.anchor_floor = anchor_floor
+        self.num_categories = num_categories
 
         # Input projection: F_in → hidden_dim
         self.input_proj = nn.Linear(num_features, hidden_dim)
@@ -232,6 +246,7 @@ class CivicSafeModel(nn.Module):
             num_categories=num_categories,
             r_floor=r_floor,
             zero_inflation=zero_inflation,
+            level_anchor=level_anchor,
         )
 
         # Adversarial Head (GRL)
@@ -300,7 +315,28 @@ class CivicSafeModel(nn.Module):
 
         # --- ZINB prediction from the last timestep ---
         last_hidden = mixed[:, -1, :]  # (S, hidden_dim)
-        pi, mu, r = self.zinb_head(last_hidden)  # each (S, C)
+
+        # Level anchor: the trailing mean of this unit's own crime history.
+        #
+        # Every call site builds the input as
+        #     cat([static_features, log1p(counts)], dim=-1)
+        # (trainer.py:344, trainer.py:486, evaluate_trained.py:390,
+        # run_conformal_evaluation.py:354), so the final C channels are
+        # log1p(counts) and expm1 recovers the raw counts exactly. Deriving
+        # the anchor here rather than adding a forward() argument keeps all
+        # four call sites unchanged and makes it impossible for a caller to
+        # pass an anchor that disagrees with the features the model just saw.
+        #
+        # mean-over-window reproduces baselines.py:174 (`input_counts.mean(
+        # dim=1)`) exactly, so at initialization this model IS the rolling
+        # historical-average baseline, then improves on it.
+        anchor = None
+        if self.level_anchor:
+            C = self.num_categories
+            hist_counts = torch.expm1(features[:, :, -C:])  # (S, T, C)
+            anchor = hist_counts.mean(dim=1).clamp(min=self.anchor_floor)  # (S, C)
+
+        pi, mu, r = self.zinb_head(last_hidden, anchor=anchor)  # each (S, C)
 
         # --- Adversarial demographic prediction ---
         adv_logits = None

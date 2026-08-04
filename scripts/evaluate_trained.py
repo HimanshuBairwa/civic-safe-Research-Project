@@ -314,6 +314,11 @@ def build_model(
         use_gnn=bool(arch.get("use_gnn", True)),
         use_transformer=bool(arch.get("use_transformer", True)),
         zero_inflation=bool(arch.get("zero_inflation", True)),
+        # Defaults False so checkpoints predating level anchoring rebuild as
+        # the unanchored model they actually are. A mismatch here would not
+        # raise -- the state dict is shape-identical either way -- it would
+        # silently change every mu, so the flag must come from the checkpoint.
+        level_anchor=bool(arch.get("level_anchor", False)),
     )
     return model
 

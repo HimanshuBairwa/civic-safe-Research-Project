@@ -513,6 +513,12 @@ class Trainer:
             "use_transformer": bool(getattr(m, "use_transformer", True)),
             "zero_inflation": bool(getattr(zinb, "zero_inflation", True)),
             "hidden_dim": int(getattr(m, "hidden_dim", 128)),
+            # Read from the head, not the model: the head is what actually
+            # applies the anchor, so this stays truthful even if the two ever
+            # disagree. Absent from checkpoints written before level anchoring
+            # existed, and every consumer defaults it to False, so those
+            # checkpoints keep rebuilding as the unanchored model they are.
+            "level_anchor": bool(getattr(zinb, "level_anchor", False)),
         }
         proj = getattr(m, "input_proj", None)
         if proj is not None and hasattr(proj, "in_features"):

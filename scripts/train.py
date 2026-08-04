@@ -257,6 +257,7 @@ def run_single_seed(
             use_gnn=ablations.get("use_gnn", True),
             use_transformer=ablations.get("use_transformer", True),
             zero_inflation=ablations.get("zero_inflation", True),
+            level_anchor=ablations.get("level_anchor", False),
         )
     num_params = sum(p.numel() for p in model.parameters())
     logger.info(f"  Model parameters: {num_params:,}")
