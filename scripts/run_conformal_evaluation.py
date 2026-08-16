@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import json
 import logging
+import math
 import sys
 import time
 from datetime import datetime
@@ -589,6 +590,18 @@ def compute_coverage_metrics(
 ) -> dict[str, Any]:
     """Compute comprehensive coverage metrics for prediction intervals.
 
+    Abstentions (NaN bounds) are EXCLUDED from coverage and reported separately.
+    A calibrator that declines to issue an interval has made no claim, so it can
+    be neither right nor wrong about that cell. Folding abstentions into the
+    denominator as misses is the more dangerous of the two mistakes: `y >= nan`
+    is False, so an unmasked abstention silently reads as a miscoverage. With
+    the old absolute `max_width=100.0` default this drove marginal coverage to
+    0.0000 on high-count cells while every interval was in fact sound.
+
+    `marginal_coverage` is therefore coverage CONDITIONAL on issuing an
+    interval, and must always be read alongside `abstention_rate` -- a method
+    can buy coverage by abstaining, and the pair makes that visible.
+
     Args:
         y: Ground-truth counts. Shape: (N,)
         lower: Lower bounds. Shape: (N,)
@@ -599,16 +612,56 @@ def compute_coverage_metrics(
     Returns:
         Dictionary with coverage metrics.
     """
+    issued = ~(torch.isnan(lower) | torch.isnan(upper))
+    n_total = int(issued.numel())
+    n_issued = int(issued.sum().item())
+
     covered = ((y >= lower) & (y <= upper)).float()
     width = (upper - lower).float()
 
+    if n_issued == 0:
+        logger.warning(
+            f"  compute_coverage_metrics: ALL {n_total} cells abstained; "
+            "coverage is undefined. Reporting NaN rather than 0.0 so this "
+            "cannot be mistaken for a total-miscoverage result."
+        )
+        nan = float("nan")
+        result: dict[str, Any] = {
+            "marginal_coverage": nan,
+            "mean_width": nan,
+            "median_width": nan,
+            "target_coverage": 1.0 - alpha,
+            "coverage_gap": nan,
+            "abstention_rate": 1.0,
+            "n_issued": 0,
+            "n_total": n_total,
+        }
+        if groups is not None:
+            result["per_group"] = {}
+            result["coverage_disparity"] = nan
+        return result
+
+    cov_issued = covered[issued]
+    w_issued = width[issued]
+
     result: dict[str, Any] = {
-        "marginal_coverage": covered.mean().item(),
-        "mean_width": width.mean().item(),
-        "median_width": width.median().item(),
+        "marginal_coverage": cov_issued.mean().item(),
+        "mean_width": w_issued.mean().item(),
+        "median_width": w_issued.median().item(),
         "target_coverage": 1.0 - alpha,
-        "coverage_gap": covered.mean().item() - (1.0 - alpha),
+        "coverage_gap": cov_issued.mean().item() - (1.0 - alpha),
+        # Fraction of cells where no interval was issued. Read WITH coverage.
+        "abstention_rate": 1.0 - (n_issued / n_total),
+        "n_issued": n_issued,
+        "n_total": n_total,
     }
+    if result["abstention_rate"] > 0.0:
+        logger.warning(
+            f"  {n_total - n_issued}/{n_total} cells abstained "
+            f"({result['abstention_rate']:.1%}). Coverage "
+            f"{result['marginal_coverage']:.4f} is CONDITIONAL on the "
+            f"{n_issued} issued intervals, not over the full test set."
+        )
 
     # Per-category coverage (if data has category structure)
     # Per-group coverage
@@ -618,17 +671,37 @@ def compute_coverage_metrics(
         for g in unique_groups:
             mask = groups == g
             if mask.sum() > 0:
-                group_cov = covered[mask].mean().item()
-                group_width = width[mask].mean().item()
-                group_coverages[f"group_{g}"] = {
-                    "coverage": group_cov,
-                    "mean_width": group_width,
-                    "n_samples": int(mask.sum().item()),
+                scored = mask & issued
+                n_g = int(mask.sum().item())
+                n_g_issued = int(scored.sum().item())
+                # Abstention disparity is audit component 6, so the per-group
+                # rate is a reported quantity in its own right, not just a
+                # denominator correction.
+                entry: dict[str, Any] = {
+                    "n_samples": n_g,
+                    "n_issued": n_g_issued,
+                    "abstention_rate": 1.0 - (n_g_issued / n_g),
                 }
+                if n_g_issued == 0:
+                    entry["coverage"] = float("nan")
+                    entry["mean_width"] = float("nan")
+                else:
+                    entry["coverage"] = covered[scored].mean().item()
+                    entry["mean_width"] = width[scored].mean().item()
+                group_coverages[f"group_{g}"] = entry
         result["per_group"] = group_coverages
 
-        # Coverage disparity: max - min across groups
-        all_coverages = [v["coverage"] for v in group_coverages.values()]
+        # Coverage disparity: max - min across groups. Groups that abstained
+        # entirely have no coverage to compare and are excluded here; their
+        # absence is visible in per_group abstention_rate.
+        all_coverages = [
+            v["coverage"]
+            for v in group_coverages.values()
+            if not math.isnan(v["coverage"])
+        ]
+        abst = [v["abstention_rate"] for v in group_coverages.values()]
+        if len(abst) >= 2:
+            result["abstention_disparity"] = max(abst) - min(abst)
         if len(all_coverages) >= 2:
             result["coverage_disparity"] = max(all_coverages) - min(all_coverages)
             result["min_group_coverage"] = min(all_coverages)
@@ -1633,13 +1706,42 @@ def run_conformal_evaluation(
     # a diagnostic rather than rewarded.
     COVERAGE_TOL = 0.01
     coverage_floor = 1.0 - alpha - COVERAGE_TOL
+    # Coverage is now conditional on issuing an interval, which creates a way to
+    # game the selection: abstain on the hard cells and the remaining coverage
+    # looks excellent at a small width. Two methods with different abstention
+    # rates are not measured on the same denominator, so a method must issue
+    # essentially every interval to be eligible as the headline result. Anything
+    # above this is reported but never crowned.
+    MAX_ABSTENTION_FOR_SELECTION = 0.01
 
     candidates = {
         m: c for m, c in all_coverage_results.items()
         if isinstance(c, dict) and "marginal_coverage" in c
     }
-    valid = {
+    # NaN coverage means the method abstained everywhere. NaN fails every
+    # comparison, so it would silently survive a min() fallback below.
+    comparable = {
         m: c for m, c in candidates.items()
+        if not math.isnan(c["marginal_coverage"])
+    }
+    excluded_for_abstention = {
+        m: c.get("abstention_rate", 0.0) for m, c in candidates.items()
+        if c.get("abstention_rate", 0.0) > MAX_ABSTENTION_FOR_SELECTION
+    }
+    for m, rate in excluded_for_abstention.items():
+        logger.warning(
+            f"  {m}: abstained on {rate:.1%} of cells (> "
+            f"{MAX_ABSTENTION_FOR_SELECTION:.0%}), so it is INELIGIBLE as the "
+            "selected method -- its coverage is measured on a different "
+            "denominator than the others and is not comparable."
+        )
+
+    eligible = {
+        m: c for m, c in comparable.items()
+        if c.get("abstention_rate", 0.0) <= MAX_ABSTENTION_FOR_SELECTION
+    }
+    valid = {
+        m: c for m, c in eligible.items()
         if c["marginal_coverage"] >= coverage_floor
     }
 
@@ -1650,25 +1752,42 @@ def run_conformal_evaluation(
             valid, key=lambda m: valid[m].get("mean_width", float("inf"))
         )
         selection_rule = "min width s.t. coverage >= 1-alpha"
-    elif candidates:
+    elif eligible:
         # Nothing reached the floor — fall back to the closest to target so the
         # exit-criteria check below reports a genuine failure instead of hiding it.
         best_method = min(
-            candidates,
-            key=lambda m: abs(candidates[m]["marginal_coverage"] - (1.0 - alpha)),
+            eligible,
+            key=lambda m: abs(eligible[m]["marginal_coverage"] - (1.0 - alpha)),
         )
         selection_rule = "closest to target (NO method met coverage floor)"
+    elif candidates:
+        selection_rule = (
+            "NO eligible method (all abstained too heavily or coverage undefined)"
+        )
+        logger.error(
+            "  No method is eligible for selection: every candidate either "
+            "abstained beyond the allowed rate or produced undefined coverage. "
+            "Check max_width / max_width_ratio on the adaptive calibrators."
+        )
 
     if best_method:
         logger.info(f"  Selection rule: {selection_rule}")
         # Efficiency table: makes over/under-coverage explicit for the paper.
         logger.info(
-            f"  {'method':<24} {'coverage':>9} {'width':>8} {'disparity':>10}  status"
+            f"  {'method':<24} {'coverage':>9} {'width':>8} {'disparity':>10} "
+            f"{'abstain':>8}  status"
         )
-        for m in sorted(candidates, key=lambda k: candidates[k].get("mean_width", 0.0)):
+        for m in sorted(
+            candidates, key=lambda k: candidates[k].get("mean_width") or 0.0
+        ):
             c = candidates[m]
             cov_m = c["marginal_coverage"]
-            if cov_m < coverage_floor:
+            abst_m = c.get("abstention_rate", 0.0)
+            if math.isnan(cov_m):
+                status = "NO INTERVALS ISSUED"
+            elif abst_m > MAX_ABSTENTION_FOR_SELECTION:
+                status = f"INELIGIBLE (abstained {abst_m:.1%})"
+            elif cov_m < coverage_floor:
                 status = "UNDER-COVERS"
             elif cov_m > (1.0 - alpha) + 0.03:
                 status = "over-covers (inefficient)"
@@ -1676,7 +1795,7 @@ def run_conformal_evaluation(
                 status = "well-calibrated"
             logger.info(
                 f"  {m:<24} {cov_m:>9.4f} {c.get('mean_width', float('nan')):>8.2f} "
-                f"{c.get('coverage_disparity', 0.0):>10.4f}  {status}"
+                f"{c.get('coverage_disparity', 0.0):>10.4f} {abst_m:>8.2%}  {status}"
                 + ("  <-- selected" if m == best_method else "")
             )
 

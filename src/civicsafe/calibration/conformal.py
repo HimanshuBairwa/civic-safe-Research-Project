@@ -1022,7 +1022,8 @@ class AdaptiveTemporalECRCCalibrator:
         group_type: str = "income",
         k_i: float = 0.001,
         k_d: float = 0.0005,
-        max_width: float = 100.0,
+        max_width: float = float("inf"),
+        max_width_ratio: float | None = None,
     ) -> None:
         if not 0.01 <= alpha <= 0.5:
             raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
@@ -1030,12 +1031,25 @@ class AdaptiveTemporalECRCCalibrator:
         self.gamma = gamma
         self.delta = delta
         self.group_type = group_type
-        
+
         # PID Constants
         self.k_p = gamma
         self.k_i = k_i
         self.k_d = k_d
+        # Abstention thresholds. `max_width` is an ABSOLUTE count width and
+        # defaults to off, because an absolute threshold cannot be correct on a
+        # panel spanning three orders of magnitude in mu: the previous default
+        # of 100.0 never fires for a mu=0.5 drug cell (where a width of 100 is
+        # absurd) yet fires on EVERY mu=200 property cell, whose correct 90%
+        # ZINB interval is ~470 wide. Measured at mu=200: 100% of cells
+        # abstained, and because abstention emits NaN that downstream coverage
+        # counted as a miss, marginal coverage read 0.0000 and the ACI loop
+        # drove alpha_t to its 0.01 floor -- widening intervals, causing more
+        # abstention. Level anchoring raises fitted mu into exactly this range,
+        # so the old default would have silently destroyed the anchored re-run.
+        # Use `max_width_ratio` for a scale-free rule instead.
         self.max_width = max_width
+        self.max_width_ratio = max_width_ratio
         
         # State tracking per group
         self._alpha_t: dict[int, float] = {}
@@ -1149,10 +1163,20 @@ class AdaptiveTemporalECRCCalibrator:
         upper = (q_high + thresholds).ceil()
         upper = torch.max(upper, lower)
         point = (1.0 - pi_f) * mu_f
-        
-        # Abstention Logic: Output NaN if width > max_width
+
+        # Abstention: emit NaN where the interval is too wide to stand behind.
+        # NaN is the deliberate sentinel -- it propagates rather than silently
+        # reading as a valid bound -- but every consumer MUST mask it out before
+        # computing coverage, because `y >= nan` is False and an unmasked
+        # abstention therefore reads as a miscoverage. See
+        # compute_coverage_metrics() in scripts/run_conformal_evaluation.py.
         width = upper - lower
         abstain_mask = width > self.max_width
+        if self.max_width_ratio is not None:
+            # Scale-free rule: abstain when the interval is wider than
+            # `ratio` times the predicted level. The +1 keeps the rule finite
+            # for near-zero cells instead of abstaining on all of them.
+            abstain_mask = abstain_mask | (width > self.max_width_ratio * (point + 1.0))
         lower[abstain_mask] = float('nan')
         upper[abstain_mask] = float('nan')
 
@@ -1189,8 +1213,16 @@ class AdaptiveTemporalECRCCalibrator:
         intervals = self.predict(pi_f, mu_f, r_f, groups=groups_f)
         lower = intervals["lower"].reshape(-1)
         upper = intervals["upper"].reshape(-1)
-        
+
         covered = ((y_f >= lower) & (y_f <= upper)).float()
+        # Abstained cells issued no interval, so they are neither covered nor
+        # missed and must not enter the ACI error signal. Counting them as
+        # misses creates a positive feedback loop: NaN reads as miscoverage ->
+        # err_t rises -> alpha_t falls -> intervals widen -> more cells exceed
+        # the width threshold -> more abstention. Measured with the old absolute
+        # default at mu=200, alpha_t collapsed 0.0315 -> 0.0100 (the floor) in
+        # four updates and stayed pinned.
+        issued = ~(torch.isnan(lower) | torch.isnan(upper))
         
         # Also compute scores to add to the calibration set (sliding window / growing)
         scores = compute_cqr_scores(y_f, pi_f, mu_f, r_f, alpha=self.nominal_alpha)
@@ -1201,50 +1233,67 @@ class AdaptiveTemporalECRCCalibrator:
             mask = groups_f == g
             
             if mask.sum() > 0:
-                # 1. Update alpha_t using ACI
-                empirical_cov = covered[mask].mean().item()
-                err_t = 1.0 - empirical_cov
-                
-                if g_idx not in self._alpha_t:
-                    self._alpha_t[g_idx] = max(self.nominal_alpha - self._epsilon, 0.01)
-                    
-                # PID update rule
-                e_t = self.nominal_alpha - err_t # Negative feedback error term
-                
-                if g_idx not in self._integral_err:
-                    self._integral_err[g_idx] = 0.0
+                # 1. Update alpha_t using ACI, on issued intervals only.
+                scored = mask & issued
+                if scored.sum() == 0:
+                    # Every cell in this group abstained. There is no coverage
+                    # evidence, so hold alpha_t rather than inventing an error.
+                    # The calibration-set append below still runs: the CQR
+                    # scores do not depend on whether an interval was issued.
+                    logger.warning(
+                        f"  AdaptiveTemporalECRC: group {g_idx} abstained on all "
+                        f"{int(mask.sum().item())} cells this step; holding "
+                        f"alpha_t at {self._alpha_t.get(g_idx, float('nan')):.4f}. "
+                        "Check max_width / max_width_ratio -- the threshold may "
+                        "be tighter than the panel's natural interval widths."
+                    )
+                else:
+                    empirical_cov = covered[scored].mean().item()
+                    err_t = 1.0 - empirical_cov
+
+                    if g_idx not in self._alpha_t:
+                        self._alpha_t[g_idx] = max(
+                            self.nominal_alpha - self._epsilon, 0.01
+                        )
+
+                    # PID update rule
+                    e_t = self.nominal_alpha - err_t  # Negative feedback error term
+
+                    if g_idx not in self._integral_err:
+                        self._integral_err[g_idx] = 0.0
+                        self._prev_err[g_idx] = e_t
+
+                    p_term = self.k_p * e_t
+                    d_term = self.k_d * (e_t - self._prev_err[g_idx])
                     self._prev_err[g_idx] = e_t
-                
-                p_term = self.k_p * e_t
-                d_term = self.k_d * (e_t - self._prev_err[g_idx])
-                self._prev_err[g_idx] = e_t
 
-                # Anti-windup on the integral term: stop integrating while the
-                # output is saturated, and bound the accumulator. Without this
-                # the accumulator grows every week even when alpha_t is pinned
-                # at a clamp and cannot respond.
-                #
-                # Scope note (measured, not assumed): anti-windup alone barely
-                # moves the observed coverage drift (0.0805 -> 0.0799 in
-                # simulation) because the proportional term dominates. The drift
-                # from ~0.99 coverage in early test weeks to ~0.81 in late ones
-                # is driven by base_alpha starting pinned at the 0.01 floor,
-                # which happens when one demographic group is so small that the
-                # Hoeffding slack eats the whole alpha budget. Balancing the
-                # groups moves simulated drift from +0.0799 to -0.0151. Fix the
-                # group sizes; this clamp is hygiene, not the cure.
-                prev_alpha = self._alpha_t[g_idx]
-                saturated = prev_alpha <= 0.01 or prev_alpha >= 0.99
-                if not saturated:
-                    self._integral_err[g_idx] += e_t
-                self._integral_err[g_idx] = max(
-                    min(self._integral_err[g_idx], self._INTEGRAL_CLIP),
-                    -self._INTEGRAL_CLIP,
-                )
-                i_term = self.k_i * self._integral_err[g_idx]
+                    # Anti-windup on the integral term: stop integrating while
+                    # the output is saturated, and bound the accumulator.
+                    # Without this the accumulator grows every week even when
+                    # alpha_t is pinned at a clamp and cannot respond.
+                    #
+                    # Scope note (measured, not assumed): anti-windup alone
+                    # barely moves the observed coverage drift (0.0805 -> 0.0799
+                    # in simulation) because the proportional term dominates.
+                    # The drift from ~0.99 coverage in early test weeks to ~0.81
+                    # in late ones is driven by base_alpha starting pinned at the
+                    # 0.01 floor, which happens when one demographic group is so
+                    # small that the Hoeffding slack eats the whole alpha budget.
+                    # Balancing the groups moves simulated drift from +0.0799 to
+                    # -0.0151. Fix the group sizes; this clamp is hygiene, not
+                    # the cure.
+                    prev_alpha = self._alpha_t[g_idx]
+                    saturated = prev_alpha <= 0.01 or prev_alpha >= 0.99
+                    if not saturated:
+                        self._integral_err[g_idx] += e_t
+                    self._integral_err[g_idx] = max(
+                        min(self._integral_err[g_idx], self._INTEGRAL_CLIP),
+                        -self._INTEGRAL_CLIP,
+                    )
+                    i_term = self.k_i * self._integral_err[g_idx]
 
-                new_alpha = prev_alpha + p_term + i_term + d_term
-                self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
+                    new_alpha = prev_alpha + p_term + i_term + d_term
+                    self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
                 
                 # 2. Add to calibration set (EnbPI style)
                 # For memory bounds, keep only last N scores (e.g. 500)

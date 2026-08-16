@@ -424,3 +424,110 @@ def test_adaptive_ecrc_does_not_warn_once_update_has_run(
         "readers to ignore it"
     )
 
+
+
+# ---------------------------------------------------------------------------
+# Abstention: the NaN sentinel must never be read as a miscoverage
+# ---------------------------------------------------------------------------
+def _high_count_panel(n: int = 2000) -> tuple[torch.Tensor, ...]:
+    """A property-crime-scale panel. Level anchoring lifts fitted mu to here."""
+    return _draw(n, 0.05, 200.0, 2.0)
+
+
+def test_absolute_width_abstention_is_off_by_default() -> None:
+    """The old max_width=100.0 default abstained on 100% of high-count cells.
+
+    An absolute count threshold cannot serve a panel spanning mu 0.5 to 200+:
+    at mu=200 the correct 90% ZINB interval is ~470 wide, so a 100-wide limit
+    rejects every sound interval, while at mu=0.5 it never fires at all.
+    """
+    torch.manual_seed(0)
+    y, pi, mu, r = _high_count_panel()
+    groups = torch.randint(0, 4, (y.numel(),))
+
+    c = AdaptiveTemporalECRCCalibrator(alpha=ALPHA, group_type="demographic")
+    assert c.max_width == float("inf"), (
+        "absolute width abstention is enabled by default again; on this panel "
+        "that silently NaNs every high-count cell"
+    )
+    c.fit(y, pi, mu, r, groups=groups)
+    iv = c.predict(pi, mu, r, groups=groups)
+    assert torch.isfinite(iv["upper"]).all(), (
+        "intervals abstained under the default settings on a perfectly ordinary "
+        "high-count panel"
+    )
+
+
+def test_relative_width_abstention_is_available_and_fires() -> None:
+    """Opt-in scale-free rule: the replacement for the absolute threshold."""
+    torch.manual_seed(0)
+    y, pi, mu, r = _high_count_panel()
+    groups = torch.randint(0, 4, (y.numel(),))
+
+    loose = AdaptiveTemporalECRCCalibrator(
+        alpha=ALPHA, group_type="demographic", max_width_ratio=100.0
+    )
+    loose.fit(y, pi, mu, r, groups=groups)
+    assert torch.isfinite(loose.predict(pi, mu, r, groups=groups)["upper"]).all()
+
+    tight = AdaptiveTemporalECRCCalibrator(
+        alpha=ALPHA, group_type="demographic", max_width_ratio=0.1
+    )
+    tight.fit(y, pi, mu, r, groups=groups)
+    assert torch.isnan(tight.predict(pi, mu, r, groups=groups)["upper"]).any(), (
+        "a ratio of 0.1 abstained on nothing, so the relative rule is not wired up"
+    )
+
+
+def test_aci_does_not_run_away_when_every_cell_abstains() -> None:
+    """The positive feedback loop: NaN -> 'miss' -> widen -> more NaN.
+
+    With the old code this drove alpha_t from 0.0315 to the 0.01 floor in four
+    updates. alpha_t must instead hold, because an abstention is not evidence of
+    miscoverage.
+    """
+    torch.manual_seed(0)
+    y, pi, mu, r = _high_count_panel()
+    groups = torch.randint(0, 4, (y.numel(),))
+
+    # ratio=0.01 forces abstention on every cell.
+    c = AdaptiveTemporalECRCCalibrator(
+        alpha=ALPHA, group_type="demographic", max_width_ratio=0.01
+    )
+    c.fit(y, pi, mu, r, groups=groups)
+    before = dict(c._alpha_t)
+    for w in range(6):
+        s = slice(w * 300, (w + 1) * 300)
+        c.update(y[s], pi[s], mu[s], r[s], groups=groups[s])
+
+    assert c._alpha_t == before, (
+        f"alpha_t moved on pure abstention evidence: {before} -> {c._alpha_t}; "
+        "the ACI runaway has returned"
+    )
+    assert all(v > 0.01 for v in c._alpha_t.values()), (
+        "alpha_t reached its floor, which is the signature of the runaway"
+    )
+
+
+def test_abstention_still_feeds_the_calibration_score_window() -> None:
+    """Holding alpha_t must not also skip the EnbPI score append.
+
+    CQR scores do not depend on whether an interval was issued, so the sliding
+    window should keep growing even while the controller holds.
+    """
+    torch.manual_seed(0)
+    y, pi, mu, r = _high_count_panel()
+    groups = torch.randint(0, 4, (y.numel(),))
+
+    c = AdaptiveTemporalECRCCalibrator(
+        alpha=ALPHA, group_type="demographic", max_width_ratio=0.01
+    )
+    c.fit(y, pi, mu, r, groups=groups)
+    n_before = {g: len(s) for g, s in c._calibration_scores.items()}
+    c.update(y[:300], pi[:300], mu[:300], r[:300], groups=groups[:300])
+    n_after = {g: len(s) for g, s in c._calibration_scores.items()}
+
+    assert any(n_after[g] != n_before.get(g) for g in n_after), (
+        "no group's calibration window changed, so the score append was skipped "
+        "along with the alpha update"
+    )
