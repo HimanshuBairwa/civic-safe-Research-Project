@@ -15,8 +15,9 @@ Metrics computed:
 
 Usage:
     python scripts/evaluate_trained.py --checkpoint outputs/run_XXX/seed_42/best.pt
+    python scripts/evaluate_trained.py --checkpoint outputs/run_XXX
     python scripts/evaluate_trained.py --checkpoint outputs/run_XXX/seed_42/best.pt --data nyc
-    python scripts/evaluate_trained.py --checkpoint auto --data chicago --alpha 0.1
+    python scripts/evaluate_trained.py --data chicago --alpha 0.1
 """
 
 from __future__ import annotations
@@ -24,14 +25,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
 from torch import Tensor
+
+from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
 
 logger = logging.getLogger(__name__)
 
@@ -57,65 +59,28 @@ TEST_START_WEEK = (TEST_YEAR - START_YEAR) * WEEKS_PER_YEAR  # 260
 # Checkpoint discovery
 # ───────────────────────────────────────────────────────────────────
 def discover_checkpoint(data_name: str) -> Path:
-    """Auto-discover the latest checkpoint for this dataset in outputs/.
-    
-    Searches dataset-specific directories first (``run_{data_name}_*``),
-    then falls back to generic ``run_*`` for backward compatibility.
-    """
-    outputs_dir = PROJECT_ROOT / "outputs"
-    if not outputs_dir.exists():
-        raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
+    """Auto-discover the first seed in the preferred evaluation run."""
+    return discover_all_checkpoints(data_name)[0]
 
-    # Priority 1: dataset-specific run directories
-    #
-    # Untagged (run_chicago_1785214452) is the canonical full model; tagged
-    # (run_chicago_no_gatv2_...) are ablations and probes. The untagged prefix is
-    # a prefix of every tagged one and name-sorting puts letters after digits, so
-    # an unfiltered search would pick an ablation as "most recent" and report it
-    # as the headline model. Same filter as train.py:377 / run_ablations.py:126.
-    dataset_prefix = f"run_{data_name}_"
-    run_dirs = sorted(
-        [d for d in outputs_dir.iterdir()
-         if d.is_dir() and d.name.startswith(dataset_prefix)
-         and d.name[len(dataset_prefix):].isdigit()],
-        key=lambda p: p.name,
+
+def discover_all_checkpoints(data_name: str) -> list[Path]:
+    """Auto-discover all seed checkpoints in the preferred evaluation run."""
+    return resolve_evaluation_checkpoints(
+        "auto",
+        data_name=data_name,
+        outputs_dir=PROJECT_ROOT / "outputs",
     )
-    
-    # Priority 2: generic run_* directories (backward compat, pre-city-prefix era).
-    # Still apply the untagged filter: strip the leading "run_" and keep only
-    # dirs whose remainder is all digits, so ablations (run_no_gatv2_...) are
-    # excluded even in the fallback path.
-    if not run_dirs:
-        run_dirs = sorted(
-            [d for d in outputs_dir.iterdir()
-             if d.is_dir() and d.name.startswith("run_")
-             and d.name[len("run_"):].isdigit()],
-            key=lambda p: p.name,
-        )
 
-    # Search for checkpoints in run directories first
-    for run_dir in reversed(run_dirs):  # most recent first
-        candidates = sorted(run_dir.glob("seed_*/best.pt"))
-        if candidates:
-            chosen = candidates[0]
-            logger.info(f"  Auto-discovered checkpoint: {chosen}")
-            return chosen
 
-    # Fallback: any .pt file in outputs
-    candidates: list[Path] = []
-    for ext in ("*.pt", "*.pth"):
-        candidates.extend(outputs_dir.rglob(ext))
-
-    if not candidates:
-        raise FileNotFoundError(
-            f"No checkpoint files (*.pt, *.pth) found under {outputs_dir}. "
-            f"Train a model first with: python scripts/train.py"
-        )
-
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    chosen = candidates[0]
-    logger.info(f"  Auto-discovered checkpoint: {chosen}")
-    return chosen
+def resolve_checkpoints(
+    checkpoint_path: str | Path | None, data_name: str
+) -> list[Path]:
+    """Resolve a checkpoint file, seed directory, run directory, or auto."""
+    return resolve_evaluation_checkpoints(
+        checkpoint_path,
+        data_name=data_name,
+        outputs_dir=PROJECT_ROOT / "outputs",
+    )
 
 
 def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
@@ -130,7 +95,7 @@ def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_checkpoint(
-    checkpoint_path: str, data_name: str, weights: str = "auto"
+    checkpoint_path: str | Path, data_name: str, weights: str = "auto"
 ) -> tuple[dict[str, Any], Path, str, dict[str, Any]]:
     """Load a checkpoint, handling 'auto' discovery.
 
@@ -147,13 +112,13 @@ def load_checkpoint(
         ``arch`` is the architecture fingerprint the trainer recorded, or {}
         for older checkpoints saved before fingerprinting existed.
     """
-    if checkpoint_path.lower() == "auto":
-        ckpt_path = discover_checkpoint(data_name)
-    else:
-        ckpt_path = Path(checkpoint_path)
-
-    if not ckpt_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+    resolved = resolve_checkpoints(checkpoint_path, data_name)
+    if len(resolved) != 1:
+        raise ValueError(
+            f"{checkpoint_path} resolves to {len(resolved)} checkpoints. "
+            "Iterate over resolve_checkpoints() for ensemble evaluation."
+        )
+    ckpt_path = resolved[0]
 
     logger.info(f"  Loading checkpoint from {ckpt_path}")
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
@@ -205,7 +170,7 @@ def load_checkpoint(
     if weights != "auto":
         raise ValueError(f"weights must be 'auto', 'raw' or 'ema', got {weights!r}")
 
-    return candidates, ckpt_path, "auto", arch  # type: ignore[return-value]
+    return candidates, ckpt_path, "auto", arch
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -287,8 +252,8 @@ def load_data(data_name: str) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
 def build_model(
     num_features: int,
     num_categories: int,
-    arch: dict | None = None,
-) -> "torch.nn.Module":
+    arch: dict[str, Any] | None = None,
+) -> torch.nn.Module:
     """Build CivicSafeModel, honoring any architecture recorded in a checkpoint.
 
     Args:
@@ -320,7 +285,7 @@ def build_model(
         # silently change every mu, so the flag must come from the checkpoint.
         level_anchor=bool(arch.get("level_anchor", False)),
     )
-    return model
+    return cast("torch.nn.Module", model)
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -434,8 +399,6 @@ def compute_metrics(
     from civicsafe.training.metrics import (
         brier_zero_inflation,
         crps_zinb,
-        mae_zinb,
-        rmse_zinb,
     )
 
     N, S, C = y_true.shape
@@ -607,7 +570,7 @@ def _income_quartiles(data_name: str, num_spatial_units: int) -> Tensor:
                     f"{[int((q == k).sum()) for k in range(4)]}"
                 )
                 return torch.tensor(q, dtype=torch.long)
-        except Exception as exc:  # noqa: BLE001 - fall through to proxy
+        except Exception as exc:
             logger.warning(f"  Could not read demographics ({exc}); using proxy groups")
 
     logger.warning(
@@ -618,7 +581,7 @@ def _income_quartiles(data_name: str, num_spatial_units: int) -> Tensor:
 
 
 def conformal_evaluation(
-    model: torch.nn.Module,
+    model: torch.nn.Module | None,
     counts: Tensor,
     features: Tensor,
     edge_queen: Tensor,
@@ -626,6 +589,8 @@ def conformal_evaluation(
     alpha: float,
     device: torch.device,
     data_name: str,
+    cal_results: dict[str, Tensor] | None = None,
+    test_results: dict[str, Tensor] | None = None,
 ) -> dict[str, Any]:
     """Calibrate on dedicated calibration set, evaluate coverage on test set.
 
@@ -635,25 +600,29 @@ def conformal_evaluation(
 
     CAL_START_WEEK = VAL_START_WEEK + (WEEKS_PER_YEAR // 2)
 
-    # Run rolling eval on calibration set
-    logger.info("  Running conformal: calibrating on calibration set (2022 H2)...")
-    cal_results = rolling_evaluate(
-        model, counts, features, edge_queen, edge_knn,
-        start_week=CAL_START_WEEK,
-        end_week=TEST_START_WEEK,
-        window_size=WINDOW_SIZE,
-        device=device,
-    )
+    if cal_results is None:
+        if model is None:
+            raise ValueError("model is required when cal_results is not supplied")
+        logger.info("  Running conformal: calibrating on calibration set (2022 H2)...")
+        cal_results = rolling_evaluate(
+            model, counts, features, edge_queen, edge_knn,
+            start_week=CAL_START_WEEK,
+            end_week=TEST_START_WEEK,
+            window_size=WINDOW_SIZE,
+            device=device,
+        )
 
-    # Run rolling eval on test set
-    logger.info("  Running conformal: evaluating on test set...")
-    test_results = rolling_evaluate(
-        model, counts, features, edge_queen, edge_knn,
-        start_week=TEST_START_WEEK,
-        end_week=counts.shape[1],
-        window_size=WINDOW_SIZE,
-        device=device,
-    )
+    if test_results is None:
+        if model is None:
+            raise ValueError("model is required when test_results is not supplied")
+        logger.info("  Running conformal: evaluating on test set...")
+        test_results = rolling_evaluate(
+            model, counts, features, edge_queen, edge_knn,
+            start_week=TEST_START_WEEK,
+            end_week=counts.shape[1],
+            window_size=WINDOW_SIZE,
+            device=device,
+        )
 
     # Shapes: rolling_evaluate stacks as (N_weeks, S, C); reshape(-1) gives
     # element ordering [week][spatial][category]. Any groups tensor MUST follow
@@ -784,207 +753,377 @@ def generate_latex_table(metrics: dict[str, Any]) -> str:
 # ───────────────────────────────────────────────────────────────────
 # Main evaluation pipeline
 # ───────────────────────────────────────────────────────────────────
+
+
 def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
-    """Execute the full evaluation pipeline."""
+    """Evaluate one checkpoint or every seed checkpoint in a run directory."""
     t_start = time.time()
 
     logger.info("=" * 70)
-    logger.info("  CIVIC-SAFE — Production Test-Set Evaluation")
+    logger.info("  CIVIC-SAFE - Production Test-Set Evaluation")
     logger.info("=" * 70)
 
-    # ── 1. Load data ──
     logger.info("\n[1/5] Loading data...")
     counts, features, edge_queen, edge_knn = load_data(args.data)
     S, T, C = counts.shape
     F = features.shape[-1]
-
-    # ── 2. Build model & load checkpoint ──
-    logger.info("\n[2/5] Loading model checkpoint...")
-    loaded, ckpt_path, weights_source, arch = load_checkpoint(
-        args.checkpoint, args.data, weights=args.weights
-    )
-    # Model was trained with [static features ‖ log1p(crime history)] as input,
-    # so num_features must be F+C to match the trained input_proj weight shape.
-    # `arch` carries any ablation toggles so the rebuild matches what was trained.
-    model = build_model(num_features=F + C, num_categories=C, arch=arch)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if weights_source == "auto":
-        # `loaded` is {"raw": sd, "ema": sd}. Choose on the VALIDATION split
-        # (2022 H1) — disjoint from calibration (2022 H2) and test (2023) — so
-        # the decision never sees test data.
-        logger.info("  ─── WEIGHT-SET SELECTION (on validation, 2022 H1) ───")
-        from civicsafe.training.metrics import crps_zinb
+    logger.info("\n[2/5] Resolving model checkpoint(s)...")
+    checkpoint_arg = getattr(args, "checkpoint", "auto")
+    checkpoint_paths = resolve_checkpoints(checkpoint_arg, args.data)
+    logger.info(f"  Resolved {len(checkpoint_paths)} checkpoint(s)")
+    for path in checkpoint_paths:
+        logger.info(f"    {path.parent.name}/{path.name}")
+    logger.info(f"  Device: {device}")
 
+    from civicsafe.calibration.emos import apply_emos_weights, learn_emos_weights
+    from civicsafe.training.metrics import crps_zinb
+
+    cal_start_week = VAL_START_WEEK + (WEEKS_PER_YEAR // 2)
+    selected_weights: list[str] = []
+    validation_scores: list[dict[str, float]] = []
+    architectures: list[dict[str, Any]] = []
+    cal_outputs: list[dict[str, Tensor]] = []
+    test_outputs: list[dict[str, Tensor]] = []
+    num_params_per_seed: list[int] = []
+
+    logger.info("\n[3/5] Running per-seed validation/calibration/test inference...")
+    for index, checkpoint_path in enumerate(checkpoint_paths, start=1):
+        logger.info(
+            f"\n  --- Seed {index}/{len(checkpoint_paths)}: "
+            f"{checkpoint_path.parent.name}/{checkpoint_path.name} ---"
+        )
+        loaded, _, weights_source, arch = load_checkpoint(
+            checkpoint_path, args.data, weights=args.weights
+        )
+        architectures.append(arch)
         val_scores: dict[str, float] = {}
-        for cand_name, cand_sd in loaded.items():  # type: ignore[union-attr]
-            probe = build_model(num_features=F + C, num_categories=C, arch=arch)
-            miss, _ = probe.load_state_dict(cand_sd, strict=False)
-            if miss:
-                logger.warning(f"    {cand_name}: {len(miss)} missing keys, skipping")
-                continue
-            probe = probe.to(device).eval()
-            val_out = rolling_evaluate(
-                probe, counts, features, edge_queen, edge_knn,
-                start_week=VAL_START_WEEK,
-                end_week=VAL_START_WEEK + (WEEKS_PER_YEAR // 2),
+
+        if weights_source == "auto":
+            for candidate_name, candidate_state in loaded.items():
+                probe = build_model(num_features=F + C, num_categories=C, arch=arch)
+                missing, unexpected = probe.load_state_dict(
+                    candidate_state, strict=False
+                )
+                if missing:
+                    logger.warning(
+                        f"    {candidate_name}: {len(missing)} missing keys, skipping"
+                    )
+                    continue
+                if unexpected:
+                    logger.warning(
+                        f"    {candidate_name}: unexpected keys {unexpected[:5]}"
+                    )
+                probe = probe.to(device).eval()
+                val_output = rolling_evaluate(
+                    probe,
+                    counts,
+                    features,
+                    edge_queen,
+                    edge_knn,
+                    start_week=VAL_START_WEEK,
+                    end_week=cal_start_week,
+                    window_size=WINDOW_SIZE,
+                    device=device,
+                )
+                score = crps_zinb(
+                    val_output["y_true"].reshape(-1).float(),
+                    val_output["pi"].reshape(-1).float(),
+                    val_output["mu"].reshape(-1).float(),
+                    val_output["r"].reshape(-1).float(),
+                ).mean().item()
+                val_scores[candidate_name] = score
+                logger.info(
+                    f"    {candidate_name:>3}: validation CRPS = {score:.4f}"
+                )
+                del probe
+
+            if not val_scores:
+                raise RuntimeError(f"No usable weight set in {checkpoint_path}")
+            weights_source = min(val_scores, key=val_scores.__getitem__)
+            state_dict = loaded[weights_source]
+            logger.info(
+                f"  Selected weights='{weights_source}' for this seed using "
+                "validation data only."
+            )
+            if (
+                len(val_scores) == 2
+                and abs(val_scores["raw"] - val_scores["ema"]) > 0.25
+            ):
+                logger.warning(
+                    "  Large raw/EMA validation gap "
+                    f"({abs(val_scores['raw'] - val_scores['ema']):.4f}) for "
+                    f"{checkpoint_path.parent.name}."
+                )
+        else:
+            state_dict = loaded
+
+        model = build_model(num_features=F + C, num_categories=C, arch=arch)
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        if missing:
+            raise RuntimeError(
+                f"Checkpoint {checkpoint_path} is missing {len(missing)} model "
+                f"keys (first few: {list(missing)[:5]})."
+            )
+        if unexpected:
+            logger.warning(f"  Unexpected checkpoint keys: {unexpected[:5]}")
+
+        model = model.to(device).eval()
+        selected_weights.append(weights_source)
+        validation_scores.append(
+            {name: round(score, 6) for name, score in val_scores.items()}
+        )
+        num_params_per_seed.append(sum(p.numel() for p in model.parameters()))
+        cal_outputs.append(
+            rolling_evaluate(
+                model,
+                counts,
+                features,
+                edge_queen,
+                edge_knn,
+                start_week=cal_start_week,
+                end_week=TEST_START_WEEK,
                 window_size=WINDOW_SIZE,
                 device=device,
             )
-            v = crps_zinb(
-                val_out["y_true"].reshape(-1).float(), val_out["pi"].reshape(-1).float(),
-                val_out["mu"].reshape(-1).float(), val_out["r"].reshape(-1).float(),
-            ).mean().item()
-            val_scores[cand_name] = v
-            logger.info(f"    {cand_name:>3}: validation CRPS = {v:.4f}")
-            del probe
-
-        if not val_scores:
-            raise RuntimeError(f"No usable weight set in {ckpt_path}")
-        weights_source = min(val_scores, key=lambda k: val_scores[k])
-        state_dict = loaded[weights_source]  # type: ignore[index]
-        logger.info(
-            f"  Selected weights='{weights_source}' (lowest validation CRPS). "
-            f"Test set was NOT used for this choice."
         )
-        if len(val_scores) == 2 and abs(val_scores["raw"] - val_scores["ema"]) > 0.25:
-            logger.warning(
-                f"  Large raw/EMA validation gap "
-                f"({abs(val_scores['raw'] - val_scores['ema']):.4f}). EMA decay 0.999 "
-                f"is likely mistuned for this run length (~10 steps/epoch)."
+        test_outputs.append(
+            rolling_evaluate(
+                model,
+                counts,
+                features,
+                edge_queen,
+                edge_knn,
+                start_week=TEST_START_WEEK,
+                end_week=T,
+                window_size=WINDOW_SIZE,
+                device=device,
             )
-    else:
-        state_dict = loaded  # type: ignore[assignment]
-        val_scores = {}
-
-    # Try to load state_dict (handle possible key mismatches gracefully)
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    if missing:
-        raise RuntimeError(
-            f"Checkpoint is missing {len(missing)} model keys "
-            f"(first few: {list(missing)[:5]}). Refusing to evaluate a "
-            f"partially initialised model."
         )
-    if unexpected:
-        logger.warning(f"  Unexpected keys in checkpoint: {unexpected[:5]}{'...' if len(unexpected)>5 else ''}")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-    num_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"  Model loaded: {num_params:,} parameters [weights={weights_source}]")
+    for split_name, outputs in (("calibration", cal_outputs), ("test", test_outputs)):
+        reference = outputs[0]
+        for output in outputs[1:]:
+            if not torch.equal(output["y_true"], reference["y_true"]):
+                raise RuntimeError(
+                    f"Ensemble members produced misaligned {split_name} targets."
+                )
+            if not torch.equal(output["week_idx"], reference["week_idx"]):
+                raise RuntimeError(
+                    f"Ensemble members produced misaligned {split_name} weeks."
+                )
 
-    model = model.to(device)
-    model.eval()
-    logger.info(f"  Device: {device}")
+    ensemble_metadata: dict[str, Any] = {"num_seeds": len(checkpoint_paths)}
+    if len(checkpoint_paths) > 1:
+        emos_info = learn_emos_weights(
+            y_cal=cal_outputs[0]["y_true"].reshape(-1),
+            all_pi=[output["pi"] for output in cal_outputs],
+            all_mu=[output["mu"] for output in cal_outputs],
+            all_r=[output["r"] for output in cal_outputs],
+        )
+        cal_pi, cal_mu, cal_r = apply_emos_weights(
+            emos_info["weights"],
+            [output["pi"] for output in cal_outputs],
+            [output["mu"] for output in cal_outputs],
+            [output["r"] for output in cal_outputs],
+        )
+        test_pi, test_mu, test_r = apply_emos_weights(
+            emos_info["weights"],
+            [output["pi"] for output in test_outputs],
+            [output["mu"] for output in test_outputs],
+            [output["r"] for output in test_outputs],
+        )
+        cal_out = {
+            "y_true": cal_outputs[0]["y_true"],
+            "pi": cal_pi,
+            "mu": cal_mu,
+            "r": cal_r,
+            "week_idx": cal_outputs[0]["week_idx"],
+        }
+        test_out = {
+            "y_true": test_outputs[0]["y_true"],
+            "pi": test_pi,
+            "mu": test_mu,
+            "r": test_r,
+            "week_idx": test_outputs[0]["week_idx"],
+        }
 
-    # ── 3. Rolling test-set evaluation ──
-    logger.info("\n[3/5] Running rolling test-set evaluation...")
-    T_total = counts.shape[1]
-    test_out = rolling_evaluate(
-        model, counts, features, edge_queen, edge_knn,
-        start_week=TEST_START_WEEK,
-        end_week=T_total,
-        window_size=WINDOW_SIZE,
-        device=device,
-    )
+        equal_weights = [1.0 / len(checkpoint_paths)] * len(checkpoint_paths)
+        equal_pi, equal_mu, equal_r = apply_emos_weights(
+            equal_weights,
+            [output["pi"] for output in test_outputs],
+            [output["mu"] for output in test_outputs],
+            [output["r"] for output in test_outputs],
+        )
+        y_test_flat = test_out["y_true"].reshape(-1).float()
+        per_seed_crps = [
+            crps_zinb(
+                output["y_true"].reshape(-1).float(),
+                output["pi"].reshape(-1).float(),
+                output["mu"].reshape(-1).float(),
+                output["r"].reshape(-1).float(),
+            ).mean().item()
+            for output in test_outputs
+        ]
+        ensemble_metadata.update(
+            {
+                "method": "calibration_learned_zinb_parameter_combination",
+                "emos_weights": emos_info["weights"],
+                "emos_calibration_crps_equal_weight": emos_info["initial_crps"],
+                "emos_calibration_crps_learned_weight": emos_info["final_crps"],
+                "per_seed_test_crps": per_seed_crps,
+                "equal_weight_test_crps": crps_zinb(
+                    y_test_flat,
+                    equal_pi.reshape(-1).float(),
+                    equal_mu.reshape(-1).float(),
+                    equal_r.reshape(-1).float(),
+                ).mean().item(),
+                "learned_weight_test_crps": crps_zinb(
+                    y_test_flat,
+                    test_pi.reshape(-1).float(),
+                    test_mu.reshape(-1).float(),
+                    test_r.reshape(-1).float(),
+                ).mean().item(),
+            }
+        )
+    else:
+        cal_out = cal_outputs[0]
+        test_out = test_outputs[0]
+        ensemble_metadata["method"] = "single_model"
 
-    # ── 4. Compute metrics ──
     logger.info("\n[4/5] Computing metrics...")
     metrics = compute_metrics(
-        test_out["y_true"], test_out["pi"], test_out["mu"], test_out["r"],
+        test_out["y_true"],
+        test_out["pi"],
+        test_out["mu"],
+        test_out["r"],
         week_idx=test_out.get("week_idx"),
     )
 
-    # Add metadata
+    run_dirs = {path.parent.parent for path in checkpoint_paths}
+    checkpoint_label = (
+        next(iter(run_dirs))
+        if len(checkpoint_paths) > 1 and len(run_dirs) == 1
+        else checkpoint_paths[0]
+    )
     metrics["metadata"] = {
         "data": args.data,
-        "checkpoint": str(ckpt_path),
+        "checkpoint": str(checkpoint_label),
+        "checkpoints": [str(path) for path in checkpoint_paths],
+        "num_ensemble_seeds": len(checkpoint_paths),
         "device": str(device),
-        "num_parameters": num_params,
-        "weights_source": weights_source,
-        "weight_selection_val_crps": {k: round(v, 4) for k, v in val_scores.items()},
+        "num_parameters": (
+            num_params_per_seed[0]
+            if len(set(num_params_per_seed)) == 1
+            else num_params_per_seed
+        ),
+        "num_parameters_per_seed": num_params_per_seed,
+        "weights_source": (
+            selected_weights[0]
+            if len(selected_weights) == 1
+            else "per_seed_validation"
+        ),
+        "weights_source_per_seed": selected_weights,
+        "weight_selection_val_crps": (
+            validation_scores[0]
+            if len(validation_scores) == 1
+            else validation_scores
+        ),
+        "weight_selection_val_crps_per_seed": validation_scores,
+        "ensemble": ensemble_metadata,
         "test_start_week": TEST_START_WEEK,
-        "test_end_week": T_total,
+        "test_end_week": T,
         "window_size": WINDOW_SIZE,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+    if len(checkpoint_paths) > 1:
+        metrics["ensemble"] = ensemble_metadata
 
-    # ── 4b. Conformal calibration & coverage ──
-    logger.info("\n[4b/5] Running conformal calibration (val→test)...")
+    logger.info("\n[4b/5] Running conformal calibration (calibration -> test)...")
     try:
-        conf_results = conformal_evaluation(
-            model, counts, features, edge_queen, edge_knn,
-            alpha=args.alpha, device=device, data_name=args.data,
+        metrics["conformal"] = conformal_evaluation(
+            None,
+            counts,
+            features,
+            edge_queen,
+            edge_knn,
+            alpha=args.alpha,
+            device=device,
+            data_name=args.data,
+            cal_results=cal_out,
+            test_results=test_out,
         )
-        metrics["conformal"] = conf_results
-    except Exception as e:
-        logger.warning(f"  Conformal evaluation failed: {e}")
-        metrics["conformal"] = {"error": str(e)}
+    except Exception as exc:
+        logger.warning(f"  Conformal evaluation failed: {exc}")
+        metrics["conformal"] = {"error": str(exc)}
 
-    # ── 5. Save results ──
     logger.info("\n[5/5] Saving results...")
-    # Record the evaluated architecture in the results so an ablation JSON is
-    # self-identifying and can never be mistaken for a full-model result.
-    metrics["arch"] = arch or {"note": "not recorded (pre-fingerprint checkpoint)"}
+    common_arch = architectures[0]
+    if any(arch != common_arch for arch in architectures[1:]):
+        metrics["arch"] = {"mixed_member_architectures": architectures}
+    else:
+        metrics["arch"] = common_arch or {
+            "note": "not recorded (pre-fingerprint checkpoint)"
+        }
 
     custom_out = getattr(args, "output", None)
     if custom_out:
         output_file = Path(custom_out)
-        output_dir = output_file.parent
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
     else:
         output_dir = PROJECT_ROOT / "outputs" / "evaluation"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / f"{args.data}_test_results.json"
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=2, default=str)
+    with open(output_file, "w", encoding="utf-8") as file_handle:
+        json.dump(metrics, file_handle, indent=2, default=str)
     logger.info(f"  Results saved to: {output_file}")
 
-    # ── LaTeX table ──
     latex = generate_latex_table(metrics)
     latex_file = output_file.with_name(f"{output_file.stem}_table.tex")
-    with open(latex_file, "w", encoding="utf-8") as f:
-        f.write(latex)
+    with open(latex_file, "w", encoding="utf-8") as file_handle:
+        file_handle.write(latex)
     logger.info(f"  LaTeX table saved to: {latex_file}")
 
-    # ── Summary ──
     elapsed = time.time() - t_start
     overall = metrics["overall"]
-
     logger.info("\n" + "=" * 70)
     logger.info("  TEST SET RESULTS SUMMARY")
     logger.info("=" * 70)
-    logger.info(f"  Data:          {args.data} ({S} spatial × {C} categories)")
-    logger.info(f"  Test weeks:    {metrics['overall']['n_test_weeks']}")
-    logger.info(f"  Checkpoint:    {ckpt_path.name}")
-    logger.info(f"  ─────────────────────────────────────────────────")
+    logger.info(f"  Data:          {args.data} ({S} spatial x {C} categories)")
+    logger.info(f"  Test weeks:    {overall['n_test_weeks']}")
+    logger.info(
+        f"  Checkpoint(s): {len(checkpoint_paths)} seed(s) from "
+        f"{checkpoint_label.name}"
+    )
     logger.info(f"  MAE:           {overall['mae']:.4f}")
     logger.info(f"  RMSE:          {overall['rmse']:.4f}")
     logger.info(f"  MAPE:          {overall['mape_pct']:.2f}%")
     logger.info(f"  CRPS:          {overall['crps']:.4f}")
     logger.info(f"  Brier(zero):   {overall['brier_zero']:.6f}")
 
-    if "conformal" in metrics and "test_coverage" in metrics["conformal"]:
-        conf = metrics["conformal"]
-        logger.info(f"  ─────────────────────────────────────────────────")
-        logger.info(f"  Coverage:      {conf['test_coverage']:.4f} (target {conf['target_coverage']:.4f})")
-        logger.info(f"  Avg width:     {conf['avg_interval_width']:.2f}")
+    conformal = metrics.get("conformal", {})
+    if "test_coverage" in conformal:
+        logger.info(
+            f"  Coverage:      {conformal['test_coverage']:.4f} "
+            f"(target {conformal['target_coverage']:.4f})"
+        )
+        logger.info(f"  Avg width:     {conformal['avg_interval_width']:.2f}")
 
-    per_cat = metrics.get("per_category", {})
-    if per_cat:
-        logger.info(f"  ─────────────────────────────────────────────────")
-        for cat_name, cm in per_cat.items():
-            logger.info(
-                f"  {cat_name:12s}:  MAE={cm['mae']:.4f}  RMSE={cm['rmse']:.4f}  MAPE={cm['mape_pct']:.1f}%"
-            )
+    for category_name, category_metrics in metrics.get("per_category", {}).items():
+        logger.info(
+            f"  {category_name:12s}:  MAE={category_metrics['mae']:.4f}  "
+            f"RMSE={category_metrics['rmse']:.4f}  "
+            f"MAPE={category_metrics['mape_pct']:.1f}%"
+        )
 
-    logger.info(f"  ─────────────────────────────────────────────────")
     logger.info(f"  Elapsed:       {elapsed:.1f}s")
     logger.info("=" * 70)
-
-    # Print LaTeX table
     logger.info("\nLaTeX table:\n" + latex)
-
     return metrics
 
 
@@ -996,10 +1135,13 @@ def main() -> None:
         description="CIVIC-SAFE production test-set evaluation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-    # Evaluate with auto-discovered checkpoint
-    python scripts/evaluate_trained.py --checkpoint auto --data chicago
+    # Evaluate the auto-discovered anchored run
+    python scripts/evaluate_trained.py --data chicago
 
-    # Evaluate specific checkpoint
+    # Evaluate every seed in a run directory
+    python scripts/evaluate_trained.py --checkpoint outputs/run_chicago_anchor_123
+
+    # Evaluate one specific checkpoint
     python scripts/evaluate_trained.py --checkpoint outputs/run_123/seed_42/best.pt
 
     # Evaluate on NYC data with custom alpha
@@ -1009,8 +1151,11 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        required=True,
-        help="Path to model checkpoint (.pt/.pth), or 'auto' to discover latest",
+        default="auto",
+        help=(
+            "Checkpoint file or run directory containing seed_*/best.pt "
+            "(default: auto-discover the preferred anchored run)"
+        ),
     )
     parser.add_argument(
         "--data",

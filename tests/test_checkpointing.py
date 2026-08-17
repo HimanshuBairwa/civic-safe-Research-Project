@@ -8,6 +8,7 @@ from __future__ import annotations
 # Path is used at runtime below (script loading, isinstance checks), not just in
 # annotations, so it cannot live under TYPE_CHECKING.
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -16,8 +17,10 @@ import torch.optim as optim
 
 from civicsafe.utils.checkpointing import (
     CheckpointData,
+    discover_evaluation_checkpoints,
     find_latest_checkpoint,
     load_checkpoint,
+    resolve_evaluation_checkpoints,
     save_checkpoint,
 )
 from civicsafe.utils.exceptions import CheckpointCorruptionError
@@ -184,6 +187,22 @@ def _make_run_dirs(root: Path, names: list[str]) -> None:
         seed_dir = root / name / "seed_42"
         seed_dir.mkdir(parents=True)
         (seed_dir / "best.pt").touch()
+
+
+def _make_checkpoint_run(
+    root: Path,
+    name: str,
+    *,
+    seeds: tuple[int, ...] = (42,),
+    arch: dict | None = None,
+) -> Path:
+    """Create a run with minimally loadable metadata checkpoints."""
+    run_dir = root / name
+    for seed in seeds:
+        seed_dir = run_dir / f"seed_{seed}"
+        seed_dir.mkdir(parents=True)
+        torch.save({"arch": arch or {}}, seed_dir / "best.pt")
+    return run_dir
 
 
 @pytest.fixture()
@@ -365,3 +384,319 @@ def test_fallback_path_still_excludes_tags_and_other_cities(
             f"{script}.{fn_name} fell through to {p.parent.parent.name}"
         )
 
+
+# ---------------------------------------------------------------------------
+# Architecture-aware discovery and explicit directory expansion
+# ---------------------------------------------------------------------------
+
+
+def test_auto_discovery_prefers_level_anchor_over_newer_legacy_run(
+    tmp_path: Path,
+) -> None:
+    """A recorded level anchor outranks a newer unanchored checkpoint run."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        seeds=(42, 137, 256),
+        arch={"level_anchor": True},
+    )
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_1786999999",
+        seeds=(42,),
+        arch={},
+    )
+
+    checkpoints = discover_evaluation_checkpoints(outputs, "chicago")
+
+    assert [path.parent.name for path in checkpoints] == [
+        "seed_42",
+        "seed_137",
+        "seed_256",
+    ]
+    assert all(
+        path.parent.parent.name == "run_chicago_anchor_1786718493"
+        for path in checkpoints
+    )
+
+
+def test_auto_discovery_prefers_recorded_anchor_without_anchor_tag(
+    tmp_path: Path,
+) -> None:
+    """Checkpoint metadata is stronger than the directory naming convention."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    _make_checkpoint_run(
+        outputs,
+        "run_nyc_1786812069",
+        arch={"level_anchor": True},
+    )
+    _make_checkpoint_run(
+        outputs,
+        "run_nyc_1786999999",
+        arch={},
+    )
+
+    checkpoints = discover_evaluation_checkpoints(outputs, "nyc")
+
+    assert checkpoints[0].parent.parent.name == "run_nyc_1786812069"
+
+
+def test_auto_discovery_uses_newest_run_among_recorded_anchors(
+    tmp_path: Path,
+) -> None:
+    """Once runs are architecture-qualified, the newest timestamp wins."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786000000",
+        arch={"level_anchor": True},
+    )
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_1787000000",
+        arch={"level_anchor": True},
+    )
+
+    checkpoints = discover_evaluation_checkpoints(outputs, "chicago")
+
+    assert checkpoints[0].parent.parent.name == "run_chicago_1787000000"
+
+
+def test_auto_discovery_excludes_anchor_named_architecture_ablation(
+    tmp_path: Path,
+) -> None:
+    """An anchor-looking tag cannot make a disabled-core architecture eligible."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_1786000000",
+        arch={"level_anchor": True},
+    )
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1787000000",
+        arch={"level_anchor": True, "use_transformer": False},
+    )
+
+    checkpoints = discover_evaluation_checkpoints(outputs, "chicago")
+
+    assert checkpoints[0].parent.parent.name == "run_chicago_1786000000"
+
+
+def test_resolve_run_directory_expands_all_seed_checkpoints(tmp_path: Path) -> None:
+    """Explicit run directories must expand to every numeric seed deterministically."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    run_dir = _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        seeds=(1024, 42, 256, 137, 512),
+        arch={"level_anchor": True},
+    )
+
+    checkpoints = resolve_evaluation_checkpoints(
+        run_dir,
+        data_name="chicago",
+        outputs_dir=outputs,
+    )
+
+    assert [path.parent.name for path in checkpoints] == [
+        "seed_42",
+        "seed_137",
+        "seed_256",
+        "seed_512",
+        "seed_1024",
+    ]
+
+
+@pytest.mark.parametrize("use_seed_directory", [False, True])
+def test_resolve_explicit_file_or_seed_directory(
+    tmp_path: Path, use_seed_directory: bool
+) -> None:
+    """Single-file evaluation remains supported alongside run ensembles."""
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    run_dir = _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        arch={"level_anchor": True},
+    )
+    checkpoint = run_dir / "seed_42" / "best.pt"
+    checkpoint_input = checkpoint.parent if use_seed_directory else checkpoint
+
+    resolved = resolve_evaluation_checkpoints(
+        checkpoint_input,
+        data_name="chicago",
+        outputs_dir=outputs,
+    )
+
+    assert resolved == [checkpoint]
+
+
+@pytest.mark.parametrize(
+    ("script", "fn_name"),
+    [
+        ("evaluate_trained", "resolve_checkpoints"),
+        ("run_conformal_evaluation", "resolve_checkpoints"),
+    ],
+)
+def test_both_evaluators_accept_explicit_run_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    script: str,
+    fn_name: str,
+) -> None:
+    """Both CLI backends expand a run directory before any torch.load call."""
+    project_root = tmp_path / "project"
+    outputs = project_root / "outputs"
+    outputs.mkdir(parents=True)
+    run_dir = _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        seeds=(42, 137),
+        arch={"level_anchor": True},
+    )
+    module = _load_script(script)
+    monkeypatch.setattr(module, "PROJECT_ROOT", project_root)
+
+    checkpoints = getattr(module, fn_name)(str(run_dir), "chicago")
+
+    assert [path.parent.name for path in checkpoints] == ["seed_42", "seed_137"]
+
+
+def test_empty_explicit_run_directory_has_actionable_error(tmp_path: Path) -> None:
+    """An empty directory must fail before it can reach torch.load(directory)."""
+    outputs = tmp_path / "outputs"
+    run_dir = outputs / "run_chicago_anchor_1786718493"
+    run_dir.mkdir(parents=True)
+
+    with pytest.raises(FileNotFoundError, match=r"seed_\*/best\.pt"):
+        resolve_evaluation_checkpoints(
+            run_dir,
+            data_name="chicago",
+            outputs_dir=outputs,
+        )
+
+
+def test_campaign_discovers_anchor_run_for_both_evaluators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The campaign resolves an anchored run instead of delegating stale auto picks."""
+    project_root = tmp_path / "project"
+    outputs = project_root / "outputs"
+    outputs.mkdir(parents=True)
+    anchor_run = _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        seeds=(42, 137),
+        arch={"level_anchor": True},
+    )
+    _make_checkpoint_run(
+        outputs,
+        "run_chicago_1786999999",
+        arch={},
+    )
+    campaign = _load_script("run_full_campaign")
+    monkeypatch.setattr(campaign, "ROOT", project_root)
+
+    assert campaign._discover_evaluation_run("chicago") == anchor_run
+
+
+def test_evaluate_trained_runs_every_seed_and_records_ensemble(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run-directory evaluation must load every seed and emit ensemble metadata."""
+    project_root = tmp_path / "project"
+    outputs = project_root / "outputs"
+    outputs.mkdir(parents=True)
+    run_dir = _make_checkpoint_run(
+        outputs,
+        "run_chicago_anchor_1786718493",
+        seeds=(42, 137),
+        arch={"level_anchor": True},
+    )
+    module = _load_script("evaluate_trained")
+    monkeypatch.setattr(module, "PROJECT_ROOT", project_root)
+
+    loaded_paths: list[Path] = []
+
+    class _FakeModel:
+        def __init__(self, marker: float) -> None:
+            self.marker = marker
+
+        def load_state_dict(self, _state, strict: bool = False):
+            del strict
+            return [], []
+
+        def to(self, _device):
+            return self
+
+        def eval(self):
+            return self
+
+        def parameters(self):
+            return iter(())
+
+    def _fake_load_checkpoint(path, _data_name, weights="auto"):
+        del weights
+        checkpoint = Path(path)
+        loaded_paths.append(checkpoint)
+        seed = int(checkpoint.parent.name.removeprefix("seed_"))
+        return {}, checkpoint, "raw_toplevel", {"seed_marker": seed}
+
+    def _fake_build_model(num_features, num_categories, arch=None):
+        del num_features, num_categories
+        return _FakeModel(float((arch or {})["seed_marker"]))
+
+    def _fake_rolling(model, *_args, start_week, **_kwargs):
+        marker = model.marker / 1000.0
+        return {
+            "y_true": torch.ones(1, 1, 1),
+            "pi": torch.full((1, 1, 1), 0.1),
+            "mu": torch.full((1, 1, 1), 1.0 + marker),
+            "r": torch.full((1, 1, 1), 2.0),
+            "week_idx": torch.tensor([start_week]),
+        }
+
+    monkeypatch.setattr(
+        module,
+        "load_data",
+        lambda _data: (
+            torch.zeros(1, 313, 1),
+            torch.zeros(1, 313, 1),
+            torch.empty(2, 0, dtype=torch.long),
+            None,
+        ),
+    )
+    monkeypatch.setattr(module, "load_checkpoint", _fake_load_checkpoint)
+    monkeypatch.setattr(module, "build_model", _fake_build_model)
+    monkeypatch.setattr(module, "rolling_evaluate", _fake_rolling)
+    monkeypatch.setattr(
+        module,
+        "conformal_evaluation",
+        lambda *_args, **_kwargs: {
+            "test_coverage": 0.9,
+            "target_coverage": 0.9,
+            "avg_interval_width": 2.0,
+        },
+    )
+
+    output_path = tmp_path / "ensemble_results.json"
+    args = SimpleNamespace(
+        data="chicago",
+        checkpoint=str(run_dir),
+        weights="raw",
+        alpha=0.1,
+        output=str(output_path),
+    )
+    results = module.run_evaluation(args)
+
+    assert [path.parent.name for path in loaded_paths] == ["seed_42", "seed_137"]
+    assert results["metadata"]["num_ensemble_seeds"] == 2
+    assert len(results["ensemble"]["emos_weights"]) == 2
+    assert output_path.is_file()

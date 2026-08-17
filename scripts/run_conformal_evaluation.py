@@ -20,7 +20,7 @@ Pipeline stages:
 Usage:
     python scripts/run_conformal_evaluation.py --data chicago
     python scripts/run_conformal_evaluation.py --data nyc --alpha 0.1
-    python scripts/run_conformal_evaluation.py --data chicago --checkpoint outputs/run_XXX/seed_42
+    python scripts/run_conformal_evaluation.py --data chicago --checkpoint outputs/run_XXX
 
 References:
     - Romano, Patterson, Candès (2019): Conformalized Quantile Regression
@@ -67,6 +67,7 @@ from civicsafe.calibration.zinb_distribution import zinb_ppf_pair
 from civicsafe.models.civicsafe_model import CivicSafeModel
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
+from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
 from civicsafe.calibration.recalibration import recalibrate_and_evaluate
 from civicsafe.calibration.emos import learn_emos_weights, apply_emos_weights, crps_decomposition
 from civicsafe.calibration.significance import compare_forecasts
@@ -91,123 +92,34 @@ class KillCriterionTriggered(Exception):
 # ───────────────────────────────────────────────────────────────────
 # Checkpoint Discovery
 # ───────────────────────────────────────────────────────────────────
+def resolve_checkpoints(
+    checkpoint_path: str | Path | None, data_name: str
+) -> list[Path]:
+    """Resolve a checkpoint file, seed directory, run directory, or auto."""
+    return resolve_evaluation_checkpoints(
+        checkpoint_path,
+        data_name=data_name,
+        outputs_dir=PROJECT_ROOT / "outputs",
+    )
+
+
 def discover_checkpoint(data_name: str) -> Path:
-    """Auto-discover the most recent checkpoint for the given dataset.
-    
-    Falls back to single-checkpoint mode if discover_all_checkpoints
-    is not called explicitly.
-    """
-    checkpoints = discover_all_checkpoints(data_name)
-    if not checkpoints:
-        raise FileNotFoundError(f"No checkpoints found for {data_name}")
-    # Default: pick the first seed (usually seed_42)
-    chosen = checkpoints[0]
-    logger.info(f"  Auto-discovered checkpoint: {chosen}")
-    return chosen
+    """Auto-discover the first seed in the preferred evaluation run."""
+    return discover_all_checkpoints(data_name)[0]
 
 
 def discover_all_checkpoints(data_name: str) -> list[Path]:
-    """Discover ALL seed checkpoints in the latest run directory for this dataset.
-    
-    This enables ensemble evaluation: load all K seeds, average their
-    predictions, and evaluate the ensemble. EMOS-style ensembling
-    typically improves CRPS by 10-30% (Gneiting et al., 2005).
-    
-    Searches for dataset-specific directories first (``run_{data_name}_*``),
-    then falls back to generic ``run_*`` for backward compatibility.
-    
-    Returns:
-        Sorted list of best.pt paths, one per seed.
-    """
-    outputs_dir = PROJECT_ROOT / "outputs"
-    if not outputs_dir.exists():
-        raise FileNotFoundError(f"No outputs directory at {outputs_dir}")
-    
-    # Priority 1: dataset-specific run directories (run_chicago_*, run_nyc_*)
-    #
-    # The canonical full-model run is UNTAGGED: run_{city}_{timestamp}. Ablations
-    # and probes are TAGGED: run_{city}_{tag}_{timestamp}. Because the untagged
-    # prefix is a prefix of every tagged one, a bare glob matches both, and
-    # sorting by name then puts tags AFTER the digits -- so `run_dirs[-1]` would
-    # resolve to `run_chicago_no_transformer_...` once ablations exist and
-    # silently report an ablation as the headline model. Keep only untagged dirs,
-    # matching the filter train.py:377 and run_ablations.py:126 already apply.
-    dataset_prefix = f"run_{data_name}_"
-    run_dirs = sorted(
-        (
-            d for d in outputs_dir.glob(f"{dataset_prefix}*")
-            if d.is_dir() and d.name[len(dataset_prefix):].isdigit()
-        ),
-        key=lambda p: p.name,
+    """Auto-discover all seed checkpoints in the preferred evaluation run."""
+    checkpoints = resolve_checkpoints("auto", data_name)
+    logger.info(
+        f"  Found {len(checkpoints)} seed checkpoint(s) in "
+        f"{checkpoints[0].parent.parent.name}"
     )
-
-    # Priority 2: generic run_* directories (backward compat, pre-city-prefix
-    # era). The untagged filter still applies: keep only dirs whose name after
-    # "run_" is all digits. Without it this fallback re-introduces the exact bug
-    # fixed above -- it would match another city's run (run_nyc_* for a chicago
-    # request) and every ablation dir, and it fires precisely when the untagged
-    # run for this city is missing, i.e. mid-regeneration when only ablations
-    # are on disk.
-    if not run_dirs:
-        run_dirs = sorted(
-            (
-                d for d in outputs_dir.glob("run_*")
-                if d.is_dir() and d.name[len("run_"):].isdigit()
-            ),
-            key=lambda p: p.name,
-        )
-
-    if not run_dirs:
-        raise FileNotFoundError(
-            f"No run directories found under {outputs_dir} "
-            f"(searched for '{dataset_prefix}*' and 'run_*')"
-        )
-    
-    latest_run = run_dirs[-1]
-    
-    # Find all seed_*/best.pt checkpoints
-    seed_checkpoints = sorted(latest_run.glob("seed_*/best.pt"))
-    
-    if not seed_checkpoints:
-        # Last-resort fallback: any model-looking .pt anywhere under outputs/.
-        #
-        # This is UNSCOPED on purpose (it exists so a hand-placed checkpoint still
-        # works), which makes it the most dangerous path in this function: it can
-        # return another city's checkpoint or an ablation's, and it returns only
-        # ONE file, which silently collapses the multi-seed EMOS ensemble to a
-        # single model while the report still labels the number an ensemble CRPS.
-        # A quiet 5x reduction in the headline result is not acceptable, so warn
-        # loudly and name the file that was chosen.
-        candidates = list(outputs_dir.rglob("*.pt"))
-        candidates = [
-            p for p in candidates
-            if "panel" not in p.name and "graph" not in p.name
-            and "demographics" not in p.name and "calibrators" not in p.name
-        ]
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        if not candidates:
-            return []
-        logger.warning(
-            f"  No seed_*/best.pt under {latest_run.name}. Falling back to the "
-            f"most recently modified checkpoint anywhere in outputs/: "
-            f"{candidates[0].relative_to(outputs_dir)}"
-        )
-        logger.warning(
-            "  This is a SINGLE checkpoint: the multi-seed EMOS ensemble is "
-            "DISABLED and any CRPS reported below is a single-model score, not "
-            "an ensemble score. It is also not scoped to "
-            f"--data {data_name}. Do not use this for headline numbers."
-        )
-        return candidates[:1]
-    
-    logger.info(f"  Found {len(seed_checkpoints)} seed checkpoints in {latest_run.name}")
-    for ckpt in seed_checkpoints:
-        logger.info(f"    {ckpt.parent.name}/{ckpt.name}")
-    
-    return seed_checkpoints
+    for checkpoint in checkpoints:
+        logger.info(f"    {checkpoint.parent.name}/{checkpoint.name}")
+    return checkpoints
 
 
-# ───────────────────────────────────────────────────────────────────
 # Model Loading
 # ───────────────────────────────────────────────────────────────────
 def load_model_from_checkpoint(
@@ -644,7 +556,7 @@ def compute_coverage_metrics(
     cov_issued = covered[issued]
     w_issued = width[issued]
 
-    result: dict[str, Any] = {
+    result = {
         "marginal_coverage": cov_issued.mean().item(),
         "mean_width": w_issued.mean().item(),
         "median_width": w_issued.median().item(),
@@ -667,7 +579,7 @@ def compute_coverage_metrics(
     # Per-group coverage
     if groups is not None:
         group_coverages = {}
-        unique_groups = groups.unique().tolist()
+        unique_groups = groups.unique().tolist()  # type: ignore[no-untyped-call]
         for g in unique_groups:
             mask = groups == g
             if mask.sum() > 0:
@@ -804,77 +716,83 @@ def run_conformal_evaluation(
                 if loaded:
                     config.update(loaded)
 
-    if checkpoint_path and checkpoint_path != "auto":
-        ckpt_path = Path(checkpoint_path)
-        all_ckpts = [ckpt_path]
-    else:
-        all_ckpts = discover_all_checkpoints(data_name)
-        if not all_ckpts:
-            raise FileNotFoundError(f"No checkpoints found for {data_name}")
+    all_ckpts = resolve_checkpoints(checkpoint_path, data_name)
+    requested_weights = weights
+    selected_weights: dict[Path, str] = {}
+    val_scores_per_checkpoint: dict[Path, dict[str, float]] = {}
 
-    # ─── Weight-set selection on VALIDATION data ───
-    #
-    # best.pt stores two parameter sets: the online weights (model_state_dict)
-    # and the Polyak-averaged ones (ema_state_dict). They do not perform
-    # equally here: the trainer uses EMA decay 0.999 (~1000-step horizon) but
-    # only ~10 optimizer steps/epoch, so the EMA never converges and keeps a
-    # large share of its initial snapshot. Empirically it is much worse.
-    #
-    # Which to report cannot be decided on the test set — that is tuning on
-    # test. Decide on 2022-H1 validation, which is disjoint from both the
-    # calibration (2022-H2) and test (2023) windows, then use that choice
-    # everywhere downstream.
-    if weights == "auto":
-        logger.info("\n  ─── WEIGHT-SET SELECTION (on validation, 2022 H1) ───")
-        probe_ckpt = all_ckpts[0]
-        val_scores: dict[str, float] = {}
-        for cand in ("raw", "ema"):
-            try:
-                probe_model = load_model_from_checkpoint(
-                    probe_ckpt, F + C, C, config, device, weights=cand
+    # Select raw versus EMA independently for every seed on validation data.
+    # A single global choice based on seed_42 can silently penalize the other
+    # ensemble members because their EMA trajectories are seed-specific.
+    if requested_weights == "auto":
+        logger.info("\n  --- WEIGHT-SET SELECTION (validation, per seed) ---")
+        for checkpoint in all_ckpts:
+            val_scores: dict[str, float] = {}
+            for candidate in ("raw", "ema"):
+                try:
+                    probe_model = load_model_from_checkpoint(
+                        checkpoint,
+                        F + C,
+                        C,
+                        config,
+                        device,
+                        weights=candidate,
+                    )
+                except KeyError as exc:
+                    logger.info(
+                        f"    {checkpoint.parent.name} {candidate:>3}: "
+                        f"unavailable ({exc})"
+                    )
+                    continue
+                probe_results = run_rolling_inference(
+                    probe_model,
+                    val_dataset,
+                    edge_queen,
+                    edge_knn,
+                    device,
                 )
-            except KeyError as exc:
-                logger.info(f"    {cand:>3}: unavailable ({exc})")
-                continue
-            probe_res = run_rolling_inference(
-                probe_model, val_dataset, edge_queen, edge_knn, device
+                score = crps_zinb(
+                    probe_results["y"].reshape(-1),
+                    probe_results["pi"].reshape(-1),
+                    probe_results["mu"].reshape(-1),
+                    probe_results["r"].reshape(-1),
+                ).mean().item()
+                val_scores[candidate] = score
+                logger.info(
+                    f"    {checkpoint.parent.name} {candidate:>3}: "
+                    f"validation CRPS = {score:.4f}"
+                )
+                del probe_model
+
+            if not val_scores:
+                raise RuntimeError(f"No usable weight set found in {checkpoint}")
+            selected = min(val_scores, key=val_scores.__getitem__)
+            selected_weights[checkpoint] = selected
+            val_scores_per_checkpoint[checkpoint] = val_scores
+            logger.info(
+                f"    {checkpoint.parent.name}: selected '{selected}' "
+                "(test set not used)"
             )
-            val_crps = crps_zinb(
-                probe_res["y"].reshape(-1), probe_res["pi"].reshape(-1),
-                probe_res["mu"].reshape(-1), probe_res["r"].reshape(-1),
-            ).mean().item()
-            val_scores[cand] = val_crps
-            logger.info(f"    {cand:>3}: validation CRPS = {val_crps:.4f}")
-            del probe_model
+    else:
+        selected_weights = {
+            checkpoint: requested_weights for checkpoint in all_ckpts
+        }
+        val_scores_per_checkpoint = {checkpoint: {} for checkpoint in all_ckpts}
 
-        if not val_scores:
-            raise RuntimeError(f"No usable weight set found in {probe_ckpt}")
-        weights = min(val_scores, key=lambda k: val_scores[k])
-        logger.info(
-            f"  Selected weights='{weights}' (lowest validation CRPS). "
-            f"Test set was NOT used for this choice."
-        )
-        if len(val_scores) == 2:
-            gap = abs(val_scores["raw"] - val_scores["ema"])
-            if gap > 0.25:
-                logger.warning(
-                    f"  Large raw/EMA validation gap ({gap:.4f}). EMA decay 0.999 "
-                    f"is likely mistuned for this run length (~10 steps/epoch); "
-                    f"consider decay≈0.99 or EMA-per-epoch for future runs."
-                )
-
-    # ─── Step 4-5: Ensemble inference (EMOS-style) ───
     K = len(all_ckpts)
     logger.info(f"\n[3-5/7] Ensemble inference with {K} seed(s)...")
-    logger.info(f"  Using weight set: '{weights}' for all {K} seed(s)")
+    logger.info(
+        "  Per-seed weight sets: "
+        f"{[selected_weights[checkpoint] for checkpoint in all_ckpts]}"
+    )
 
-    cal_results_list = []
-    test_results_list = []
+    cal_results_list: list[dict[str, Tensor]] = []
+    test_results_list: list[dict[str, Tensor]] = []
 
     for i, ckpt in enumerate(all_ckpts):
         logger.info(f"\n  --- Seed {i+1}/{K}: {ckpt.parent.name}/{ckpt.name} ---")
         model_i = load_model_from_checkpoint(
-            ckpt, F + C, C, config, device, weights=weights
+            ckpt, F + C, C, config, device, weights=selected_weights[ckpt]
         )
 
         cal_res = run_rolling_inference(model_i, cal_dataset, edge_queen, edge_knn, device)
@@ -893,31 +811,25 @@ def run_conformal_evaluation(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # ─── TRUE CDF Mixture Ensemble (EMOS) ───
-    # MATHEMATICS.md §11: F_ens(j) = (1/K) Σ_k F_ZINB^(k)(j)
-    # We average the per-seed CRPS scores (since CRPS decomposes linearly
-    # over CDF terms) and store all per-seed params for the mixture CDF.
-    # For conformal calibration, we compute non-conformity scores using
-    # the mixture CDF rather than averaged parameters.
+    # --- Calibration-learned ZINB parameter ensemble ---
+    # The EMOS helper learns simplex weights for a single combined (pi, mu, r)
+    # distribution. It is a parameter pool, not a literal mixture CDF.
+
     if K > 1:
-        logger.info(f"\n  Ensembling {K} seeds via CDF mixture...")
-        # Store all per-seed results for mixture CDF computation
-        # For CRPS: compute per-seed CRPS, then report ensemble CRPS
-        # using the mixture CDF formula
-        cal_results = {
+        logger.info(f"\n  Ensembling {K} seeds via learned ZINB parameter weights...")
+        # Retain all member parameters for calibration-time weight learning.
+        cal_results: dict[str, Any] = {
             "y": cal_results_list[0]["y"],
-            # Store all seeds for mixture CDF-based scoring
+            # Equal-weight parameter pool before EMOS fitting.
             "all_pi": [r["pi"] for r in cal_results_list],
             "all_mu": [r["mu"] for r in cal_results_list],
             "all_r": [r["r"] for r in cal_results_list],
-            # For conformal calibration APIs that expect single (pi,mu,r),
-            # use the mean as an approximation of the mixture mode.
-            # The actual conformal scores use the mixture CDF below.
+            # Downstream metric and conformal APIs consume one ZINB parameter set.
             "pi": torch.stack([r["pi"] for r in cal_results_list]).mean(dim=0),
             "mu": torch.stack([r["mu"] for r in cal_results_list]).mean(dim=0),
             "r": torch.stack([r["r"] for r in cal_results_list]).mean(dim=0),
         }
-        test_results = {
+        test_results: dict[str, Any] = {
             "y": test_results_list[0]["y"],
             "all_pi": [r["pi"] for r in test_results_list],
             "all_mu": [r["mu"] for r in test_results_list],
@@ -927,9 +839,9 @@ def run_conformal_evaluation(
             "r": torch.stack([r["r"] for r in test_results_list]).mean(dim=0),
         }
 
-        # Compute true mixture CDF CRPS: average CRPS across seeds
-        # By linearity: CRPS(F_mix, y) = E_k[CRPS(F_k, y)] - diversity_term
-        # The diversity_term is non-negative, so mixture CRPS ≤ mean(seed CRPS)
+        # Retain member scores for diagnostics, then score the equal-weight
+        # parameter combination below. This is one pooled ZINB distribution,
+        # not the CRPS of a literal mixture CDF.
         per_seed_crps = []
         for res in test_results_list:
             sc = crps_zinb(
@@ -938,7 +850,7 @@ def run_conformal_evaluation(
             ).mean().item()
             per_seed_crps.append(sc)
         
-        # The ensemble CRPS with averaged params (approximation)
+        # CRPS of the equal-weight ZINB parameter combination.
         ensemble_crps = crps_zinb(
             test_results["y"].reshape(-1), test_results["pi"].reshape(-1),
             test_results["mu"].reshape(-1), test_results["r"].reshape(-1)
@@ -946,7 +858,7 @@ def run_conformal_evaluation(
         
         logger.info(f"  Per-seed CRPS: {[f'{c:.4f}' for c in per_seed_crps]}")
         logger.info(f"  Mean per-seed CRPS: {np.mean(per_seed_crps):.4f}")
-        logger.info(f"  Ensemble CRPS (equal-weight): {ensemble_crps:.4f}")
+        logger.info(f"  Equal-weight parameter-pool CRPS: {ensemble_crps:.4f}")
 
         # --- EMOS: Learn Optimal Weights ---
         logger.info("\n  --- EMOS WEIGHT LEARNING ---")
@@ -1082,7 +994,7 @@ def run_conformal_evaluation(
     }
 
     # ─── Fit ALL calibration methods ───
-    calibrator_configs = {
+    calibrator_configs: dict[str, Any] = {
         "split_cp": SplitConformalCalibrator(alpha=alpha),
         # Exact-guarantee counterpart to split_cp. The integer CQR score is
         # degenerate on this panel (>90% of scores <= 0, threshold pins to 0.0,
@@ -1594,9 +1506,25 @@ def run_conformal_evaluation(
     results = {
         "metadata": {
             "dataset": data_name,
-            "checkpoint": str(all_ckpts) if K > 1 else str(all_ckpts[0]),
+            "checkpoint": str(all_ckpts[0].parent.parent) if K > 1 else str(all_ckpts[0]),
+            "checkpoints": [str(checkpoint) for checkpoint in all_ckpts],
             "num_ensemble_seeds": K,
-            "weights_source": weights,
+            "weights_source": (
+                requested_weights
+                if requested_weights != "auto"
+                else "per_seed_validation"
+            ),
+            "weights_source_per_seed": {
+                checkpoint.parent.name: selected_weights[checkpoint]
+                for checkpoint in all_ckpts
+            },
+            "weight_selection_val_crps_per_seed": {
+                checkpoint.parent.name: {
+                    name: round(score, 6)
+                    for name, score in val_scores_per_checkpoint[checkpoint].items()
+                }
+                for checkpoint in all_ckpts
+            },
             "alpha": alpha,
             "timestamp": datetime.now().isoformat(),
             "panel_hash": panel_hash,
@@ -2019,7 +1947,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--checkpoint", type=str, default=None,
-        help="Path to model checkpoint (default: auto-discover latest)"
+        help=(
+            "Checkpoint file or run directory containing seed_*/best.pt "
+            "(default: auto-discover the preferred anchored run)"
+        )
     )
     parser.add_argument(
         "--alpha", type=float, default=0.1,

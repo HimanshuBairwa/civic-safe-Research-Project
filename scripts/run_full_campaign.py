@@ -35,6 +35,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _discover_evaluation_run(data_name: str) -> Path:
+    """Resolve one architecture-vetted run for both campaign evaluators."""
+    src_dir = str(ROOT / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+
+    from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
+
+    checkpoints = resolve_evaluation_checkpoints(
+        "auto",
+        data_name=data_name,
+        outputs_dir=ROOT / "outputs",
+    )
+    run_dirs = {checkpoint.parent.parent for checkpoint in checkpoints}
+    if len(run_dirs) != 1:
+        raise RuntimeError(
+            f"Auto-discovery for {data_name} returned checkpoints from "
+            f"multiple runs: {sorted(str(path) for path in run_dirs)}"
+        )
+    return next(iter(run_dirs))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--oicc-only", action="store_true",
@@ -76,7 +98,9 @@ def main() -> int:
 
     def run(cmd: list[str], label: str, outfile: Path | None = None) -> bool:
         banner = f"\n{'='*70}\n>>> {label}\n{'='*70}"
-        print(banner, flush=True); log.write(banner + "\n"); log.flush()
+        print(banner, flush=True)
+        log.write(banner + "\n")
+        log.flush()
         t = time.time()
         # Stream child output line-by-line so `tail -f campaign.log` shows live
         # progress (e.g. per-epoch training) instead of nothing until the step
@@ -89,7 +113,8 @@ def main() -> int:
         assert proc.stdout is not None
         for line in proc.stdout:
             captured.append(line)
-            log.write(line); log.flush()   # live to campaign.log
+            log.write(line)
+            log.flush()  # live to campaign.log
         proc.wait()
         dt = time.time() - t
         full = "".join(captured)
@@ -111,7 +136,8 @@ def main() -> int:
         camp / "00_env.txt")
 
     # 1. OICC -- the contribution (fast, no GPU) -----------------------------
-    oicc = camp / "oicc"; oicc.mkdir(exist_ok=True)
+    oicc = camp / "oicc"
+    oicc.mkdir(exist_ok=True)
     results.append(("oicc reproduce (rigorous)",
         run([py, "experiments/oicc_runs/reproduce_all.py", "--rigorous"],
             "OICC reproduction (rigorous, tight CIs)",
@@ -150,7 +176,8 @@ def main() -> int:
                 if not ok:
                     print(f"\n[ABORT] smoke training for {city} FAILED -- fix "
                           f"before the multi-day run. See campaign.log.")
-                    log.write(f"[ABORT] smoke {city} failed\n"); log.close()
+                    log.write(f"[ABORT] smoke {city} failed\n")
+                    log.close()
                     return 1
         for city in ("chicago", "nyc"):
             ok = run([py, "scripts/train.py", f"data={city}",
@@ -167,15 +194,22 @@ def main() -> int:
     # tests. Ordering matters -- significance consumes the per-week CRPS series
     # that evaluation and the baselines write, so it must run last.
     if not args.oicc_only and not args.no_eval:
-        ev = camp / "eval"; ev.mkdir(exist_ok=True)
+        ev = camp / "eval"
+        ev.mkdir(exist_ok=True)
         for city in ("chicago", "nyc"):
+            checkpoint_run = _discover_evaluation_run(city)
+            print(
+                f"[checkpoint] {city}: {checkpoint_run.relative_to(ROOT)}",
+                flush=True,
+            )
             results.append((f"evaluate {city}",
-                run([py, "scripts/evaluate_trained.py", "--checkpoint", "auto",
-                     "--data", city],
+                run([py, "scripts/evaluate_trained.py", "--checkpoint",
+                     str(checkpoint_run), "--data", city],
                     f"test-set evaluation {city}", ev / f"eval_{city}.txt")))
 
             results.append((f"conformal {city}",
-                run([py, "scripts/run_conformal_evaluation.py", "--data", city],
+                run([py, "scripts/run_conformal_evaluation.py", "--data", city,
+                     "--checkpoint", str(checkpoint_run)],
                     f"conformal coverage {city}", ev / f"conformal_{city}.txt")))
 
             results.append((f"classical baselines {city}",
@@ -218,7 +252,8 @@ def main() -> int:
     for name, ok in results:
         print(f"  [{'OK' if ok else 'FAIL'}] {name}")
     print(f"\nAll results in: {camp}")
-    log.write(f"\nCAMPAIGN DONE. results in {camp}\n"); log.close()
+    log.write(f"\nCAMPAIGN DONE. results in {camp}\n")
+    log.close()
     return 0 if all(ok for _, ok in results) else 1
 
 
