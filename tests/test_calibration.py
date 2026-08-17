@@ -31,13 +31,16 @@ from civicsafe.calibration.metrics import (
     picp,
     winkler_score,
 )
+from civicsafe.calibration.policies import (
+    assess_forecasting_gate,
+    select_best_calibrator,
+)
 from civicsafe.calibration.zinb_distribution import (
     zinb_cdf,
     zinb_cdf_full,
     zinb_ppf,
     zinb_ppf_pair,
 )
-
 
 # ============================================================
 # Fixtures
@@ -74,6 +77,184 @@ def grouped_data(synthetic_zinb_data: dict[str, Tensor]) -> dict[str, Tensor]:
     N = synthetic_zinb_data["y"].shape[0]
     groups = torch.arange(N) % 4  # 4 groups, cycling
     return {**synthetic_zinb_data, "groups": groups}
+
+
+# ============================================================
+# Evaluation Policy Tests
+# ============================================================
+
+class TestCalibratorSelectionPolicy:
+    """Tests for constrained, efficiency-optimal calibrator selection."""
+
+    @staticmethod
+    def _candidate(
+        coverage: float,
+        width: float,
+        disparity: float,
+        *,
+        abstention: float = 0.0,
+        status: str = "ELIGIBLE",
+    ) -> dict[str, float | str]:
+        return {
+            "marginal_coverage": coverage,
+            "mean_width": width,
+            "coverage_disparity": disparity,
+            "abstention_rate": abstention,
+            "status": status,
+        }
+
+    def test_rejects_narrower_high_disparity_method(self) -> None:
+        """Fairness-constrained selection must not reward a narrower violator."""
+        results = {
+            "narrow_but_unfair": self._candidate(0.92, 18.03, 0.0307),
+            "slightly_wider_fair": self._candidate(0.91, 18.10, 0.0171),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "slightly_wider_fair"
+        assert not selection.fallback_used
+        assert "narrow_but_unfair" in selection.rejected_reasons
+
+    def test_inclusive_coverage_disparity_and_abstention_boundaries(self) -> None:
+        """Values exactly on every published boundary remain eligible."""
+        results = {
+            "on_boundaries": self._candidate(
+                coverage=0.895,
+                width=10.0,
+                disparity=0.030,
+                abstention=0.01,
+            ),
+            "wider": self._candidate(0.90, 11.0, 0.02),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.coverage_floor == pytest.approx(0.895)
+        assert selection.selected_method == "on_boundaries"
+        assert selection.eligible_methods == ("on_boundaries", "wider")
+
+    def test_explicitly_ineligible_method_is_rejected(self) -> None:
+        results = {
+            "invalid": self._candidate(
+                0.95, 1.0, 0.0, status="INELIGIBLE"
+            ),
+            "valid": self._candidate(0.90, 12.0, 0.02),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "valid"
+        assert "status is INELIGIBLE" in selection.rejected_reasons["invalid"]
+
+    def test_non_finite_coverage_is_rejected(self) -> None:
+        results = {
+            "nan_coverage": self._candidate(float("nan"), 1.0, 0.0),
+            "valid": self._candidate(0.90, 12.0, 0.02),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "valid"
+        assert "coverage is not finite" in selection.rejected_reasons[
+            "nan_coverage"
+        ]
+
+    def test_missing_demographic_disparity_is_not_assumed_fair(self) -> None:
+        missing_disparity = self._candidate(0.92, 1.0, 0.0)
+        del missing_disparity["coverage_disparity"]
+        results = {
+            "missing_disparity": missing_disparity,
+            "valid": self._candidate(0.90, 12.0, 0.02),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "valid"
+        assert "demographic disparity is not finite" in (
+            selection.rejected_reasons["missing_disparity"]
+        )
+
+    def test_abstention_above_one_percent_is_rejected(self) -> None:
+        results = {
+            "selective": self._candidate(
+                0.99, 1.0, 0.0, abstention=0.010001
+            ),
+            "valid": self._candidate(0.90, 12.0, 0.02),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "valid"
+        assert "abstention" in selection.rejected_reasons["selective"][0]
+
+    def test_no_fully_eligible_method_uses_minimum_width_fallback(self) -> None:
+        results = {
+            "undercoverage_narrow": self._candidate(0.89, 8.0, 0.01),
+            "unfair_wider": self._candidate(0.91, 9.0, 0.04),
+        }
+
+        selection = select_best_calibrator(results, alpha=0.1)
+
+        assert selection.selected_method == "undercoverage_narrow"
+        assert selection.fallback_used
+        assert selection.eligible_methods == ()
+        assert selection.selection_rule.startswith("FALLBACK")
+
+
+class TestForecastingGatePolicy:
+    """Tests for the positive-skill plus significance forecasting gate."""
+
+    @staticmethod
+    def _significance(
+        dm_p: float,
+        bootstrap_p: float,
+    ) -> dict[str, dict[str, float]]:
+        return {
+            "dm": {
+                "dm_stat": -2.5,
+                "p_value": dm_p,
+                "ci_lower": -0.3,
+                "ci_upper": -0.02,
+            },
+            "bootstrap": {
+                "p_value": bootstrap_p,
+                "ci_lower": -0.4,
+                "ci_upper": -0.01,
+            },
+        }
+
+    def test_passes_with_positive_skill_and_dm_significance(self) -> None:
+        gate = assess_forecasting_gate(
+            0.0389, self._significance(dm_p=0.015, bootstrap_p=0.20)
+        )
+
+        assert gate.passed
+        assert gate.crpss_ha_positive
+        assert gate.statistically_significant
+
+    def test_passes_with_positive_skill_and_bootstrap_significance(self) -> None:
+        gate = assess_forecasting_gate(
+            0.0472, self._significance(dm_p=0.20, bootstrap_p=0.0009)
+        )
+
+        assert gate.passed
+
+    def test_fails_when_skill_is_not_strictly_positive(self) -> None:
+        gate = assess_forecasting_gate(
+            0.0, self._significance(dm_p=0.001, bootstrap_p=0.001)
+        )
+
+        assert not gate.passed
+        assert not gate.crpss_ha_positive
+
+    def test_fails_without_statistical_significance(self) -> None:
+        gate = assess_forecasting_gate(
+            0.10, self._significance(dm_p=0.05, bootstrap_p=0.05)
+        )
+
+        assert not gate.passed
+        assert not gate.statistically_significant
 
 
 # ============================================================

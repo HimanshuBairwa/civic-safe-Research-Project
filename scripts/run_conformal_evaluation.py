@@ -53,6 +53,7 @@ from torch import Tensor
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from civicsafe.audit.feedback_loop import compute_all_feedback_metrics
 from civicsafe.calibration.conformal import (
     AdaptiveTemporalECRCCalibrator,
     ECRCCalibrator,
@@ -61,17 +62,24 @@ from civicsafe.calibration.conformal import (
     RandomizedSplitConformalCalibrator,
     SplitConformalCalibrator,
     WeightedConformalCalibrator,
-    compute_cqr_scores,
 )
-from civicsafe.calibration.zinb_distribution import zinb_ppf_pair
+from civicsafe.calibration.emos import (
+    apply_emos_weights,
+    crps_decomposition,
+    learn_emos_weights,
+)
+from civicsafe.calibration.policies import (
+    DEFAULT_MAX_ABSTENTION,
+    DEFAULT_MAX_DISPARITY,
+    assess_forecasting_gate,
+    select_best_calibrator,
+)
+from civicsafe.calibration.recalibration import recalibrate_and_evaluate
+from civicsafe.calibration.significance import compare_forecasts
 from civicsafe.models.civicsafe_model import CivicSafeModel
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
 from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
-from civicsafe.calibration.recalibration import recalibrate_and_evaluate
-from civicsafe.calibration.emos import learn_emos_weights, apply_emos_weights, crps_decomposition
-from civicsafe.calibration.significance import compare_forecasts
-from civicsafe.audit.feedback_loop import compute_all_feedback_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +88,7 @@ logger = logging.getLogger(__name__)
 # ───────────────────────────────────────────────────────────────────
 CATEGORY_NAMES = {0: "violent", 1: "property", 2: "drug"}
 ALPHA_DEFAULT = 0.1  # 90% coverage target
-COVERAGE_DISPARITY_THRESHOLD = 0.03  # 3 percentage point max disparity
-CRPSS_SKILL_THRESHOLD = 0.10  # 10% improvement over baseline
+COVERAGE_DISPARITY_THRESHOLD = DEFAULT_MAX_DISPARITY
 
 # Pre-registered kill criteria
 class KillCriterionTriggered(Exception):
@@ -1229,6 +1236,43 @@ def run_conformal_evaluation(
         y_test, rolling_lower_all, rolling_upper_all,
         groups=groups_test, alpha=alpha,
     )
+
+    # Persist the same category breakdown as every non-rolling calibrator so
+    # the publication table never has to substitute metrics from a different
+    # method. Abstentions are excluded from coverage and width denominators,
+    # matching compute_coverage_metrics() above.
+    rolling_per_cat: dict[str, dict[str, float | int]] = {}
+    rolling_issued = ~(
+        torch.isnan(rolling_lower_all) | torch.isnan(rolling_upper_all)
+    )
+    rolling_covered = (
+        (y_test >= rolling_lower_all) & (y_test <= rolling_upper_all)
+    ).float()
+    rolling_width = (rolling_upper_all - rolling_lower_all).float()
+    for c_idx, c_name in CATEGORY_NAMES.items():
+        cat_mask = torch.zeros(y_test.shape[0], dtype=torch.bool)
+        cat_mask[c_idx::C] = True
+        scored = cat_mask & rolling_issued
+        n_samples = int(cat_mask.sum().item())
+        n_issued = int(scored.sum().item())
+        if n_samples == 0:
+            continue
+        rolling_per_cat[c_name] = {
+            "coverage": (
+                rolling_covered[scored].mean().item()
+                if n_issued > 0
+                else float("nan")
+            ),
+            "mean_width": (
+                rolling_width[scored].mean().item()
+                if n_issued > 0
+                else float("nan")
+            ),
+            "n_samples": n_samples,
+            "n_issued": n_issued,
+            "abstention_rate": 1.0 - (n_issued / n_samples),
+        }
+    rolling_coverage_overall["per_category"] = rolling_per_cat
     
     # Add rolling-specific metrics
     rolling_coverage_overall["per_window_coverage"] = rolling_coverages
@@ -1277,24 +1321,18 @@ def run_conformal_evaluation(
     logger.info(f"  Baseline CRPS (HA, frozen train mean):  {ha_crps_frozen:.4f}  (transparency only)")
     logger.info(f"  Baseline CRPS (seasonal naive):         {sn_crps:.4f}")
     logger.info(f"  Model CRPS:                             {model_crps:.4f}")
-    logger.info(f"  CRPSS vs HA (rolling):                  {crpss_ha:+.4f} (threshold: >={CRPSS_SKILL_THRESHOLD})")
+    logger.info(f"  CRPSS vs HA (rolling):                  {crpss_ha:+.4f}")
     logger.info(f"  CRPSS vs HA (frozen):                   {crpss_ha_frozen:+.4f}")
-    logger.info(f"  CRPSS vs Seasonal Naive:                {crpss_sn:+.4f} (threshold: >={CRPSS_SKILL_THRESHOLD})")
+    logger.info(f"  CRPSS vs Seasonal Naive:                {crpss_sn:+.4f}")
 
-    # The gate is the MINIMUM skill across both naive baselines. A model only
-    # earns a forecasting claim if it beats every naive competitor, not the
-    # most convenient one.
+    # Retain the conservative minimum skill score as a descriptive metric.
+    # The forecasting claim gate itself is evaluated below, after the DM and
+    # block-bootstrap evidence against the rolling HA has been computed.
     crpss_primary = min(crpss_ha, crpss_sn)
-    if crpss_primary < CRPSS_SKILL_THRESHOLD:
-        logger.warning(
-            f"  GATE NOT MET: min(CRPSS) = {crpss_primary:+.4f} < "
-            f"{CRPSS_SKILL_THRESHOLD}. The binding baseline is "
-            f"{'rolling HA' if crpss_ha < crpss_sn else 'seasonal naive'}."
-        )
-    else:
-        logger.info(
-            f"  GATE MET: min(CRPSS) = {crpss_primary:+.4f} >= {CRPSS_SKILL_THRESHOLD}"
-        )
+    logger.info(
+        f"  Conservative min CRPSS:                {crpss_primary:+.4f} "
+        f"(binding: {'rolling HA' if crpss_ha < crpss_sn else 'seasonal naive'})"
+    )
 
     # ─── Post-hoc Recalibration ───
     logger.info("\n  ─── POST-HOC RECALIBRATION ───")
@@ -1320,7 +1358,6 @@ def run_conformal_evaluation(
 
     # ─── Per-Category CRPSS Breakdown ───
     logger.info("\n  ─── PER-CATEGORY CRPSS ───")
-    y_test_3d = test_results["y"]  # (N_windows, S, C)
     per_cat_crpss = {}
     # Rolling HA per (week, unit, category), aligned to the model's own target
     # weeks. Shared across categories so it is computed once and sliced, and so
@@ -1496,6 +1533,61 @@ def run_conformal_evaluation(
         logger.info("  ⚠️ Too few test windows for DM test")
 
     # ─── Step 7: Compile and save results ───
+    forecasting_gate = assess_forecasting_gate(crpss_ha, significance_results)
+    gate_payload = forecasting_gate.as_dict()
+    dm_p_text = (
+        f"{forecasting_gate.dm_p_value:.6f}"
+        if forecasting_gate.dm_p_value is not None
+        else "unavailable"
+    )
+    bootstrap_p_text = (
+        f"{forecasting_gate.bootstrap_p_value:.6f}"
+        if forecasting_gate.bootstrap_p_value is not None
+        else "unavailable"
+    )
+    dm_stat_text = (
+        f"{forecasting_gate.dm_stat:.6f}"
+        if forecasting_gate.dm_stat is not None
+        else "unavailable"
+    )
+    dm_ci_text = (
+        f"[{forecasting_gate.dm_ci[0]:.6f}, "
+        f"{forecasting_gate.dm_ci[1]:.6f}]"
+        if forecasting_gate.dm_ci is not None
+        else "unavailable"
+    )
+    bootstrap_ci_text = (
+        f"[{forecasting_gate.bootstrap_ci[0]:.6f}, "
+        f"{forecasting_gate.bootstrap_ci[1]:.6f}]"
+        if forecasting_gate.bootstrap_ci is not None
+        else "unavailable"
+    )
+    logger.info("\n  --- FORECASTING CLAIM GATE ---")
+    logger.info(f"  Rule: {gate_payload['rule']}")
+    logger.info(f"  CRPSS vs rolling HA: {crpss_ha:+.6f}")
+    logger.info(
+        f"  Diebold-Mariano: statistic={dm_stat_text}, p={dm_p_text}, "
+        f"95% CI={dm_ci_text}"
+    )
+    logger.info(
+        f"  Block bootstrap: p={bootstrap_p_text}, "
+        f"95% CI={bootstrap_ci_text}"
+    )
+    if forecasting_gate.passed:
+        logger.info("  GATE MET: positive CRPSS vs HA with p < 0.05")
+    else:
+        logger.warning(
+            "  GATE NOT MET: forecasting superiority requires positive CRPSS "
+            "vs rolling HA and DM or block-bootstrap p < 0.05"
+        )
+
+    calibrator_selection = select_best_calibrator(
+        all_coverage_results,
+        alpha=alpha,
+        max_disparity=COVERAGE_DISPARITY_THRESHOLD,
+        max_abstention=DEFAULT_MAX_ABSTENTION,
+    )
+
     logger.info("\n[7/7] Compiling results and saving to disk...")
 
     # Dataset hash for reproducibility
@@ -1545,16 +1637,16 @@ def run_conformal_evaluation(
             "model_crps": model_crps,
             "crpss_vs_ha": crpss_ha,
             "crpss_vs_seasonal_naive": crpss_sn,
-            # Primary skill score is the MINIMUM over the naive family, so the
-            # gate is decided by whichever naive baseline is hardest to beat.
-            # This used to be crpss_sn alone, which passed at 0.2662 on Chicago
-            # while the model was simultaneously 9.2% WORSE than a rolling
-            # 52-week mean -- a passing gate on a losing forecaster.
+            # Retained as a conservative descriptive statistic across the naive
+            # family. The inferential gate below is specifically defined against
+            # the rolling HA, whose aligned loss series supports DM/bootstrap.
             "crpss": crpss_primary,
             "crpss_binding_baseline": (
                 "ha_rolling" if crpss_ha < crpss_sn else "seasonal_naive"
             ),
-            "crpss_passes_threshold": crpss_primary >= CRPSS_SKILL_THRESHOLD,
+            "forecasting_gate_passed": forecasting_gate.passed,
+            # Compatibility alias for downstream consumers of older JSON.
+            "crpss_passes_threshold": forecasting_gate.passed,
         },
         "per_category_crpss": per_cat_crpss,
         "calibration_diagnostics": {
@@ -1574,6 +1666,8 @@ def run_conformal_evaluation(
         "feedback_loop_analysis": feedback_metrics,
         "crps_decomposition": crps_decomp,
         "statistical_significance": significance_results,
+        "forecasting_gate": gate_payload,
+        "calibrator_selection": calibrator_selection.as_dict(),
     }
     
     # Add ensemble-specific results if applicable
@@ -1622,108 +1716,61 @@ def run_conformal_evaluation(
     logger.info("  EXIT CRITERIA CHECK")
     logger.info("=" * 70)
 
-    # Find the best calibrator.
-    #
-    # Selecting by max(coverage) is wrong: coverage is trivially maximised by
-    # emitting absurdly wide intervals, so it always crowned the most
-    # OVER-covered method (NYC ecrc: 98.7% coverage at width 34.0) over a
-    # well-calibrated one (split_cp: 90.5% at width 17.4). Conformal prediction
-    # targets coverage >= 1-alpha with the SMALLEST width; among methods that
-    # are valid, narrower is strictly better. So: filter to methods that hit the
-    # coverage floor, then pick minimum mean width. Overcoverage is reported as
-    # a diagnostic rather than rewarded.
-    COVERAGE_TOL = 0.01
-    coverage_floor = 1.0 - alpha - COVERAGE_TOL
-    # Coverage is now conditional on issuing an interval, which creates a way to
-    # game the selection: abstain on the hard cells and the remaining coverage
-    # looks excellent at a small width. Two methods with different abstention
-    # rates are not measured on the same denominator, so a method must issue
-    # essentially every interval to be eligible as the headline result. Anything
-    # above this is reported but never crowned.
-    MAX_ABSTENTION_FOR_SELECTION = 0.01
-
+    # Render the centralized decision made before serialization. Console, JSON,
+    # audit report, and tests therefore use one policy rather than copied rules.
     candidates = {
         m: c for m, c in all_coverage_results.items()
         if isinstance(c, dict) and "marginal_coverage" in c
     }
-    # NaN coverage means the method abstained everywhere. NaN fails every
-    # comparison, so it would silently survive a min() fallback below.
-    comparable = {
-        m: c for m, c in candidates.items()
-        if not math.isnan(c["marginal_coverage"])
-    }
-    excluded_for_abstention = {
-        m: c.get("abstention_rate", 0.0) for m, c in candidates.items()
-        if c.get("abstention_rate", 0.0) > MAX_ABSTENTION_FOR_SELECTION
-    }
-    for m, rate in excluded_for_abstention.items():
+    best_method = calibrator_selection.selected_method
+    logger.info(f"  Selection rule: {calibrator_selection.selection_rule}")
+    if calibrator_selection.fallback_used:
         logger.warning(
-            f"  {m}: abstained on {rate:.1%} of cells (> "
-            f"{MAX_ABSTENTION_FOR_SELECTION:.0%}), so it is INELIGIBLE as the "
-            "selected method -- its coverage is measured on a different "
-            "denominator than the others and is not comparable."
+            "  FALLBACK SELECTION: no calibrator satisfied coverage >= "
+            f"{calibrator_selection.coverage_floor:.4f} and demographic "
+            f"disparity <= {calibrator_selection.max_disparity:.4f}. "
+            f"Selected {best_method!r} by minimum width among comparable methods."
         )
-
-    eligible = {
-        m: c for m, c in comparable.items()
-        if c.get("abstention_rate", 0.0) <= MAX_ABSTENTION_FOR_SELECTION
-    }
-    valid = {
-        m: c for m, c in eligible.items()
-        if c["marginal_coverage"] >= coverage_floor
-    }
-
-    best_method = None
-    if valid:
-        # Efficiency-optimal among valid calibrators.
-        best_method = min(
-            valid, key=lambda m: valid[m].get("mean_width", float("inf"))
-        )
-        selection_rule = "min width s.t. coverage >= 1-alpha"
-    elif eligible:
-        # Nothing reached the floor — fall back to the closest to target so the
-        # exit-criteria check below reports a genuine failure instead of hiding it.
-        best_method = min(
-            eligible,
-            key=lambda m: abs(eligible[m]["marginal_coverage"] - (1.0 - alpha)),
-        )
-        selection_rule = "closest to target (NO method met coverage floor)"
-    elif candidates:
-        selection_rule = (
-            "NO eligible method (all abstained too heavily or coverage undefined)"
-        )
+    elif best_method is None:
         logger.error(
-            "  No method is eligible for selection: every candidate either "
-            "abstained beyond the allowed rate or produced undefined coverage. "
-            "Check max_width / max_width_ratio on the adaptive calibrators."
+            "  No calibrator could be selected: every candidate was explicitly "
+            "ineligible, abstained too heavily, or had non-finite coverage/width."
         )
 
-    if best_method:
-        logger.info(f"  Selection rule: {selection_rule}")
-        # Efficiency table: makes over/under-coverage explicit for the paper.
+    if candidates:
         logger.info(
             f"  {'method':<24} {'coverage':>9} {'width':>8} {'disparity':>10} "
             f"{'abstain':>8}  status"
         )
         for m in sorted(
-            candidates, key=lambda k: candidates[k].get("mean_width") or 0.0
+            candidates,
+            key=lambda k: candidates[k].get("mean_width") or float("inf"),
         ):
             c = candidates[m]
-            cov_m = c["marginal_coverage"]
-            abst_m = c.get("abstention_rate", 0.0)
-            if math.isnan(cov_m):
-                status = "NO INTERVALS ISSUED"
-            elif abst_m > MAX_ABSTENTION_FOR_SELECTION:
-                status = f"INELIGIBLE (abstained {abst_m:.1%})"
-            elif cov_m < coverage_floor:
-                status = "UNDER-COVERS"
-            elif cov_m > (1.0 - alpha) + 0.03:
-                status = "over-covers (inefficient)"
+            cov_raw = c.get("marginal_coverage")
+            width_raw = c.get("mean_width")
+            disparity_raw = c.get("coverage_disparity")
+            abstention_raw = c.get("abstention_rate", 0.0)
+            cov_m = float(cov_raw) if cov_raw is not None else float("nan")
+            width_m = float(width_raw) if width_raw is not None else float("nan")
+            disparity_m = (
+                float(disparity_raw)
+                if disparity_raw is not None
+                else float("nan")
+            )
+            abst_m = (
+                float(abstention_raw)
+                if abstention_raw is not None
+                else float("nan")
+            )
+            if m in calibrator_selection.eligible_methods:
+                status = "ELIGIBLE"
             else:
-                status = "well-calibrated"
+                reasons = calibrator_selection.rejected_reasons.get(m, ())
+                status = "; ".join(reasons) if reasons else "not comparable"
             logger.info(
-                f"  {m:<24} {cov_m:>9.4f} {c.get('mean_width', float('nan')):>8.2f} "
-                f"{c.get('coverage_disparity', 0.0):>10.4f} {abst_m:>8.2%}  {status}"
+                f"  {m:<24} {cov_m:>9.4f} {width_m:>8.2f} "
+                f"{disparity_m:>10.4f} {abst_m:>8.2%}  {status}"
                 + ("  <-- selected" if m == best_method else "")
             )
 
@@ -1736,19 +1783,41 @@ def run_conformal_evaluation(
         logger.info(f"  CRPSS vs HA: {crpss_ha:.4f}")
         logger.info(f"  CRPSS vs Seasonal Naive: {crpss_sn:.4f}")
 
-        # Check kill criteria
-        passed_all = True
-        if best_results["marginal_coverage"] < (1 - alpha - 0.01):
+        # Check all pre-registered exit criteria against the same policy values.
+        passed_all = not calibrator_selection.fallback_used
+        if calibrator_selection.fallback_used:
             logger.warning(
-                f"  ⚠ COVERAGE BELOW TARGET: "
-                f"{best_results['marginal_coverage']:.4f} < {1-alpha-0.01:.2f}"
+                "  CALIBRATOR POLICY FAILED: selected method is a fallback, "
+                "not a fully eligible headline calibrator."
+            )
+
+        if best_results["marginal_coverage"] < calibrator_selection.coverage_floor:
+            logger.warning(
+                "  COVERAGE BELOW FLOOR: "
+                f"{best_results['marginal_coverage']:.4f} < "
+                f"{calibrator_selection.coverage_floor:.4f}"
             )
             passed_all = False
 
-        if disparity > COVERAGE_DISPARITY_THRESHOLD:
+        if disparity > calibrator_selection.max_disparity:
             logger.warning(
-                f"  ⚠ COVERAGE DISPARITY EXCEEDS THRESHOLD: "
-                f"{disparity:.4f} > {COVERAGE_DISPARITY_THRESHOLD}"
+                "  COVERAGE DISPARITY EXCEEDS THRESHOLD: "
+                f"{disparity:.4f} > {calibrator_selection.max_disparity:.4f}"
+            )
+            passed_all = False
+
+        abstention = best_results.get("abstention_rate", 0.0)
+        if abstention > calibrator_selection.max_abstention:
+            logger.warning(
+                "  ABSTENTION EXCEEDS THRESHOLD: "
+                f"{abstention:.2%} > {calibrator_selection.max_abstention:.2%}"
+            )
+            passed_all = False
+
+        if not forecasting_gate.passed:
+            logger.warning(
+                "  FORECASTING GATE FAILED: CRPSS vs rolling HA must be "
+                "positive with DM or block-bootstrap p < 0.05."
             )
             passed_all = False
 
@@ -1757,7 +1826,7 @@ def run_conformal_evaluation(
         # a calibration failure, not a strength.
         if best_results["marginal_coverage"] > (1.0 - alpha) + 0.03:
             logger.warning(
-                f"  ⚠ SUBSTANTIAL OVERCOVERAGE: "
+                "  SUBSTANTIAL OVERCOVERAGE: "
                 f"{best_results['marginal_coverage']:.4f} >> {1 - alpha:.2f} target "
                 f"(width {best_results.get('mean_width', float('nan')):.2f}). "
                 f"Intervals are wider than necessary; check group sizes feeding "
@@ -1766,9 +1835,9 @@ def run_conformal_evaluation(
             passed_all = False
 
         if passed_all:
-            logger.info("  ✓ ALL EXIT CRITERIA PASSED")
+            logger.info("  ALL EXIT CRITERIA PASSED")
         else:
-            logger.info("  ✗ SOME EXIT CRITERIA FAILED (see warnings above)")
+            logger.info("  SOME EXIT CRITERIA FAILED (see warnings above)")
 
     elapsed = time.time() - t_start
     logger.info(f"\n  Pipeline complete in {elapsed:.1f}s")
@@ -1779,6 +1848,28 @@ def run_conformal_evaluation(
 # ───────────────────────────────────────────────────────────────────
 # Audit Report Generation
 # ───────────────────────────────────────────────────────────────────
+def _format_optional_number(value: Any, digits: int = 6) -> str:
+    """Format a finite audit value without raising on missing evidence."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "unavailable"
+    if not math.isfinite(number):
+        return "unavailable"
+    return f"{number:.{digits}f}"
+
+
+def _format_audit_interval(value: Any) -> str:
+    """Format a two-sided confidence interval for the Markdown audit."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return "unavailable"
+    lower = _format_optional_number(value[0])
+    upper = _format_optional_number(value[1])
+    if "unavailable" in {lower, upper}:
+        return "unavailable"
+    return f"[{lower}, {upper}]"
+
+
 def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
     """Generate a comprehensive markdown audit report.
 
@@ -1790,6 +1881,25 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
     metrics = results["point_forecast_metrics"]
     skill = results["skill_scores"]
     coverage = results["coverage_results"]
+    significance = results.get("statistical_significance", {})
+    gate = results.get("forecasting_gate")
+    if not isinstance(gate, dict):
+        gate = assess_forecasting_gate(
+            skill.get("crpss_vs_ha"), significance
+        ).as_dict()
+    selection = results.get("calibrator_selection")
+    if not isinstance(selection, dict):
+        selection = select_best_calibrator(
+            coverage,
+            alpha=float(meta.get("alpha", ALPHA_DEFAULT)),
+            max_disparity=COVERAGE_DISPARITY_THRESHOLD,
+            max_abstention=DEFAULT_MAX_ABSTENTION,
+        ).as_dict()
+
+    gate_passed = bool(gate.get("passed", False))
+    gate_status = "PASS" if gate_passed else "FAIL"
+    selection_method = selection.get("selected_method")
+    selection_rule = selection.get("selection_rule", "unavailable")
 
     lines = [
         f"# CIVIC-SAFE Conformal Prediction Audit Report",
@@ -1821,15 +1931,40 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
         f"| CRPSS vs Seasonal Naive | {skill.get('crpss_vs_seasonal_naive', skill.get('crpss', 0)):+.4f} |",
         f"| **CRPSS (min over naive family)** | **{skill.get('crpss', 0):+.4f}** |",
         f"| Binding baseline | {skill.get('crpss_binding_baseline', 'N/A')} |",
-        f"| Threshold (≥0.10 vs ALL naive) | {'✓ PASS' if skill['crpss_passes_threshold'] else '✗ FAIL'} |",
+        f"| Forecasting claim gate | **{gate_status}** |",
+        f"",
+        f"## Forecasting Claim Gate",
+        f"",
+        f"| Evidence | Value |",
+        f"|----------|-------|",
+        f"| Rule | {gate.get('rule', 'unavailable')} |",
+        f"| CRPSS vs rolling HA | {_format_optional_number(gate.get('crpss_ha'))} |",
+        f"| DM statistic | {_format_optional_number(gate.get('dm_stat'))} |",
+        f"| DM p-value | {_format_optional_number(gate.get('dm_p_value'))} |",
+        f"| DM 95% CI | {_format_audit_interval(gate.get('dm_ci'))} |",
+        f"| Block-bootstrap p-value | {_format_optional_number(gate.get('bootstrap_p_value'))} |",
+        f"| Block-bootstrap 95% CI | {_format_audit_interval(gate.get('bootstrap_ci'))} |",
+        f"| **Decision** | **{gate_status}** |",
+        f"",
+        f"## Calibrator Selection",
+        f"",
+        f"**Rule:** {selection_rule}  ",
+        f"**Selected method:** `{selection_method or 'none'}`  ",
+        f"**Fallback used:** {bool(selection.get('fallback_used', False))}  ",
         f"",
         f"## Coverage Results by Calibration Method",
         f"",
     ]
 
     # Table header
-    lines.append(f"| Method | Marginal Coverage | Target | Mean Width | Disparity |")
-    lines.append(f"|--------|:-----------------:|:------:|:----------:|:---------:|")
+    lines.append(
+        "| Method | Marginal Coverage | Target | Mean Width | "
+        "Demographic Disparity | Abstention | Policy Status |"
+    )
+    lines.append(
+        "|--------|:-----------------:|:------:|:----------:|"
+        ":---------------------:|:----------:|---------------|"
+    )
 
     for method, cov in coverage.items():
         if isinstance(cov, dict) and "marginal_coverage" in cov:
@@ -1837,40 +1972,35 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
             target = cov["target_coverage"]
             width = cov["mean_width"]
             disp = cov.get("coverage_disparity", 0)
-            pass_mark = "✓" if abs(mc - target) < 0.01 else "⚠"
+            abstention = cov.get("abstention_rate", 0.0)
+            eligible_methods = selection.get("eligible_methods", [])
+            reasons = selection.get("rejected_reasons", {}).get(method, [])
+            if method in eligible_methods:
+                policy_status = "eligible"
+            elif reasons:
+                policy_status = "; ".join(str(reason) for reason in reasons)
+            else:
+                policy_status = "not comparable"
+            if method == selection_method:
+                selected_label = "selected fallback" if selection.get("fallback_used") else "selected"
+                policy_status = f"{selected_label}; {policy_status}"
             lines.append(
-                f"| {method} | {pass_mark} {mc:.4f} | {target:.2f} | {width:.2f} | {disp:.4f} |"
+                f"| {method} | {mc:.4f} | {target:.2f} | {width:.2f} | "
+                f"{disp:.4f} | {abstention:.2%} | {policy_status} |"
             )
         elif isinstance(cov, dict) and "error" in cov:
-            lines.append(f"| {method} | ERROR | - | - | - |")
+            lines.append(f"| {method} | ERROR | - | - | - | - | error |")
 
     lines.append("")
 
-    # Per-category breakdown for best method.
-    # Must use the SAME rule as the exit-criteria check (min width subject to
-    # coverage >= 1-alpha), otherwise the markdown report advertises a different
-    # "best calibrator" than the console summary.
-    _alpha = results.get("metadata", {}).get("alpha", 0.1)
-    _floor = 1.0 - _alpha - 0.01
-    _cands = {
-        m: c for m, c in coverage.items()
-        if isinstance(c, dict) and "marginal_coverage" in c
-    }
-    _valid = {
-        m: c for m, c in _cands.items() if c["marginal_coverage"] >= _floor
-    }
-    if _valid:
-        best_method = min(
-            _valid, key=lambda m: _valid[m].get("mean_width", float("inf"))
-        )
-    elif _cands:
-        best_method = min(
-            _cands,
-            key=lambda m: abs(_cands[m]["marginal_coverage"] - (1.0 - _alpha)),
-        )
-    else:
-        best_method = None
-    best_cov_val = _cands[best_method]["marginal_coverage"] if best_method else 0.0
+    # The report consumes the persisted centralized decision; it never reruns a
+    # second, potentially divergent selection rule.
+    best_method = selection_method if isinstance(selection_method, str) else None
+    best_cov_val = (
+        coverage[best_method]["marginal_coverage"]
+        if best_method and best_method in coverage
+        else 0.0
+    )
 
     if best_method and "per_category" in coverage[best_method]:
         lines.append(f"### Per-Category Coverage ({best_method})")
@@ -1896,6 +2026,21 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
             )
         lines.append("")
 
+    if best_method and best_method in coverage:
+        selected_cov = coverage[best_method]
+        selection_sentence = (
+            f"The selected calibrator ({best_method}) achieves "
+            f"{best_cov_val:.1%} marginal coverage with mean prediction "
+            f"interval width {selected_cov['mean_width']:.2f} counts and a "
+            "maximum cross-group coverage disparity of "
+            f"{selected_cov.get('coverage_disparity', 0):.4f}."
+        )
+    else:
+        selection_sentence = (
+            "No calibrator was selected because every method was fundamentally "
+            "incomparable under the pre-specified policy."
+        )
+
     # Paper-ready paragraph
     lines.extend([
         f"## Methods Paragraph (Paper-Ready)",
@@ -1911,11 +2056,8 @@ def _generate_audit_report(results: dict[str, Any], output_path: Path) -> None:
         f"temporal non-exchangeability, we additionally implement Adaptive Conformal ",
         f"Inference (ACI; Gibbs & Candès, 2021) with per-demographic-quartile tracking, ",
         f"achieving asymptotic conditional coverage $P(Y \\in C(X) | G=g) \\to 1-\\alpha$ ",
-        f"for each income quartile $g$. On the 2023 test set ({meta['test_set_size']} windows), ",
-        f"the best calibrator ({best_method}) achieves {best_cov_val:.1%} marginal ",
-        f"coverage with mean prediction interval width {coverage[best_method]['mean_width']:.2f} ",
-        f"counts and a maximum cross-group coverage disparity of ",
-        f"{coverage[best_method].get('coverage_disparity', 0):.4f}.",
+        f"for each income quartile $g$. On the 2023 test set "
+        f"({meta['test_set_size']} windows), {selection_sentence}",
         f"",
         f"## Ablation TODO Registry (Table 2)",
         f"",
@@ -1992,11 +2134,23 @@ def main() -> None:
 
     # Final summary
     skill = results["skill_scores"]
+    gate = results.get("forecasting_gate", {})
+    selection = results.get("calibrator_selection", {})
     logger.info("\n" + "=" * 70)
     logger.info("  FINAL SUMMARY")
     logger.info("=" * 70)
     logger.info(f"  CRPSS vs HA: {skill.get('crpss_vs_ha', skill['crpss']):.4f}")
     logger.info(f"  CRPSS vs Seasonal Naive: {skill.get('crpss_vs_seasonal_naive', skill['crpss']):.4f}")
+    logger.info(
+        f"  Forecasting gate: {'PASS' if gate.get('passed') else 'FAIL'} | "
+        f"DM={_format_optional_number(gate.get('dm_stat'))}, "
+        f"DM p={_format_optional_number(gate.get('dm_p_value'))}, "
+        f"bootstrap p={_format_optional_number(gate.get('bootstrap_p_value'))}"
+    )
+    logger.info(
+        f"  Selected calibrator: {selection.get('selected_method', 'none')} | "
+        f"fallback={bool(selection.get('fallback_used', False))}"
+    )
     for method, cov in results["coverage_results"].items():
         if isinstance(cov, dict) and "marginal_coverage" in cov:
             logger.info(

@@ -32,6 +32,12 @@ from civicsafe.calibration.metrics import (
     picp,
     winkler_score,
 )
+from civicsafe.calibration.policies import (
+    CalibratorSelection,
+    ForecastingGate,
+    assess_forecasting_gate,
+    select_best_calibrator,
+)
 from civicsafe.calibration.zinb_distribution import (
     zinb_cdf,
     zinb_cdf_full,
@@ -39,7 +45,7 @@ from civicsafe.calibration.zinb_distribution import (
     zinb_ppf_pair,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by public API category
     # Calibrators
     "SplitConformalCalibrator",
     "WeightedConformalCalibrator",
@@ -61,4 +67,9 @@ __all__ = [
     "conditional_coverage",
     "coverage_gap",
     "compute_all_calibration_metrics",
+    # Decision policies
+    "CalibratorSelection",
+    "ForecastingGate",
+    "select_best_calibrator",
+    "assess_forecasting_gate",
 ]

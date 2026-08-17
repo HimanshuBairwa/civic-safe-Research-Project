@@ -6,12 +6,12 @@ and conformal calibration JSON to produce publication-ready LaTeX
 booktabs tables for the CIVIC-SAFE paper.
 
 Tables generated:
-  Table 1: Main results — CIVIC-SAFE vs baselines (per city)
-  Table 2: Component ablation — removing GATv2, EMOS, recalibration, r-reg
-  Table 3: Conformal method comparison — coverage, width, disparity
-  Table 4: Fairness audit — ECRC coverage by demographic group
-
-Additionally computes ensemble size ablation (K = 1, 3, 5 seeds).
+  Table 1: Main benchmark — accuracy, CRPSS vs HA, DM significance
+  Table 2: Conformal prediction and fairness comparison
+  Table 3: Hersbach CRPS decomposition and uncertainty attribution
+  Table 4: Component ablation
+  Table 5: Loss-function ablation
+  Table 6: Ensemble-size ablation
 
 Usage:
     python scripts/ablation_study.py --data chicago
@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
+import math
 from pathlib import Path
 from typing import Any
 
@@ -40,8 +40,14 @@ DEFAULT_RESULTS_DIR = PROJECT_ROOT / "outputs"
 TABLE_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "tables"
 
 # Metrics columns used across tables
-MAIN_METRICS = ["CRPS", "MAE", "RMSE", "Brier"]
-CONFORMAL_METRICS = ["Coverage", "Width", "Disparity"]
+MAIN_METRICS = ["CRPS", "MAE", "RMSE", "CRPSS vs HA", r"DM $p$-value"]
+CONFORMAL_METRICS = [
+    r"Marginal Coverage (\%)",
+    "Interval Width",
+    r"Demographic Disparity ($\Delta_{\mathrm{dem}}\alpha$)",
+    r"Category Disparity ($\Delta_{\mathrm{cat}}\alpha$)",
+    r"Abstention Rate (\%)",
+]
 
 # Number formatting: 4 decimal places for CRPS/MAE/RMSE, 2 for percentages
 FMT_4 = ".4f"
@@ -57,15 +63,148 @@ def _load_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         logger.warning(f"File not found, skipping: {path}")
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return data if isinstance(data, dict) else None
 
 
 def _fmt(value: float | None, fmt: str = FMT_4, missing: str = "--") -> str:
     """Format a numeric value, returning *missing* sentinel for None / NaN."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if value is None:
         return missing
-    return f"{value:{fmt}}"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return missing
+    if not math.isfinite(number):
+        return missing
+    return f"{number:{fmt}}"
+
+
+def _significance_stars(p_value: float | None) -> str:
+    """Return publication significance stars for a two-sided p-value."""
+    if p_value is None:
+        return ""
+    try:
+        p = float(p_value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(p):
+        return ""
+    if p < 0.001:
+        return r"^{***}"
+    if p < 0.01:
+        return r"^{**}"
+    if p < 0.05:
+        return r"^{*}"
+    return ""
+
+
+def _fmt_p_value(p_value: float | None, missing: str = "--") -> str:
+    """Format a p-value and append the conventional significance stars."""
+    if p_value is None:
+        return missing
+    try:
+        p = float(p_value)
+    except (TypeError, ValueError):
+        return missing
+    if not math.isfinite(p):
+        return missing
+    value = "<0.0001" if p < 0.0001 else f"{p:.4f}"
+    return rf"${value}{_significance_stars(p)}$"
+
+
+def _finite_number(value: Any) -> float | None:
+    """Coerce nested JSON values to finite floats."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _nested_mapping(value: Any) -> dict[str, Any]:
+    """Return a JSON object as a mutable plain mapping, otherwise empty."""
+    return value if isinstance(value, dict) else {}
+
+
+def _first_finite_number(
+    values: dict[str, Any], *keys: str
+) -> float | None:
+    """Return the first finite number available under *keys*."""
+    for key in keys:
+        number = _finite_number(values.get(key))
+        if number is not None:
+            return number
+    return None
+
+
+def _is_historical_average(name: str) -> bool:
+    """Recognize common labels for the rolling historical-average baseline."""
+    normalized = " ".join(name.lower().replace("_", " ").split())
+    return normalized == "ha" or "historical average" in normalized
+
+
+def _category_disparity(metrics: dict[str, Any]) -> float | None:
+    """Derive max-minus-min category coverage disparity from saved JSON."""
+    explicit = _finite_number(metrics.get("category_disparity"))
+    if explicit is not None:
+        return explicit
+    per_category = _nested_mapping(metrics.get("per_category"))
+    coverages = [
+        number
+        for entry in per_category.values()
+        if isinstance(entry, dict)
+        for number in [_finite_number(entry.get("coverage"))]
+        if number is not None
+    ]
+    return max(coverages) - min(coverages) if len(coverages) >= 2 else None
+
+
+def _model_metric_source(
+    model_results: dict[str, Any] | None,
+    conformal_results: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Prefer the conformal JSON metrics, with evaluation JSON as fallback."""
+    if conformal_results is not None:
+        metrics = conformal_results.get("point_forecast_metrics")
+        if isinstance(metrics, dict):
+            return metrics
+    if model_results is not None:
+        overall = model_results.get("overall", model_results)
+        if isinstance(overall, dict):
+            return overall
+    return {}
+
+
+def _significance_source(conformal_results: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the nested forecast-comparison result from either JSON schema."""
+    if conformal_results is None:
+        return {}
+    value = conformal_results.get("statistical_significance")
+    if isinstance(value, dict):
+        return value
+    value = conformal_results.get("significance")
+    return value if isinstance(value, dict) else {}
+
+
+def _crpss_vs_ha(
+    metrics: dict[str, Any],
+    conformal_results: dict[str, Any] | None,
+    ha_crps: float | None,
+) -> float | None:
+    """Extract or calculate CRPSS against the rolling historical average."""
+    if conformal_results is not None:
+        skill = conformal_results.get("skill_scores")
+        if isinstance(skill, dict):
+            direct = _finite_number(skill.get("crpss_vs_ha"))
+            if direct is not None:
+                return direct
+    crps = _finite_number(metrics.get("crps"))
+    baseline = _finite_number(ha_crps)
+    if crps is None or baseline is None or baseline <= 0.0:
+        return None
+    return 1.0 - (crps / baseline)
 
 
 def _fmt_pm(
@@ -96,7 +235,9 @@ def _mean_of(cell: str) -> float | None:
     if not cell or cell == "--":
         return None
     head = cell.split("$\\pm$")[0].split("±")[0]
-    head = head.replace(r"\textbf{", "").replace("}", "").strip()
+    head = head.replace(r"\textbf{", "").strip()
+    head = head.replace("$", "").split("^{", maxsplit=1)[0]
+    head = head.lstrip("<").rstrip("}").strip()
     try:
         return float(head)
     except ValueError:
@@ -153,6 +294,8 @@ def _build_booktabs_table(
     headers: list[str],
     rows: list[dict[str, str]],
     name_key: str = "name",
+    name_header: str = "",
+    note: str | None = None,
 ) -> str:
     """Assemble a complete LaTeX booktabs table string.
 
@@ -162,6 +305,8 @@ def _build_booktabs_table(
         headers: Column header names (excluding the row-name column).
         rows: List of dicts, each with *name_key* and each header as keys.
         name_key: Key in each row dict that holds the row label text.
+        name_header: Optional heading for the row-name column.
+        note: Optional full-width note rendered beneath the data rows.
 
     Returns:
         Complete LaTeX table string.
@@ -180,7 +325,8 @@ def _build_booktabs_table(
 
     # Header row
     header_cells = " & ".join(rf"\textbf{{{h}}}" for h in headers)
-    lines.append(rf"    & {header_cells} \\")
+    name_cell = rf"\textbf{{{name_header}}}" if name_header else ""
+    lines.append(rf"    {name_cell} & {header_cells} \\")
     lines.append(r"    \midrule")
 
     # Data rows
@@ -189,11 +335,19 @@ def _build_booktabs_table(
         cells = " & ".join(row.get(h, "--") for h in headers)
         lines.append(f"    {name} & {cells} \\\\")
 
-    lines.extend([
-        r"    \bottomrule",
-        r"  \end{tabular}",
-        r"\end{table}",
-    ])
+    if note:
+        lines.append(r"    \midrule")
+        lines.append(
+            rf"    \multicolumn{{{n_cols}}}{{l}}{{\footnotesize {note}}} \\"
+        )
+
+    lines.extend(
+        [
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"\end{table}",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -214,32 +368,57 @@ def load_model_results(results_dir: Path, city: str) -> dict[str, Any] | None:
     return _load_json(path)
 
 
-def load_baseline_results(results_dir: Path, city: str) -> dict[str, dict[str, float]] | None:
-    """Load baseline results CSV as {model_name: {metric: value}}.
+def load_baseline_results(
+    results_dir: Path, city: str
+) -> dict[str, dict[str, float]] | None:
+    """Load classical and deep baselines into one normalized mapping.
 
-    baselines.py writes outputs/baselines/{city}_baselines.csv with columns
-    (crps, mae, rmse) indexed by model name.
+    Multi-seed deep-baseline aggregates take precedence over the canonical
+    single-run JSON when both are available.
     """
     import csv
 
-    csv_path = results_dir / "baselines" / f"{city}_baselines.csv"
-    if not csv_path.exists():
-        logger.warning(f"Baseline CSV not found: {csv_path}")
-        return None
-
     results: dict[str, dict[str, float]] = {}
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = row.get("Model") or row.get("")  # pandas index col
-            if name is None:
-                continue
-            results[name] = {}
-            for key in ("crps", "mae", "rmse"):
-                try:
-                    results[name][key] = float(row[key])
-                except (KeyError, ValueError, TypeError):
-                    results[name][key] = float("nan")
+    csv_path = results_dir / "baselines" / f"{city}_baselines.csv"
+    if csv_path.exists():
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                name = row.get("Model") or row.get("")
+                if name is None:
+                    continue
+                results[name] = {}
+                for key in ("crps", "mae", "rmse"):
+                    value = _finite_number(row.get(key))
+                    if value is not None:
+                        results[name][key] = value
+    else:
+        logger.warning(f"Baseline CSV not found: {csv_path}")
+
+    baselines_dir = results_dir / "baselines"
+    aggregate_path = baselines_dir / f"{city}_seed_matched.json"
+    canonical_path = baselines_dir / f"{city}_deep_baselines.json"
+    deep_models: dict[str, Any] = {}
+    if aggregate_path.exists():
+        aggregate = _load_json(aggregate_path)
+        if aggregate is not None:
+            deep_models = _nested_mapping(aggregate.get("baselines"))
+    elif canonical_path.exists():
+        canonical = _load_json(canonical_path)
+        if canonical is not None:
+            deep_models = canonical
+
+    for name, raw_metrics in deep_models.items():
+        if name.startswith("_") or not isinstance(raw_metrics, dict):
+            continue
+        metrics: dict[str, float] = {}
+        for key in ("crps", "mae", "rmse"):
+            value = _finite_number(raw_metrics.get(key))
+            if value is not None:
+                metrics[key] = value
+        if metrics:
+            results[name] = metrics
+
     return results if results else None
 
 
@@ -263,95 +442,186 @@ def generate_main_results_table(
     nyc_results: dict[str, Any] | None = None,
     chicago_baselines: dict[str, dict[str, float]] | None = None,
     nyc_baselines: dict[str, dict[str, float]] | None = None,
+    chicago_conformal: dict[str, Any] | None = None,
+    nyc_conformal: dict[str, Any] | None = None,
 ) -> str:
-    """Generate Table 1: Main results comparing CIVIC-SAFE vs baselines.
-
-    Returns LaTeX string for a booktabs table.  When both cities are
-    provided, a combined table with a \\midrule separator is produced.
-    """
-    headers = ["CRPS", "MAE", "RMSE", "Brier"]
-    lower_is_better = {h: True for h in headers}
-
+    """Generate the benchmark table with CRPSS and DM significance."""
+    headers = list(MAIN_METRICS)
+    lower_is_better = {
+        "CRPS": True,
+        "MAE": True,
+        "RMSE": True,
+        "CRPSS vs HA": False,
+        r"DM $p$-value": True,
+    }
+    city_specs = [
+        (
+            "Chicago",
+            chicago_results,
+            chicago_baselines,
+            chicago_conformal,
+        ),
+        ("NYC", nyc_results, nyc_baselines, nyc_conformal),
+    ]
     all_rows: list[dict[str, str]] = []
+    include_city_separators = (
+        sum(
+            result is not None or baseline is not None or conformal is not None
+            for _, result, baseline, conformal in city_specs
+        )
+        > 1
+    )
 
-    for city, model_res, base_res in [
-        ("Chicago", chicago_results, chicago_baselines),
-        ("NYC", nyc_results, nyc_baselines),
-    ]:
-        if model_res is None and base_res is None:
+    for city, model_res, baseline_res, conformal_res in city_specs:
+        if model_res is None and baseline_res is None and conformal_res is None:
             continue
 
         city_rows: list[dict[str, str]] = []
+        conformal_skill = _nested_mapping(
+            conformal_res.get("skill_scores") if conformal_res else None
+        )
+        ha_from_csv = (
+            baseline_res.get("HA", {}).get("crps")
+            if baseline_res and isinstance(baseline_res.get("HA"), dict)
+            else None
+        )
+        ha_crps = _finite_number(
+            ha_from_csv
+            if ha_from_csv is not None
+            else conformal_skill.get("baseline_crps_ha")
+        )
+        ha_mae = _first_finite_number(
+            conformal_skill,
+            "baseline_mae_ha",
+            "baseline_ha_mae",
+            "ha_mae",
+        )
+        ha_rmse = _first_finite_number(
+            conformal_skill,
+            "baseline_rmse_ha",
+            "baseline_ha_rmse",
+            "ha_rmse",
+        )
 
-        # Baselines
-        if base_res is not None:
-            for bname, bmetrics in base_res.items():
-                city_rows.append({
-                    "name": _latex_escape(bname),
-                    "CRPS": _fmt(bmetrics.get("crps")),
-                    "MAE": _fmt(bmetrics.get("mae")),
-                    "RMSE": _fmt(bmetrics.get("rmse")),
-                    "Brier": "--",
-                })
+        has_ha_row = False
+        if baseline_res is not None:
+            for baseline_name, baseline_metrics in baseline_res.items():
+                metrics = (
+                    baseline_metrics
+                    if isinstance(baseline_metrics, dict)
+                    else {}
+                )
+                is_ha = _is_historical_average(baseline_name)
+                has_ha_row = has_ha_row or is_ha
+                crps = _finite_number(metrics.get("crps"))
+                mae = _finite_number(metrics.get("mae"))
+                rmse = _finite_number(metrics.get("rmse"))
+                if is_ha:
+                    crps = crps if crps is not None else ha_crps
+                    mae = mae if mae is not None else ha_mae
+                    rmse = rmse if rmse is not None else ha_rmse
+                city_rows.append(
+                    {
+                        "name": _latex_escape(baseline_name),
+                        "CRPS": _fmt(crps),
+                        "MAE": _fmt(mae),
+                        "RMSE": _fmt(rmse),
+                        "CRPSS vs HA": _fmt(
+                            0.0
+                            if is_ha and crps is not None
+                            else _crpss_vs_ha(metrics, None, ha_crps),
+                            "+.4f",
+                        ),
+                        r"DM $p$-value": "--",
+                    }
+                )
 
-        # CIVIC-SAFE model
-        if model_res is not None:
-            overall = model_res.get("overall", {})
-            city_rows.append({
-                "name": r"\textsc{Civic-Safe} (Ours)",
-                "CRPS": _fmt(overall.get("crps")),
-                "MAE": _fmt(overall.get("mae")),
-                "RMSE": _fmt(overall.get("rmse")),
-                "Brier": _fmt(overall.get("brier_zero")),
-            })
+        if not has_ha_row and ha_crps is not None:
+            city_rows.append(
+                {
+                    "name": "Historical Average (HA)",
+                    "CRPS": _fmt(ha_crps),
+                    "MAE": _fmt(ha_mae),
+                    "RMSE": _fmt(ha_rmse),
+                    "CRPSS vs HA": _fmt(0.0, "+.4f"),
+                    r"DM $p$-value": "--",
+                }
+            )
 
-        # Bold best per column within this city block
+        model_metrics = _model_metric_source(model_res, conformal_res)
+        if model_metrics:
+            significance = _significance_source(conformal_res)
+            dm = _nested_mapping(significance.get("dm"))
+            dm_p = _finite_number(dm.get("p_value"))
+            civic_crpss = _crpss_vs_ha(model_metrics, conformal_res, ha_crps)
+            city_rows.append(
+                {
+                    "name": r"\textsc{Civic-Safe} (Ours)",
+                    "CRPS": _fmt(model_metrics.get("crps")),
+                    "MAE": _fmt(model_metrics.get("mae")),
+                    "RMSE": _fmt(model_metrics.get("rmse")),
+                    "CRPSS vs HA": _fmt(civic_crpss, "+.4f"),
+                    r"DM $p$-value": _fmt_p_value(dm_p),
+                }
+            )
+
         _bold_best_column(city_rows, headers, lower_is_better)
-
-        # Add city header as a multicolumn separator if we have both cities
-        if chicago_results is not None and nyc_results is not None:
-            all_rows.append({"name": rf"\multicolumn{{5}}{{l}}{{\textit{{{city}}}}}", "_separator": "true"})
-
+        if include_city_separators:
+            all_rows.append(
+                {
+                    "name": (
+                        rf"\multicolumn{{{len(headers) + 1}}}{{l}}"
+                        rf"{{\textit{{{city}}}}}"
+                    ),
+                    "_separator": "true",
+                }
+            )
         all_rows.extend(city_rows)
 
-    # Manually build table to support multicolumn separators
     col_spec = "l" + " r" * len(headers)
-    header_cells = " & ".join(rf"\textbf{{{h}}}" for h in headers)
-
+    header_cells = " & ".join(
+        rf"\textbf{{{header}}}" for header in headers
+    )
     lines = [
         r"\begin{table}[htbp]",
         r"  \centering",
-        r"  \caption{Main results: CIVIC-SAFE vs.\ baselines on test set (2023, rolling one-step-ahead).}",
+        r"  \caption{Main spatiotemporal benchmark on the 2023 test set.}",
         r"  \label{tab:main_results}",
         rf"  \begin{{tabular}}{{{col_spec}}}",
         r"    \toprule",
-        rf"    & {header_cells} \\",
+        rf"    \textbf{{Method}} & {header_cells} \\",
         r"    \midrule",
     ]
-
+    rendered_data_row = False
     for row in all_rows:
         if "_separator" in row:
-            lines.append(r"    \midrule")
+            if rendered_data_row:
+                lines.append(r"    \midrule")
             lines.append(f"    {row['name']} \\\\")
             lines.append(r"    \midrule")
         else:
-            cells = " & ".join(row.get(h, "--") for h in headers)
+            cells = " & ".join(row.get(header, "--") for header in headers)
             lines.append(f"    {row['name']} & {cells} \\\\")
-
-    lines.extend([
-        r"    \bottomrule",
-        r"  \end{tabular}",
-        r"\end{table}",
-    ])
-
+            rendered_data_row = True
+    lines.extend(
+        [
+            r"    \midrule",
+            (
+                r"    \multicolumn{6}{l}{\footnotesize "
+                r"$^*p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$.} \\"
+            ),
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"\end{table}",
+        ]
+    )
     return "\n".join(lines)
 
 
-# ───────────────────────────────────────────────────────────────────
-# Table 2: Component Ablation
+# Table 4: Component Ablation
 # ───────────────────────────────────────────────────────────────────
 def generate_ablation_table(results: dict[str, Any] | None = None) -> str:
-    """Generate Table 2: Component ablation study.
+    """Generate Table 4: Component ablation study.
 
     Expected *results* dict structure::
 
@@ -418,82 +688,265 @@ def generate_ablation_table(results: dict[str, Any] | None = None) -> str:
 # ───────────────────────────────────────────────────────────────────
 # Table 3: Conformal Method Comparison
 # ───────────────────────────────────────────────────────────────────
-def generate_conformal_table(results: dict[str, Any] | None = None) -> str:
-    """Generate Table 3: Conformal calibration methods comparison.
+def generate_conformal_table(
+    results: dict[str, Any] | None = None,
+    *,
+    chicago_results: dict[str, Any] | None = None,
+    nyc_results: dict[str, Any] | None = None,
+) -> str:
+    """Generate the conformal calibration and fairness comparison table."""
+    (
+        coverage_header,
+        width_header,
+        demographic_header,
+        category_header,
+        abstention_header,
+    ) = CONFORMAL_METRICS
+    headers = list(CONFORMAL_METRICS)
+    methods = [
+        ("split_cp", ("split_cp",), "Split CP"),
+        (
+            "randomized_split_cp",
+            ("randomized_split_cp",),
+            "Randomized Split CP",
+        ),
+        ("weighted_cp", ("weighted_cp",), "Weighted CP"),
+        (
+            "mondrian",
+            ("mondrian_demo_x_category", "mondrian", "mondrian_category"),
+            "Mondrian",
+        ),
+        (
+            "equalized_coverage",
+            ("equalized_coverage",),
+            "Equalized Coverage",
+        ),
+        ("ecrc", ("ecrc",), r"\textsc{ECRC}"),
+        (
+            "adaptive_ecrc",
+            ("adaptive_ecrc_rolling", "adaptive_ecrc"),
+            "Adaptive ECRC",
+        ),
+    ]
 
-    Reads *coverage_results* from the conformal evaluation JSON and
-    formats coverage, mean interval width, and coverage disparity.
-
-    Returns LaTeX string for a booktabs table.
-    """
-    headers = ["Coverage (\\%)", "Width", "Disparity"]
-    # Coverage: closer to target is better → we treat higher (≥ target) as better
-    # Width: narrower is better → lower is better
-    # Disparity: lower is better
-    lower_is_better = {"Coverage (\\%)": False, "Width": True, "Disparity": True}
-
-    method_display = {
-        "split_cp": "Split CP",
-        "randomized_split_cp": "Split CP (randomized PIT)",
-        "weighted_cp": "Weighted CP",
-        "mondrian": "Mondrian CP",
-        "mondrian_category": "Mondrian CP (category)",
-        "mondrian_demo_x_category": r"Mondrian CP (demo $\times$ category)",
-        "equalized_coverage": "Equalized CP",
-        "ecrc": r"\textsc{ECRC} (Ours)",
-        "adaptive_ecrc": "Adaptive ECRC",
-        "adaptive_ecrc_rolling": "Adaptive ECRC (rolling)",
-    }
-
-    rows: list[dict[str, str]] = []
-
-    if results is not None:
-        coverage_data = results.get("coverage_results", {})
-        for method_key, display in method_display.items():
-            m = coverage_data.get(method_key)
-            if m is None:
-                rows.append({
-                    "name": display,
-                    "Coverage (\\%)": "--",
-                    "Width": "--",
-                    "Disparity": "--",
-                })
-                continue
-
-            cov = m.get("marginal_coverage")
-            width = m.get("mean_width")
-            disparity = m.get("coverage_disparity")
-
-            rows.append({
-                "name": display,
-                "Coverage (\\%)": _fmt(cov * 100 if cov is not None else None, FMT_PCT),
-                "Width": _fmt(width, FMT_2),
-                "Disparity": _fmt(disparity, FMT_4),
-            })
+    if chicago_results is not None or nyc_results is not None:
+        city_specs = [
+            ("Chicago", chicago_results),
+            ("NYC", nyc_results),
+        ]
+    elif results is not None and "coverage_results" in results:
+        dataset = str(
+            _nested_mapping(results.get("metadata")).get("dataset", "Results")
+        )
+        display = "NYC" if dataset.lower() == "nyc" else dataset.title()
+        city_specs = [(display, results)]
+    elif results is not None:
+        city_specs = [
+            ("Chicago", results.get("chicago")),
+            ("NYC", results.get("nyc")),
+        ]
     else:
-        for display in method_display.values():
-            rows.append({
-                "name": display,
-                "Coverage (\\%)": "--",
-                "Width": "--",
-                "Disparity": "--",
-            })
+        city_specs = [("Results", None)]
 
-    _bold_best_column(rows, headers, lower_is_better)
+    city_specs = [
+        (city, city_result)
+        for city, city_result in city_specs
+        if city_result is not None
+    ] or [("Results", None)]
+    include_city_separators = len(city_specs) > 1
+    all_rows: list[dict[str, str]] = []
+
+    for city, city_result in city_specs:
+        coverage_data = _nested_mapping(
+            city_result.get("coverage_results") if city_result else None
+        )
+        city_rows: list[dict[str, str]] = []
+        for _, aliases, display in methods:
+            method_metrics: dict[str, Any] = {}
+            for alias in aliases:
+                candidate = coverage_data.get(alias)
+                if isinstance(candidate, dict):
+                    method_metrics = candidate
+                    break
+            coverage_value = _finite_number(
+                method_metrics.get("marginal_coverage")
+            )
+            abstention = (
+                _finite_number(method_metrics.get("abstention_rate", 0.0))
+                if method_metrics
+                else None
+            )
+            city_rows.append(
+                {
+                    "name": display,
+                    coverage_header: _fmt(
+                        coverage_value * 100.0
+                        if coverage_value is not None
+                        else None,
+                        FMT_PCT,
+                    ),
+                    width_header: _fmt(
+                        _finite_number(method_metrics.get("mean_width")),
+                        FMT_2,
+                    ),
+                    demographic_header: _fmt(
+                        _finite_number(
+                            method_metrics.get("coverage_disparity")
+                        ),
+                        FMT_4,
+                    ),
+                    category_header: _fmt(
+                        _category_disparity(method_metrics), FMT_4
+                    ),
+                    abstention_header: _fmt(
+                        abstention * 100.0 if abstention is not None else None,
+                        FMT_PCT,
+                    ),
+                }
+            )
+
+        if include_city_separators:
+            all_rows.append(
+                {
+                    "name": (
+                        rf"\multicolumn{{{len(headers) + 1}}}{{l}}"
+                        rf"{{\textit{{{city}}}}}"
+                    ),
+                    "_separator": "true",
+                }
+            )
+        all_rows.extend(city_rows)
+
+    col_spec = "l" + " r" * len(headers)
+    header_cells = " & ".join(
+        rf"\textbf{{{header}}}" for header in headers
+    )
+    lines = [
+        r"\begin{table*}[htbp]",
+        r"  \centering",
+        (
+            r"  \caption{Conformal prediction efficiency and fairness "
+            r"on the 2023 test set.}"
+        ),
+        r"  \label{tab:conformal_fairness}",
+        rf"  \begin{{tabular}}{{{col_spec}}}",
+        r"    \toprule",
+        rf"    \textbf{{Method}} & {header_cells} \\",
+        r"    \midrule",
+    ]
+    rendered_data_row = False
+    for row in all_rows:
+        if "_separator" in row:
+            if rendered_data_row:
+                lines.append(r"    \midrule")
+            lines.append(f"    {row['name']} \\\\")
+            lines.append(r"    \midrule")
+        else:
+            cells = " & ".join(row.get(header, "--") for header in headers)
+            lines.append(f"    {row['name']} & {cells} \\\\")
+            rendered_data_row = True
+    lines.extend(
+        [
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"\end{table*}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def generate_uncertainty_table(
+    chicago_results: dict[str, Any] | None = None,
+    nyc_results: dict[str, Any] | None = None,
+) -> str:
+    """Generate Hersbach decomposition and variance-source percentages."""
+    headers = [
+        r"REL $\downarrow$",
+        r"RES $\uparrow$",
+        "UNC",
+        r"Epistemic Variance (\%)",
+        r"Aleatoric Variance (\%)",
+    ]
+    rows: list[dict[str, str]] = []
+    for city, result in [
+        ("Chicago", chicago_results),
+        ("NYC", nyc_results),
+    ]:
+        if result is None:
+            continue
+        decomposition = _nested_mapping(result.get("crps_decomposition"))
+        ensemble = _nested_mapping(result.get("ensemble"))
+        epistemic_fraction = _finite_number(
+            ensemble.get("epistemic_fraction")
+        )
+        if epistemic_fraction is None:
+            epistemic = _finite_number(
+                ensemble.get("epistemic_uncertainty")
+            )
+            aleatoric = _finite_number(
+                ensemble.get("aleatoric_uncertainty")
+            )
+            if epistemic is not None and aleatoric is not None:
+                total = epistemic + aleatoric
+                if total > 0.0:
+                    epistemic_fraction = epistemic / total
+        aleatoric_fraction = (
+            1.0 - epistemic_fraction
+            if epistemic_fraction is not None
+            else None
+        )
+        rows.append(
+            {
+                "name": city,
+                r"REL $\downarrow$": _fmt(
+                    _finite_number(decomposition.get("reliability"))
+                ),
+                r"RES $\uparrow$": _fmt(
+                    _finite_number(decomposition.get("resolution"))
+                ),
+                "UNC": _fmt(
+                    _finite_number(decomposition.get("uncertainty"))
+                ),
+                r"Epistemic Variance (\%)": _fmt(
+                    epistemic_fraction * 100.0
+                    if epistemic_fraction is not None
+                    else None,
+                    FMT_PCT,
+                ),
+                r"Aleatoric Variance (\%)": _fmt(
+                    aleatoric_fraction * 100.0
+                    if aleatoric_fraction is not None
+                    else None,
+                    FMT_PCT,
+                ),
+            }
+        )
+
+    if not rows:
+        rows = [
+            {
+                "name": city,
+                **{header: "--" for header in headers},
+            }
+            for city in ("Chicago", "NYC")
+        ]
 
     return _build_booktabs_table(
         caption=(
-            r"Conformal calibration methods: marginal coverage, "
-            r"mean interval width, and max group coverage disparity. "
-            r"Target coverage is $1-\alpha = 90\%$."
+            r"Hersbach (2000) CRPS decomposition and predictive variance "
+            r"attribution for the five-seed ensemble."
         ),
-        label="tab:conformal",
+        label="tab:uncertainty",
         headers=headers,
         rows=rows,
+        name_header="Dataset",
+        note=(
+            r"REL: reliability; RES: resolution; UNC: climatological "
+            r"uncertainty. Variance shares sum to $100\%$."
+        ),
     )
 
 
-# ───────────────────────────────────────────────────────────────────
 # Table 4: Fairness — ECRC Coverage by Group
 # ───────────────────────────────────────────────────────────────────
 def generate_fairness_table(results: dict[str, Any] | None = None) -> str:
@@ -506,7 +959,6 @@ def generate_fairness_table(results: dict[str, Any] | None = None) -> str:
     Returns LaTeX string for a booktabs table.
     """
     headers = ["Coverage (\\%)", "Width", r"$n$"]
-    lower_is_better = {"Coverage (\\%)": False, "Width": True, r"$n$": False}
 
     rows: list[dict[str, str]] = []
 
@@ -830,14 +1282,12 @@ def run_ablation_study(args: argparse.Namespace) -> None:
     city_model_results: dict[str, Any] = {}
     city_baselines: dict[str, Any] = {}
     city_conformal: dict[str, Any] = {}
-    city_fairness: dict[str, Any] = {}
 
     for city in cities:
         logger.info(f"\n  Loading results for {city}...")
         city_model_results[city] = load_model_results(results_dir, city)
         city_baselines[city] = load_baseline_results(results_dir, city)
         city_conformal[city] = load_conformal_results(results_dir, city)
-        city_fairness[city] = load_fairness_results(results_dir, city)
 
     # Discover ablation-specific results
     logger.info("\n  Discovering ablation-variant results...")
@@ -855,38 +1305,46 @@ def run_ablation_study(args: argparse.Namespace) -> None:
         nyc_results=nyc_res,
         chicago_baselines=chicago_base,
         nyc_baselines=nyc_base,
+        chicago_conformal=city_conformal.get("chicago"),
+        nyc_conformal=city_conformal.get("nyc"),
     )
     _save_table(output_dir / "table1_main_results.tex", table1, "Table 1: Main Results")
 
-    # ── Table 2: Component Ablation ──
-    logger.info("[2/6] Generating Table 2: Component Ablation...")
-    comp_results = ablation_data["component"] if ablation_data["component"] else None
-    table2 = generate_ablation_table(comp_results)
-    _save_table(output_dir / "table2_ablation.tex", table2, "Table 2: Ablation")
+    # ── Table 2: Conformal Prediction and Fairness ──
+    logger.info("[2/6] Generating Table 2: Conformal Prediction and Fairness...")
+    table2 = generate_conformal_table(
+        chicago_results=city_conformal.get("chicago"),
+        nyc_results=city_conformal.get("nyc"),
+    )
+    _save_table(
+        output_dir / "table2_conformal_fairness.tex",
+        table2,
+        "Table 2: Conformal Prediction and Fairness",
+    )
 
-    # ── Table 3: Conformal Method Comparison ──
-    logger.info("[3/6] Generating Table 3: Conformal Methods...")
-    # Use the first city with conformal results
-    conformal_res = None
-    for city in cities:
-        if city_conformal.get(city) is not None:
-            conformal_res = city_conformal[city]
-            break
-    table3 = generate_conformal_table(conformal_res)
-    _save_table(output_dir / "table3_conformal.tex", table3, "Table 3: Conformal")
+    # ── Table 3: Uncertainty Decomposition ──
+    logger.info("[3/6] Generating Table 3: Uncertainty Decomposition...")
+    table3 = generate_uncertainty_table(
+        chicago_results=city_conformal.get("chicago"),
+        nyc_results=city_conformal.get("nyc"),
+    )
+    _save_table(
+        output_dir / "table3_uncertainty.tex",
+        table3,
+        "Table 3: Uncertainty",
+    )
 
-    # ── Table 4: Fairness ──
-    logger.info("[4/6] Generating Table 4: Fairness...")
-    fairness_res = None
-    for city in cities:
-        if city_conformal.get(city) is not None:
-            fairness_res = city_conformal[city]
-            break
-        if city_fairness.get(city) is not None:
-            fairness_res = city_fairness[city]
-            break
-    table4 = generate_fairness_table(fairness_res)
-    _save_table(output_dir / "table4_fairness.tex", table4, "Table 4: Fairness")
+    # ── Table 4: Component Ablation ──
+    logger.info("[4/6] Generating Table 4: Component Ablation...")
+    comp_results = (
+        ablation_data["component"] if ablation_data["component"] else None
+    )
+    table4 = generate_ablation_table(comp_results)
+    _save_table(
+        output_dir / "table4_ablation.tex",
+        table4,
+        "Table 4: Ablation",
+    )
 
     # ── Table 5: Loss Function Ablation ──
     logger.info("[5/6] Generating Table 5: Loss Function Ablation...")
