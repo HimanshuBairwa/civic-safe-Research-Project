@@ -1496,8 +1496,8 @@ def run_conformal_evaluation(
             "checkpoints": [str(checkpoint) for checkpoint in all_ckpts],
             "num_ensemble_seeds": K,
             "weights_source": (
-                requested_weights
-                if requested_weights != "auto"
+                weights
+                if weights != "auto"
                 else "per_seed_validation"
             ),
             "weights_source_per_seed": {
