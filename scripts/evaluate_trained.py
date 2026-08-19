@@ -33,7 +33,12 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
+from civicsafe.calibration.ensemble_evaluator import (
+    resolve_ensemble_checkpoints,
+    rolling_panel_inference,
+    select_checkpoint_weight_sets,
+    validate_member_alignment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +70,7 @@ def discover_checkpoint(data_name: str) -> Path:
 
 def discover_all_checkpoints(data_name: str) -> list[Path]:
     """Auto-discover all seed checkpoints in the preferred evaluation run."""
-    return resolve_evaluation_checkpoints(
+    return resolve_ensemble_checkpoints(
         "auto",
         data_name=data_name,
         outputs_dir=PROJECT_ROOT / "outputs",
@@ -76,7 +81,7 @@ def resolve_checkpoints(
     checkpoint_path: str | Path | None, data_name: str
 ) -> list[Path]:
     """Resolve a checkpoint file, seed directory, run directory, or auto."""
-    return resolve_evaluation_checkpoints(
+    return resolve_ensemble_checkpoints(
         checkpoint_path,
         data_name=data_name,
         outputs_dir=PROJECT_ROOT / "outputs",
@@ -331,51 +336,18 @@ def rolling_evaluate(
         against another forecaster's must join on this index rather than
         assuming positional alignment.
     """
-    model.eval()
-    edge_queen = edge_queen.to(device)
-    if edge_knn is not None:
-        edge_knn = edge_knn.to(device)
-
-    all_y, all_pi, all_mu, all_r = [], [], [], []
-    weeks: list[int] = []
-
-    T_total = counts.shape[1]
-    actual_end = min(end_week, T_total)
-
-    n_steps = actual_end - start_week
-    logger.info(f"  Rolling evaluation: {n_steps} weeks [{start_week}, {actual_end})")
-
-    for t in range(start_week, actual_end):
-        if t - window_size < 0:
-            logger.warning(f"  Skipping week {t}: insufficient history")
-            continue
-
-        # Input features for this step: (S, W, F). The model was trained on
-        # [static features ‖ log1p(crime history)], so we MUST rebuild the same
-        # (S, W, F+C) tensor here or the model sees a different input space than
-        # it was trained on (→ garbage predictions). This mirrors trainer.py.
-        x_feat = features[:, t - window_size : t, :].to(device)          # (S, W, F)
-        x_counts = torch.log1p(counts[:, t - window_size : t, :].float().to(device))  # (S, W, C)
-        x_in = torch.cat([x_feat, x_counts], dim=-1)                     # (S, W, F+C)
-
-        output = model(x_in, edge_queen, edge_knn)
-
-        all_y.append(counts[:, t, :].cpu())           # (S, C)
-        all_pi.append(output["pi"].cpu())              # (S, C)
-        all_mu.append(output["mu"].cpu())              # (S, C)
-        all_r.append(output["r"].cpu())                # (S, C)
-        weeks.append(t)
-
-        if (t - start_week + 1) % 10 == 0 or t == actual_end - 1:
-            logger.info(f"    Evaluated week {t} ({t - start_week + 1}/{n_steps})")
-
-    return {
-        "y_true": torch.stack(all_y),  # (N, S, C)
-        "pi": torch.stack(all_pi),     # (N, S, C)
-        "mu": torch.stack(all_mu),     # (N, S, C)
-        "r": torch.stack(all_r),       # (N, S, C)
-        "week_idx": torch.tensor(weeks, dtype=torch.long),  # (N,)
-    }
+    result = rolling_panel_inference(
+        model,
+        counts=counts,
+        features=features,
+        edge_queen=edge_queen,
+        edge_knn=edge_knn,
+        target_weeks=range(start_week, min(end_week, counts.shape[1])),
+        window_size=window_size,
+        device=device,
+    )
+    result["y_true"] = result.pop("y")
+    return result
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -777,7 +749,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         logger.info(f"    {path.parent.name}/{path.name}")
     logger.info(f"  Device: {device}")
 
-    from civicsafe.calibration.emos import apply_emos_weights, learn_emos_weights
+    from civicsafe.calibration.ensemble_evaluator import combine_ensemble_outputs
     from civicsafe.training.metrics import crps_zinb
 
     cal_start_week = VAL_START_WEEK + (WEEKS_PER_YEAR // 2)
@@ -788,76 +760,82 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     test_outputs: list[dict[str, Tensor]] = []
     num_params_per_seed: list[int] = []
 
+    def _load_weight_candidate(path: Path, candidate: str) -> Any:
+        loaded, _, _, arch = load_checkpoint(
+            path, args.data, weights=candidate
+        )
+        model = build_model(num_features=F + C, num_categories=C, arch=arch)
+        missing, unexpected = model.load_state_dict(loaded, strict=False)
+        if missing:
+            raise RuntimeError(
+                f"Checkpoint {path} is missing {len(missing)} model keys"
+            )
+        if unexpected:
+            logger.warning(
+                "  %s %s has unexpected keys: %s",
+                path.parent.name,
+                candidate,
+                unexpected[:5],
+            )
+        return model.to(device).eval()
+
+    def _score_weight_candidate(model: Any) -> float:
+        val_output = rolling_evaluate(
+            model,
+            counts,
+            features,
+            edge_queen,
+            edge_knn,
+            start_week=VAL_START_WEEK,
+            end_week=cal_start_week,
+            window_size=WINDOW_SIZE,
+            device=device,
+        )
+        return float(
+            crps_zinb(
+                val_output["y_true"].reshape(-1).float(),
+                val_output["pi"].reshape(-1).float(),
+                val_output["mu"].reshape(-1).float(),
+                val_output["r"].reshape(-1).float(),
+            ).mean().item()
+        )
+
+    selected_by_checkpoint, validation_by_checkpoint = (
+        select_checkpoint_weight_sets(
+            checkpoint_paths,
+            requested=args.weights,
+            load_model=_load_weight_candidate,
+            score_model=_score_weight_candidate,
+        )
+    )
+
     logger.info("\n[3/5] Running per-seed validation/calibration/test inference...")
     for index, checkpoint_path in enumerate(checkpoint_paths, start=1):
         logger.info(
             f"\n  --- Seed {index}/{len(checkpoint_paths)}: "
             f"{checkpoint_path.parent.name}/{checkpoint_path.name} ---"
         )
+        selected_source = selected_by_checkpoint[checkpoint_path]
         loaded, _, weights_source, arch = load_checkpoint(
-            checkpoint_path, args.data, weights=args.weights
+            checkpoint_path, args.data, weights=selected_source
         )
         architectures.append(arch)
-        val_scores: dict[str, float] = {}
-
-        if weights_source == "auto":
-            for candidate_name, candidate_state in loaded.items():
-                probe = build_model(num_features=F + C, num_categories=C, arch=arch)
-                missing, unexpected = probe.load_state_dict(
-                    candidate_state, strict=False
-                )
-                if missing:
-                    logger.warning(
-                        f"    {candidate_name}: {len(missing)} missing keys, skipping"
-                    )
-                    continue
-                if unexpected:
-                    logger.warning(
-                        f"    {candidate_name}: unexpected keys {unexpected[:5]}"
-                    )
-                probe = probe.to(device).eval()
-                val_output = rolling_evaluate(
-                    probe,
-                    counts,
-                    features,
-                    edge_queen,
-                    edge_knn,
-                    start_week=VAL_START_WEEK,
-                    end_week=cal_start_week,
-                    window_size=WINDOW_SIZE,
-                    device=device,
-                )
-                score = crps_zinb(
-                    val_output["y_true"].reshape(-1).float(),
-                    val_output["pi"].reshape(-1).float(),
-                    val_output["mu"].reshape(-1).float(),
-                    val_output["r"].reshape(-1).float(),
-                ).mean().item()
-                val_scores[candidate_name] = score
-                logger.info(
-                    f"    {candidate_name:>3}: validation CRPS = {score:.4f}"
-                )
-                del probe
-
-            if not val_scores:
-                raise RuntimeError(f"No usable weight set in {checkpoint_path}")
-            weights_source = min(val_scores, key=val_scores.__getitem__)
-            state_dict = loaded[weights_source]
+        val_scores = validation_by_checkpoint[checkpoint_path]
+        state_dict = loaded
+        if val_scores:
             logger.info(
-                f"  Selected weights='{weights_source}' for this seed using "
-                "validation data only."
+                "  Selected weights='%s' for this seed using validation data only.",
+                weights_source,
             )
             if (
                 len(val_scores) == 2
                 and abs(val_scores["raw"] - val_scores["ema"]) > 0.25
             ):
                 logger.warning(
-                    "  Large raw/EMA validation gap "
-                    f"({abs(val_scores['raw'] - val_scores['ema']):.4f}) for "
-                    f"{checkpoint_path.parent.name}."
+                    "  Large raw/EMA validation gap (%.4f) for %s.",
+                    abs(val_scores["raw"] - val_scores["ema"]),
+                    checkpoint_path.parent.name,
                 )
-        else:
-            state_dict = loaded
 
         model = build_model(num_features=F + C, num_categories=C, arch=arch)
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
@@ -905,95 +883,18 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    for split_name, outputs in (("calibration", cal_outputs), ("test", test_outputs)):
-        reference = outputs[0]
-        for output in outputs[1:]:
-            if not torch.equal(output["y_true"], reference["y_true"]):
-                raise RuntimeError(
-                    f"Ensemble members produced misaligned {split_name} targets."
-                )
-            if not torch.equal(output["week_idx"], reference["week_idx"]):
-                raise RuntimeError(
-                    f"Ensemble members produced misaligned {split_name} weeks."
-                )
+    validate_member_alignment(cal_outputs, target_key="y_true")
+    validate_member_alignment(test_outputs, target_key="y_true")
 
-    ensemble_metadata: dict[str, Any] = {"num_seeds": len(checkpoint_paths)}
-    if len(checkpoint_paths) > 1:
-        emos_info = learn_emos_weights(
-            y_cal=cal_outputs[0]["y_true"].reshape(-1),
-            all_pi=[output["pi"] for output in cal_outputs],
-            all_mu=[output["mu"] for output in cal_outputs],
-            all_r=[output["r"] for output in cal_outputs],
-        )
-        cal_pi, cal_mu, cal_r = apply_emos_weights(
-            emos_info["weights"],
-            [output["pi"] for output in cal_outputs],
-            [output["mu"] for output in cal_outputs],
-            [output["r"] for output in cal_outputs],
-        )
-        test_pi, test_mu, test_r = apply_emos_weights(
-            emos_info["weights"],
-            [output["pi"] for output in test_outputs],
-            [output["mu"] for output in test_outputs],
-            [output["r"] for output in test_outputs],
-        )
-        cal_out = {
-            "y_true": cal_outputs[0]["y_true"],
-            "pi": cal_pi,
-            "mu": cal_mu,
-            "r": cal_r,
-            "week_idx": cal_outputs[0]["week_idx"],
-        }
-        test_out = {
-            "y_true": test_outputs[0]["y_true"],
-            "pi": test_pi,
-            "mu": test_mu,
-            "r": test_r,
-            "week_idx": test_outputs[0]["week_idx"],
-        }
-
-        equal_weights = [1.0 / len(checkpoint_paths)] * len(checkpoint_paths)
-        equal_pi, equal_mu, equal_r = apply_emos_weights(
-            equal_weights,
-            [output["pi"] for output in test_outputs],
-            [output["mu"] for output in test_outputs],
-            [output["r"] for output in test_outputs],
-        )
-        y_test_flat = test_out["y_true"].reshape(-1).float()
-        per_seed_crps = [
-            crps_zinb(
-                output["y_true"].reshape(-1).float(),
-                output["pi"].reshape(-1).float(),
-                output["mu"].reshape(-1).float(),
-                output["r"].reshape(-1).float(),
-            ).mean().item()
-            for output in test_outputs
-        ]
-        ensemble_metadata.update(
-            {
-                "method": "calibration_learned_zinb_parameter_combination",
-                "emos_weights": emos_info["weights"],
-                "emos_calibration_crps_equal_weight": emos_info["initial_crps"],
-                "emos_calibration_crps_learned_weight": emos_info["final_crps"],
-                "per_seed_test_crps": per_seed_crps,
-                "equal_weight_test_crps": crps_zinb(
-                    y_test_flat,
-                    equal_pi.reshape(-1).float(),
-                    equal_mu.reshape(-1).float(),
-                    equal_r.reshape(-1).float(),
-                ).mean().item(),
-                "learned_weight_test_crps": crps_zinb(
-                    y_test_flat,
-                    test_pi.reshape(-1).float(),
-                    test_mu.reshape(-1).float(),
-                    test_r.reshape(-1).float(),
-                ).mean().item(),
-            }
-        )
-    else:
-        cal_out = cal_outputs[0]
-        test_out = test_outputs[0]
-        ensemble_metadata["method"] = "single_model"
+    cal_out, test_out, ensemble_metadata = combine_ensemble_outputs(
+        cal_outputs,
+        test_outputs,
+        target_key="y_true",
+        category_wise=True,
+        entropy_lambda=0.005,
+        holdout_fraction=0.30,
+        min_holdout_improvement=0.0025,
+    )
 
     logger.info("\n[4/5] Computing metrics...")
     metrics = compute_metrics(

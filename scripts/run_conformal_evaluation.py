@@ -61,12 +61,15 @@ from civicsafe.calibration.conformal import (
     MondrianConformalCalibrator,
     RandomizedSplitConformalCalibrator,
     SplitConformalCalibrator,
+    VarianceScaledConformalCalibrator,
     WeightedConformalCalibrator,
 )
-from civicsafe.calibration.emos import (
-    apply_emos_weights,
-    crps_decomposition,
-    learn_emos_weights,
+from civicsafe.calibration.emos import crps_decomposition
+from civicsafe.calibration.ensemble_evaluator import (
+    combine_ensemble_outputs,
+    resolve_ensemble_checkpoints,
+    rolling_panel_inference,
+    select_checkpoint_weight_sets,
 )
 from civicsafe.calibration.policies import (
     DEFAULT_MAX_ABSTENTION,
@@ -79,7 +82,6 @@ from civicsafe.calibration.significance import compare_forecasts
 from civicsafe.models.civicsafe_model import CivicSafeModel
 from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_splits
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
-from civicsafe.utils.checkpointing import resolve_evaluation_checkpoints
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +105,7 @@ def resolve_checkpoints(
     checkpoint_path: str | Path | None, data_name: str
 ) -> list[Path]:
     """Resolve a checkpoint file, seed directory, run directory, or auto."""
-    return resolve_evaluation_checkpoints(
+    return resolve_ensemble_checkpoints(
         checkpoint_path,
         data_name=data_name,
         outputs_dir=PROJECT_ROOT / "outputs",
@@ -284,31 +286,16 @@ def run_rolling_inference(
             mu: NB means. Shape: (N_windows, S, C)
             r: NB dispersions. Shape: (N_windows, S, C)
     """
-    all_y, all_pi, all_mu, all_r = [], [], [], []
-
-    edge_q = edge_queen.to(device)
-    edge_k = edge_knn.to(device) if edge_knn is not None else None
-
-    for idx in range(len(dataset)):
-        sample = dataset[idx]
-        x_feat = sample["input_features"].to(device)   # (S, W, F)
-        x_counts = torch.log1p(sample["input_counts"].float().to(device))  # (S, W, C)
-        features = torch.cat([x_feat, x_counts], dim=-1)  # (S, W, F+C)
-        target = sample["target_counts"]  # (S, C)
-
-        output = model(features, edge_q, edge_k)
-
-        all_y.append(target.cpu().float())
-        all_pi.append(output["pi"].cpu().float())
-        all_mu.append(output["mu"].cpu().float())
-        all_r.append(output["r"].cpu().float())
-
-    return {
-        "y": torch.stack(all_y),     # (N, S, C)
-        "pi": torch.stack(all_pi),   # (N, S, C)
-        "mu": torch.stack(all_mu),   # (N, S, C)
-        "r": torch.stack(all_r),     # (N, S, C)
-    }
+    return rolling_panel_inference(
+        model,
+        counts=dataset.counts,
+        features=dataset.features,
+        edge_queen=edge_queen,
+        edge_knn=edge_knn,
+        target_weeks=dataset.valid_targets,
+        window_size=dataset.window_size,
+        device=device,
+    )
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -724,67 +711,39 @@ def run_conformal_evaluation(
                     config.update(loaded)
 
     all_ckpts = resolve_checkpoints(checkpoint_path, data_name)
-    requested_weights = weights
-    selected_weights: dict[Path, str] = {}
-    val_scores_per_checkpoint: dict[Path, dict[str, float]] = {}
+    def _load_weight_candidate(path: Path, candidate: str) -> CivicSafeModel:
+        return load_model_from_checkpoint(
+            path,
+            F + C,
+            C,
+            config,
+            device,
+            weights=candidate,
+        )
 
-    # Select raw versus EMA independently for every seed on validation data.
-    # A single global choice based on seed_42 can silently penalize the other
-    # ensemble members because their EMA trajectories are seed-specific.
-    if requested_weights == "auto":
-        logger.info("\n  --- WEIGHT-SET SELECTION (validation, per seed) ---")
-        for checkpoint in all_ckpts:
-            val_scores: dict[str, float] = {}
-            for candidate in ("raw", "ema"):
-                try:
-                    probe_model = load_model_from_checkpoint(
-                        checkpoint,
-                        F + C,
-                        C,
-                        config,
-                        device,
-                        weights=candidate,
-                    )
-                except KeyError as exc:
-                    logger.info(
-                        f"    {checkpoint.parent.name} {candidate:>3}: "
-                        f"unavailable ({exc})"
-                    )
-                    continue
-                probe_results = run_rolling_inference(
-                    probe_model,
-                    val_dataset,
-                    edge_queen,
-                    edge_knn,
-                    device,
-                )
-                score = crps_zinb(
-                    probe_results["y"].reshape(-1),
-                    probe_results["pi"].reshape(-1),
-                    probe_results["mu"].reshape(-1),
-                    probe_results["r"].reshape(-1),
-                ).mean().item()
-                val_scores[candidate] = score
-                logger.info(
-                    f"    {checkpoint.parent.name} {candidate:>3}: "
-                    f"validation CRPS = {score:.4f}"
-                )
-                del probe_model
+    def _score_weight_candidate(model: CivicSafeModel) -> float:
+        probe_results = run_rolling_inference(
+            model,
+            val_dataset,
+            edge_queen,
+            edge_knn,
+            device,
+        )
+        return float(
+            crps_zinb(
+                probe_results["y"].reshape(-1),
+                probe_results["pi"].reshape(-1),
+                probe_results["mu"].reshape(-1),
+                probe_results["r"].reshape(-1),
+            ).mean().item()
+        )
 
-            if not val_scores:
-                raise RuntimeError(f"No usable weight set found in {checkpoint}")
-            selected = min(val_scores, key=val_scores.__getitem__)
-            selected_weights[checkpoint] = selected
-            val_scores_per_checkpoint[checkpoint] = val_scores
-            logger.info(
-                f"    {checkpoint.parent.name}: selected '{selected}' "
-                "(test set not used)"
-            )
-    else:
-        selected_weights = {
-            checkpoint: requested_weights for checkpoint in all_ckpts
-        }
-        val_scores_per_checkpoint = {checkpoint: {} for checkpoint in all_ckpts}
+    selected_weights, val_scores_per_checkpoint = select_checkpoint_weight_sets(
+        all_ckpts,
+        requested=weights,
+        load_model=_load_weight_candidate,
+        score_model=_score_weight_candidate,
+    )
 
     K = len(all_ckpts)
     logger.info(f"\n[3-5/7] Ensemble inference with {K} seed(s)...")
@@ -818,114 +777,40 @@ def run_conformal_evaluation(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # --- Calibration-learned ZINB parameter ensemble ---
-    # The EMOS helper learns simplex weights for a single combined (pi, mu, r)
-    # distribution. It is a parameter pool, not a literal mixture CDF.
-
+    cal_results, test_results, ensemble_info = combine_ensemble_outputs(
+        cal_results_list,
+        test_results_list,
+        target_key="y",
+        category_wise=True,
+        entropy_lambda=0.005,
+        holdout_fraction=0.30,
+        min_holdout_improvement=0.0025,
+    )
     if K > 1:
-        logger.info(f"\n  Ensembling {K} seeds via learned ZINB parameter weights...")
-        # Retain all member parameters for calibration-time weight learning.
-        cal_results: dict[str, Any] = {
-            "y": cal_results_list[0]["y"],
-            # Equal-weight parameter pool before EMOS fitting.
-            "all_pi": [r["pi"] for r in cal_results_list],
-            "all_mu": [r["mu"] for r in cal_results_list],
-            "all_r": [r["r"] for r in cal_results_list],
-            # Downstream metric and conformal APIs consume one ZINB parameter set.
-            "pi": torch.stack([r["pi"] for r in cal_results_list]).mean(dim=0),
-            "mu": torch.stack([r["mu"] for r in cal_results_list]).mean(dim=0),
-            "r": torch.stack([r["r"] for r in cal_results_list]).mean(dim=0),
+        per_seed_crps = ensemble_info["per_seed_test_crps"]
+        ensemble_crps = float(ensemble_info["equal_weight_test_crps"])
+        emos_crps = float(ensemble_info["learned_weight_test_crps"])
+        emos_info = {
+            "weights": ensemble_info["emos_weights"],
+            "category_weights": ensemble_info["emos_category_weights"],
+            "improvement_pct": 100.0
+            * (ensemble_crps - emos_crps)
+            / max(ensemble_crps, 1e-12),
+            "fallback_used": ensemble_info["emos_fallback_used"],
+            "fallback_by_category": ensemble_info["emos_fallback_by_category"],
+            "holdout_improvement_pct": ensemble_info[
+                "emos_holdout_improvement_pct"
+            ],
         }
-        test_results: dict[str, Any] = {
-            "y": test_results_list[0]["y"],
-            "all_pi": [r["pi"] for r in test_results_list],
-            "all_mu": [r["mu"] for r in test_results_list],
-            "all_r": [r["r"] for r in test_results_list],
-            "pi": torch.stack([r["pi"] for r in test_results_list]).mean(dim=0),
-            "mu": torch.stack([r["mu"] for r in test_results_list]).mean(dim=0),
-            "r": torch.stack([r["r"] for r in test_results_list]).mean(dim=0),
-        }
-
-        # Retain member scores for diagnostics, then score the equal-weight
-        # parameter combination below. This is one pooled ZINB distribution,
-        # not the CRPS of a literal mixture CDF.
-        per_seed_crps = []
-        for res in test_results_list:
-            sc = crps_zinb(
-                res["y"].reshape(-1), res["pi"].reshape(-1),
-                res["mu"].reshape(-1), res["r"].reshape(-1)
-            ).mean().item()
-            per_seed_crps.append(sc)
-        
-        # CRPS of the equal-weight ZINB parameter combination.
-        ensemble_crps = crps_zinb(
-            test_results["y"].reshape(-1), test_results["pi"].reshape(-1),
-            test_results["mu"].reshape(-1), test_results["r"].reshape(-1)
-        ).mean().item()
-        
-        logger.info(f"  Per-seed CRPS: {[f'{c:.4f}' for c in per_seed_crps]}")
-        logger.info(f"  Mean per-seed CRPS: {np.mean(per_seed_crps):.4f}")
-        logger.info(f"  Equal-weight parameter-pool CRPS: {ensemble_crps:.4f}")
-
-        # --- EMOS: Learn Optimal Weights ---
-        logger.info("\n  --- EMOS WEIGHT LEARNING ---")
-        emos_info = learn_emos_weights(
-            y_cal=cal_results["y"].reshape(-1),
-            all_pi=cal_results["all_pi"],
-            all_mu=cal_results["all_mu"],
-            all_r=cal_results["all_r"],
-        )
-        # Apply learned weights to get EMOS-combined params
-        pi_emos_cal, mu_emos_cal, r_emos_cal = apply_emos_weights(
-            emos_info["weights"],
-            cal_results["all_pi"], cal_results["all_mu"], cal_results["all_r"],
-        )
-        pi_emos_test, mu_emos_test, r_emos_test = apply_emos_weights(
-            emos_info["weights"],
-            test_results["all_pi"], test_results["all_mu"], test_results["all_r"],
-        )
-        # Overwrite the ensemble params with EMOS-optimized versions
-        cal_results["pi"] = pi_emos_cal
-        cal_results["mu"] = mu_emos_cal
-        cal_results["r"] = r_emos_cal
-        test_results["pi"] = pi_emos_test
-        test_results["mu"] = mu_emos_test
-        test_results["r"] = r_emos_test
-        
-        emos_crps = crps_zinb(
-            test_results["y"].reshape(-1), pi_emos_test.reshape(-1),
-            mu_emos_test.reshape(-1), r_emos_test.reshape(-1)
-        ).mean().item()
-        logger.info(f"  EMOS CRPS (learned weights): {emos_crps:.4f}")
+        aleatoric = float(ensemble_info["aleatoric_uncertainty"])
+        epistemic = float(ensemble_info["epistemic_uncertainty"])
         logger.info(
-            f"  EMOS improvement over equal-weight: "
-            f"{(1.0 - emos_crps / ensemble_crps) * 100:.2f}%"
+            "  Category-conditioned EMOS: equal CRPS %.4f -> %.4f; "
+            "holdout fallback=%s",
+            ensemble_crps,
+            emos_crps,
+            emos_info["fallback_used"],
         )
-        
-        # ─── Uncertainty Decomposition ───
-        # Aleatoric = mean of per-seed ZINB variance
-        # Epistemic = variance of per-seed point predictions E[Y|k] = (1-pi_k)*mu_k
-        logger.info("\n  ─── UNCERTAINTY DECOMPOSITION ───")
-        point_preds = torch.stack([
-            (1.0 - r["pi"]) * r["mu"] for r in test_results_list
-        ])  # (K, N, S, C)
-        epistemic = point_preds.var(dim=0).mean().item()
-        
-        from civicsafe.training.sac_loss import zinb_variance
-        aleatoric_per_seed = []
-        for res in test_results_list:
-            v = zinb_variance(
-                res["pi"].reshape(-1), res["mu"].reshape(-1), res["r"].reshape(-1)
-            ).mean().item()
-            aleatoric_per_seed.append(v)
-        aleatoric = np.mean(aleatoric_per_seed)
-        
-        logger.info(f"  Aleatoric uncertainty (mean ZINB var): {aleatoric:.4f}")
-        logger.info(f"  Epistemic uncertainty (seed disagreement): {epistemic:.4f}")
-        logger.info(f"  Epistemic / Total: {epistemic / (aleatoric + epistemic):.2%}")
-    else:
-        cal_results = cal_results_list[0]
-        test_results = test_results_list[0]
 
     logger.info(
         f"\n  Calibration: {cal_results['y'].shape[0]} windows x "
@@ -1018,7 +903,16 @@ def run_conformal_evaluation(
             alpha=alpha, min_group_size=20
         ),
         "equalized_coverage": EqualizedCoverageCalibrator(alpha=alpha, lambda_eq=1.0),
-        "ecrc": ECRCCalibrator(alpha=alpha, delta=0.05, group_type="demographic"),
+        "variance_scaled_split_cp": VarianceScaledConformalCalibrator(
+            alpha=alpha
+        ),
+        "ecrc": ECRCCalibrator(
+            alpha=alpha,
+            delta=0.05,
+            group_type="demographic",
+            bound="exact_binomial",
+            score_type="variance_scaled",
+        ),
         # NOTE: adaptive_ecrc is deliberately NOT listed here. Fitted and then
         # asked to predict without any update() call, its per-group alpha_t
         # never moves off the initial base_alpha, which equals ECRC's
@@ -1673,17 +1567,12 @@ def run_conformal_evaluation(
     # Add ensemble-specific results if applicable
     if K > 1:
         results["ensemble"] = {
-            "num_seeds": K,
-            "per_seed_crps": per_seed_crps,
+            **ensemble_info,
             "mean_seed_crps": float(np.mean(per_seed_crps)),
-            "ensemble_crps_equal_weight": ensemble_crps,
-            "emos_crps_learned_weight": emos_crps,
-            "emos_weights": emos_info["weights"],
+            "ensemble_improvement": float(
+                1.0 - emos_crps / max(np.mean(per_seed_crps), 1e-12)
+            ),
             "emos_improvement_pct": emos_info["improvement_pct"],
-            "ensemble_improvement": float(1.0 - emos_crps / np.mean(per_seed_crps)),
-            "aleatoric_uncertainty": aleatoric,
-            "epistemic_uncertainty": epistemic,
-            "epistemic_fraction": float(epistemic / (aleatoric + epistemic)),
         }
 
     # Save results

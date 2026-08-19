@@ -41,7 +41,7 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Literal
 
 import torch
 from torch import Tensor
@@ -84,7 +84,7 @@ class ZINBRecalibrator:
             )
         self.method: str = method
         self._fitted: bool = False
-        self._params: Dict[str, torch.nn.Parameter] = {}
+        self._params: dict[str, torch.nn.Parameter] = {}
         self._init_params()
 
     # ------------------------------------------------------------------
@@ -109,7 +109,7 @@ class ZINBRecalibrator:
     # ------------------------------------------------------------------
     def _apply(
         self, pi: Tensor, mu: Tensor, r: Tensor
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Apply the current parameterisation (differentiable)."""
         if self.method == "affine":
             scale_mu = torch.nn.functional.softplus(self._params["a"])
@@ -138,7 +138,8 @@ class ZINBRecalibrator:
         r_cal: Tensor,
         lr: float = 0.01,
         max_iter: int = 500,
-    ) -> Dict[str, Any]:
+        l2_lambda: float = 0.01,
+    ) -> dict[str, Any]:
         """Learn recalibration parameters by minimising CRPS on calibration data.
 
         Uses Adam to minimise:
@@ -181,6 +182,8 @@ class ZINBRecalibrator:
                 self._params[name].data.to(device)
             )
 
+        if l2_lambda < 0.0:
+            raise ValueError("l2_lambda must be non-negative")
         optimizer = torch.optim.Adam(list(self._params.values()), lr=lr)
 
         # Detach inputs — they are frozen model outputs, not part of the graph
@@ -191,6 +194,7 @@ class ZINBRecalibrator:
 
         initial_crps: float | None = None
         best_crps: float = float("inf")
+        best_state: dict[str, Tensor] = {}
         patience_counter: int = 0
         final_iter: int = 0
 
@@ -198,7 +202,19 @@ class ZINBRecalibrator:
             optimizer.zero_grad()
             pi_t, mu_t, r_t = self._apply(pi, mu, r)
             loss = crps_zinb(y, pi_t, mu_t, r_t).mean()
-            loss.backward()
+            if self.method == "affine":
+                scale_mu = torch.nn.functional.softplus(self._params["a"])
+                scale_r = torch.nn.functional.softplus(self._params["c"])
+                penalty = (
+                    (scale_mu - 1.0) ** 2
+                    + self._params["b"] ** 2
+                    + (scale_r - 1.0) ** 2
+                    + self._params["d"] ** 2
+                )
+            else:
+                penalty = (self._params["T"] - 1.0) ** 2
+            loss = loss + l2_lambda * penalty
+            loss.backward()  # type: ignore[no-untyped-call]
             optimizer.step()
 
             crps_val = loss.item()
@@ -207,6 +223,10 @@ class ZINBRecalibrator:
 
             if crps_val < best_crps - 1e-6:
                 best_crps = crps_val
+                best_state = {
+                    name: parameter.detach().clone()
+                    for name, parameter in self._params.items()
+                }
                 patience_counter = 0
             else:
                 patience_counter += 1
@@ -228,6 +248,8 @@ class ZINBRecalibrator:
 
         self._fitted = True
         assert initial_crps is not None  # guaranteed by at least 1 iteration
+        for name, parameter in best_state.items():
+            self._params[name].data.copy_(parameter)
 
         improvement_pct = (
             (initial_crps - best_crps) / max(initial_crps, 1e-12) * 100.0
@@ -237,6 +259,7 @@ class ZINBRecalibrator:
             "final_crps": best_crps,
             "improvement_pct": improvement_pct,
             "iterations": final_iter,
+            "l2_lambda": l2_lambda,
         }
         logger.info(
             "Recalibration complete — CRPS %.6f → %.6f (%.2f%% improvement, %d iters).",
@@ -253,7 +276,7 @@ class ZINBRecalibrator:
     @torch.no_grad()
     def transform(
         self, pi: Tensor, mu: Tensor, r: Tensor
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Apply learned recalibration to new ZINB predictions.
 
         Parameters
@@ -281,7 +304,7 @@ class ZINBRecalibrator:
     # ------------------------------------------------------------------
     # Inspection
     # ------------------------------------------------------------------
-    def get_params(self) -> Dict[str, float]:
+    def get_params(self) -> dict[str, float]:
         """Return the learned recalibration parameters as plain floats.
 
         Returns
@@ -321,7 +344,10 @@ def recalibrate_and_evaluate(
     method: Literal["affine", "temperature"] = "affine",
     lr: float = 0.01,
     max_iter: int = 500,
-) -> Tuple[Tuple[Tensor, Tensor, Tensor], Dict[str, Any]]:
+    l2_lambda: float = 0.01,
+    holdout_fraction: float = 0.30,
+    min_improvement: float = 0.0,
+) -> tuple[tuple[Tensor, Tensor, Tensor], dict[str, Any]]:
     """Fit a recalibrator on calibration data and evaluate on a test set.
 
     This is a convenience wrapper that:
@@ -353,15 +379,56 @@ def recalibrate_and_evaluate(
         ``'test_crps_after'``, ``'test_improvement_pct'``,
         ``'learned_params'``, and ``'iterations'``.
     """
+    if not 0.0 <= holdout_fraction < 1.0:
+        raise ValueError("holdout_fraction must be in [0, 1)")
+    if min_improvement < 0.0:
+        raise ValueError("min_improvement must be non-negative")
+
+    n_cal = y_cal.shape[0]
+    if n_cal >= 4 and holdout_fraction > 0.0:
+        split = min(max(int(n_cal * (1.0 - holdout_fraction)), 1), n_cal - 1)
+        fit_slice = slice(0, split)
+        holdout_slice = slice(split, n_cal)
+    else:
+        fit_slice = slice(None)
+        holdout_slice = slice(None)
+
     recalibrator = ZINBRecalibrator(method=method)
-    fit_info = recalibrator.fit(y_cal, pi_cal, mu_cal, r_cal, lr=lr, max_iter=max_iter)
+    fit_info = recalibrator.fit(
+        y_cal[fit_slice],
+        pi_cal[fit_slice],
+        mu_cal[fit_slice],
+        r_cal[fit_slice],
+        lr=lr,
+        max_iter=max_iter,
+        l2_lambda=l2_lambda,
+    )
+
+    with torch.no_grad():
+        holdout_before = crps_zinb(
+            y_cal[holdout_slice],
+            pi_cal[holdout_slice],
+            mu_cal[holdout_slice],
+            r_cal[holdout_slice],
+        ).mean().item()
+        holdout_pi, holdout_mu, holdout_r = recalibrator.transform(
+            pi_cal[holdout_slice], mu_cal[holdout_slice], r_cal[holdout_slice]
+        )
+        holdout_after = crps_zinb(
+            y_cal[holdout_slice], holdout_pi, holdout_mu, holdout_r
+        ).mean().item()
 
     # Test CRPS before recalibration
     with torch.no_grad():
         test_crps_before = crps_zinb(y_test, pi_test, mu_test, r_test).mean().item()
 
-    # Apply recalibration
-    pi_recal, mu_recal, r_recal = recalibrator.transform(pi_test, mu_test, r_test)
+    recal_applied = holdout_after < holdout_before - min_improvement
+    if recal_applied:
+        pi_recal, mu_recal, r_recal = recalibrator.transform(
+            pi_test, mu_test, r_test
+        )
+    else:
+        pi_recal, mu_recal, r_recal = pi_test, mu_test, r_test
 
     # Test CRPS after recalibration
     with torch.no_grad():
@@ -371,13 +438,22 @@ def recalibrate_and_evaluate(
         (test_crps_before - test_crps_after) / max(test_crps_before, 1e-12) * 100.0
     )
 
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, Any] = {
         "cal_initial_crps": fit_info["initial_crps"],
         "cal_final_crps": fit_info["final_crps"],
         "cal_improvement_pct": fit_info["improvement_pct"],
         "test_crps_before": test_crps_before,
         "test_crps_after": test_crps_after,
-        "test_improvement_pct": test_improvement,
+        "test_improvement_pct": test_improvement if recal_applied else 0.0,
+        "holdout_crps_before": holdout_before,
+        "holdout_crps_after": holdout_after,
+        "holdout_improvement_pct": (
+            (holdout_before - holdout_after) / max(holdout_before, 1e-12) * 100.0
+        ),
+        "recal_applied": recal_applied,
+        "recalibration_gate": (
+            "holdout CRPS improved" if recal_applied else "identity fallback"
+        ),
         "learned_params": recalibrator.get_params(),
         "iterations": fit_info["iterations"],
     }
@@ -386,7 +462,7 @@ def recalibrate_and_evaluate(
         "Test CRPS: %.6f → %.6f (%.2f%% improvement).",
         test_crps_before,
         test_crps_after,
-        test_improvement,
+        test_improvement if recal_applied else 0.0,
     )
 
     return (pi_recal, mu_recal, r_recal), metrics

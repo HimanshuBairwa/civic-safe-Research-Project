@@ -40,7 +40,14 @@ DEFAULT_RESULTS_DIR = PROJECT_ROOT / "outputs"
 TABLE_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "tables"
 
 # Metrics columns used across tables
-MAIN_METRICS = ["CRPS", "MAE", "RMSE", "CRPSS vs HA", r"DM $p$-value"]
+MAIN_METRICS = [
+    "CRPS",
+    "MAE",
+    "RMSE",
+    "CRPSS vs HA",
+    r"DM $p$-value",
+    r"Bootstrap $p$-value",
+]
 CONFORMAL_METRICS = [
     r"Marginal Coverage (\%)",
     "Interval Width",
@@ -533,6 +540,7 @@ def generate_main_results_table(
                             "+.4f",
                         ),
                         r"DM $p$-value": "--",
+                        r"Bootstrap $p$-value": "--",
                     }
                 )
 
@@ -545,6 +553,7 @@ def generate_main_results_table(
                     "RMSE": _fmt(ha_rmse),
                     "CRPSS vs HA": _fmt(0.0, "+.4f"),
                     r"DM $p$-value": "--",
+                    r"Bootstrap $p$-value": "--",
                 }
             )
 
@@ -552,7 +561,9 @@ def generate_main_results_table(
         if model_metrics:
             significance = _significance_source(conformal_res)
             dm = _nested_mapping(significance.get("dm"))
+            bootstrap = _nested_mapping(significance.get("bootstrap"))
             dm_p = _finite_number(dm.get("p_value"))
+            bootstrap_p = _finite_number(bootstrap.get("p_value"))
             civic_crpss = _crpss_vs_ha(model_metrics, conformal_res, ha_crps)
             city_rows.append(
                 {
@@ -562,6 +573,7 @@ def generate_main_results_table(
                     "RMSE": _fmt(model_metrics.get("rmse")),
                     "CRPSS vs HA": _fmt(civic_crpss, "+.4f"),
                     r"DM $p$-value": _fmt_p_value(dm_p),
+                    r"Bootstrap $p$-value": _fmt_p_value(bootstrap_p),
                 }
             )
 
@@ -607,7 +619,7 @@ def generate_main_results_table(
         [
             r"    \midrule",
             (
-                r"    \multicolumn{6}{l}{\footnotesize "
+                r"    \multicolumn{7}{l}{\footnotesize "
                 r"$^*p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$.} \\"
             ),
             r"    \bottomrule",
@@ -720,6 +732,11 @@ def generate_conformal_table(
             "equalized_coverage",
             ("equalized_coverage",),
             "Equalized Coverage",
+        ),
+        (
+            "variance_scaled_split_cp",
+            ("variance_scaled_split_cp",),
+            "Variance-Scaled CP",
         ),
         ("ecrc", ("ecrc",), r"\textsc{ECRC}"),
         (
@@ -866,6 +883,7 @@ def generate_uncertainty_table(
         "UNC",
         r"Epistemic Variance (\%)",
         r"Aleatoric Variance (\%)",
+        "Recalibration",
     ]
     rows: list[dict[str, str]] = []
     for city, result in [
@@ -876,6 +894,7 @@ def generate_uncertainty_table(
             continue
         decomposition = _nested_mapping(result.get("crps_decomposition"))
         ensemble = _nested_mapping(result.get("ensemble"))
+        recalibration = _nested_mapping(result.get("recalibration"))
         epistemic_fraction = _finite_number(
             ensemble.get("epistemic_fraction")
         )
@@ -918,6 +937,11 @@ def generate_uncertainty_table(
                     if aleatoric_fraction is not None
                     else None,
                     FMT_PCT,
+                ),
+                "Recalibration": (
+                    "Applied"
+                    if bool(recalibration.get("recal_applied", False))
+                    else "Identity fallback"
                 ),
             }
         )

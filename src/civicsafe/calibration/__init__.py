@@ -20,9 +20,17 @@ from civicsafe.calibration.conformal import (
     EqualizedCoverageCalibrator,
     MondrianConformalCalibrator,
     SplitConformalCalibrator,
+    VarianceScaledConformalCalibrator,
     WeightedConformalCalibrator,
     compute_cqr_scores,
+    compute_variance_scaled_cqr_scores,
     create_calibrator,
+    zinb_predictive_scale,
+)
+from civicsafe.calibration.ensemble_evaluator import (
+    combine_ensemble_outputs,
+    resolve_ensemble_checkpoints,
+    rolling_panel_inference,
 )
 from civicsafe.calibration.metrics import (
     average_interval_width,
@@ -48,6 +56,7 @@ from civicsafe.calibration.zinb_distribution import (
 __all__ = [  # noqa: RUF022 - grouped by public API category
     # Calibrators
     "SplitConformalCalibrator",
+    "VarianceScaledConformalCalibrator",
     "WeightedConformalCalibrator",
     "MondrianConformalCalibrator",
     "EqualizedCoverageCalibrator",
@@ -55,6 +64,8 @@ __all__ = [  # noqa: RUF022 - grouped by public API category
     "AdaptiveTemporalECRCCalibrator",
     "create_calibrator",
     "compute_cqr_scores",
+    "compute_variance_scaled_cqr_scores",
+    "zinb_predictive_scale",
     # Distribution
     "zinb_cdf",
     "zinb_cdf_full",
@@ -72,4 +83,7 @@ __all__ = [  # noqa: RUF022 - grouped by public API category
     "ForecastingGate",
     "select_best_calibrator",
     "assess_forecasting_gate",
+    "combine_ensemble_outputs",
+    "resolve_ensemble_checkpoints",
+    "rolling_panel_inference",
 ]

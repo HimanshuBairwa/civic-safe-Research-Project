@@ -41,9 +41,10 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any
+from typing import Any, Literal
 
 import torch
+from scipy.stats import beta as beta_distribution
 from torch import Tensor
 
 from civicsafe.calibration.zinb_distribution import (
@@ -53,6 +54,9 @@ from civicsafe.calibration.zinb_distribution import (
 )
 
 logger = logging.getLogger(__name__)
+
+ScoreType = Literal["raw", "variance_scaled"]
+ECRCBound = Literal["exact_binomial", "empirical_bernstein", "hoeffding"]
 
 
 # ===================================================================
@@ -148,6 +152,9 @@ def compute_cqr_scores(
     mu: Tensor,
     r: Tensor,
     alpha: float = 0.1,
+    *,
+    score_type: ScoreType = "raw",
+    continuity_correction: float = 0.5,
 ) -> Tensor:
     """Compute CQR non-conformity scores.
 
@@ -164,9 +171,121 @@ def compute_cqr_scores(
     Returns:
         Non-conformity scores. Shape: (N,)
     """
+    if score_type not in ("raw", "variance_scaled"):
+        raise ValueError(f"Unknown score_type: {score_type!r}")
+    if continuity_correction < 0.0:
+        raise ValueError("continuity_correction must be non-negative")
     y = y.float()
     q_low, q_high = zinb_ppf_pair(alpha, pi, mu, r)
-    return torch.max(q_low - y, y - q_high)
+    if score_type == "raw":
+        return torch.max(q_low - y, y - q_high)
+    scale = zinb_predictive_scale(pi, mu, r)
+    return torch.max(
+        (q_low - y - continuity_correction) / scale,
+        (y - q_high - continuity_correction) / scale,
+    )
+
+
+def zinb_predictive_scale(pi: Tensor, mu: Tensor, r: Tensor) -> Tensor:
+    """Return ``sqrt(Var[Y]) + 1`` for a ZINB predictive distribution."""
+    pi_f = pi.float().clamp(0.0, 1.0)
+    mu_f = mu.float().clamp(min=1e-6)
+    r_f = r.float().clamp(min=0.1)
+    variance = (1.0 - pi_f) * mu_f * (
+        1.0 + mu_f / r_f + pi_f * mu_f
+    )
+    return variance.clamp_min(0.0).sqrt() + 1.0
+
+
+def compute_variance_scaled_cqr_scores(
+    y: Tensor,
+    pi: Tensor,
+    mu: Tensor,
+    r: Tensor,
+    alpha: float = 0.1,
+    *,
+    continuity_correction: float = 0.5,
+) -> Tensor:
+    """Compute locally normalized, lattice-aware CQR nonconformity scores."""
+    return compute_cqr_scores(
+        y,
+        pi,
+        mu,
+        r,
+        alpha,
+        score_type="variance_scaled",
+        continuity_correction=continuity_correction,
+    )
+
+
+def _apply_cqr_threshold(
+    alpha: float,
+    pi: Tensor,
+    mu: Tensor,
+    r: Tensor,
+    thresholds: Tensor,
+    *,
+    score_type: ScoreType,
+    continuity_correction: float,
+) -> tuple[Tensor, Tensor]:
+    """Invert a raw or variance-scaled CQR threshold into count intervals."""
+    q_low, q_high = zinb_ppf_pair(alpha, pi, mu, r)
+    if score_type == "raw":
+        lower = (q_low - thresholds).clamp(min=0.0).floor()
+        upper = (q_high + thresholds).ceil()
+    else:
+        local_correction = thresholds * zinb_predictive_scale(pi, mu, r)
+        lower = (
+            q_low - local_correction - continuity_correction
+        ).ceil().clamp(min=0.0)
+        upper = (q_high + local_correction + continuity_correction).floor()
+    return lower, torch.max(upper, lower)
+
+
+def _ecrc_quantile_level(
+    scores: Tensor,
+    *,
+    alpha: float,
+    delta_group: float,
+    bound: ECRCBound,
+) -> tuple[float, float]:
+    """Return the ECRC calibration quantile and its effective coverage slack."""
+    n = int(scores.numel())
+    if n < 1:
+        raise ValueError("ECRC group must contain at least one score")
+    target = 1.0 - alpha
+    if bound == "exact_binomial":
+        selected_rank = n
+        for rank in range(max(1, math.ceil(target * n)), n + 1):
+            lower_coverage = beta_distribution.ppf(
+                delta_group, rank, n + 1 - rank
+            )
+            if math.isfinite(lower_coverage) and lower_coverage >= target:
+                selected_rank = rank
+                break
+        level = selected_rank / n
+        return min(level, 1.0), max(level - target, 0.0)
+    if bound == "hoeffding":
+        epsilon = math.sqrt(math.log(2.0 / delta_group) / (2.0 * n))
+    elif bound == "empirical_bernstein":
+        nominal_rank = min(max(math.ceil(target * n), 1), n)
+        nominal_threshold = torch.kthvalue(scores, nominal_rank).values
+        covered = (scores <= nominal_threshold).float()
+        variance = float(covered.var(unbiased=True).item()) if n > 1 else 0.0
+        log_term = math.log(2.0 / delta_group)
+        epsilon = math.sqrt(2.0 * variance * log_term / n) + (
+            7.0 * log_term / (3.0 * max(n - 1, 1))
+        )
+    else:
+        raise ValueError(f"Unknown ECRC bound: {bound!r}")
+    adjusted_alpha = max(alpha - epsilon, 0.0)
+    return min(1.0 - adjusted_alpha, 1.0), epsilon
+
+
+def _quantile_threshold(scores: Tensor, level: float) -> float:
+    """Select an empirical order statistic without interpolation."""
+    rank = min(max(math.ceil(level * scores.numel()), 1), scores.numel())
+    return float(torch.kthvalue(scores, rank).values.item())
 
 
 def _warn_if_degenerate(
@@ -215,10 +334,18 @@ class _BaseCalibrator:
     ``predict`` logic: inflate heuristic quantiles by the threshold.
     """
 
-    def __init__(self, alpha: float = 0.1) -> None:
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        *,
+        score_type: ScoreType = "raw",
+        continuity_correction: float = 0.5,
+    ) -> None:
         if not 0.01 <= alpha <= 0.5:
             raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
         self.alpha = alpha
+        self.score_type = score_type
+        self.continuity_correction = continuity_correction
         self._threshold: float | None = None
         self._fitted = False
 
@@ -249,7 +376,15 @@ class _BaseCalibrator:
         mu = mu.reshape(-1).float().clamp(min=1e-6)
         r = r.reshape(-1).float().clamp(min=0.1)
 
-        scores = compute_cqr_scores(y, pi, mu, r, alpha=self.alpha)
+        scores = compute_cqr_scores(
+            y,
+            pi,
+            mu,
+            r,
+            alpha=self.alpha,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
         self._threshold = self._compute_threshold(scores, **kwargs)
         self._fitted = True
 
@@ -290,14 +425,16 @@ class _BaseCalibrator:
         mu_f = mu.reshape(-1).float().clamp(min=1e-6)
         r_f = r.reshape(-1).float().clamp(min=0.1)
 
-        q_low, q_high = zinb_ppf_pair(self.alpha, pi_f, mu_f, r_f)
-
-        # Apply CQR correction
-        lower = (q_low - self.threshold).clamp(min=0.0).floor()
-        upper = (q_high + self.threshold).ceil()
-
-        # Ensure L <= U (can happen if threshold is very negative)
-        upper = torch.max(upper, lower)
+        thresholds = torch.full_like(pi_f, self.threshold)
+        lower, upper = _apply_cqr_threshold(
+            self.alpha,
+            pi_f,
+            mu_f,
+            r_f,
+            thresholds,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
 
         point = (1.0 - pi_f) * mu_f
 
@@ -326,6 +463,22 @@ class SplitConformalCalibrator(_BaseCalibrator):
         # Finite-sample correction: ⌈(1-α)(1+1/n)⌉
         quantile_level = min((1.0 - self.alpha) * (1.0 + 1.0 / n), 1.0)
         return torch.quantile(scores, quantile_level).item()
+
+
+class VarianceScaledConformalCalibrator(SplitConformalCalibrator):
+    """Split conformal with local ZINB predictive-scale normalization."""
+
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        *,
+        continuity_correction: float = 0.5,
+    ) -> None:
+        super().__init__(
+            alpha,
+            score_type="variance_scaled",
+            continuity_correction=continuity_correction,
+        )
 
 
 # ===================================================================
@@ -580,10 +733,11 @@ class WeightedConformalCalibrator(_BaseCalibrator):
 
         # Find the first index where cumulative weight >= target
         mask = cum_weights >= target
-        if mask.any():
-            idx = mask.float().argmax().item()
-        else:
-            idx = len(sorted_scores) - 1
+        idx = (
+            mask.float().argmax().item()
+            if mask.any()
+            else len(sorted_scores) - 1
+        )
 
         return sorted_scores[int(idx)].item()
 
@@ -870,13 +1024,21 @@ class ECRCCalibrator:
         alpha: float = 0.1,
         delta: float = 0.05,
         group_type: str = "geographic",
+        bound: ECRCBound = "exact_binomial",
+        score_type: ScoreType = "variance_scaled",
+        continuity_correction: float = 0.5,
     ) -> None:
         if not 0.01 <= alpha <= 0.5:
             raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
         self.alpha = alpha
         self.delta = delta
         self.group_type = group_type
+        self.bound = bound
+        self.score_type = score_type
+        self.continuity_correction = continuity_correction
         self._group_thresholds: dict[int, float] = {}
+        self._group_epsilons: dict[int, float] = {}
+        self._group_quantile_levels: dict[int, float] = {}
         self._epsilon: float = 0.0
         self._fitted = False
 
@@ -902,7 +1064,15 @@ class ECRCCalibrator:
         r = r.reshape(-1).float().clamp(min=0.1)
         groups = groups.reshape(-1)
 
-        scores = compute_cqr_scores(y, pi, mu, r, alpha=self.alpha)
+        scores = compute_cqr_scores(
+            y,
+            pi,
+            mu,
+            r,
+            alpha=self.alpha,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
 
         unique_groups = groups.unique()  # type: ignore[no-untyped-call]
         G = len(unique_groups)
@@ -911,36 +1081,38 @@ class ECRCCalibrator:
         # Bonferroni-corrected per-group delta
         delta_g = self.delta / G
 
-        # Hoeffding epsilon: use ACTUAL per-group sample size, not n_cal/G
-        # which incorrectly assumes equal group sizes.
         max_epsilon = 0.0
         for g in unique_groups:
-            n_g = (groups == g).sum().item()
-            epsilon_g = math.sqrt(math.log(2.0 / delta_g) / (2.0 * n_g))
+            mask = groups == g
+            group_scores = scores[mask]
+            q_level, epsilon_g = _ecrc_quantile_level(
+                group_scores,
+                alpha=self.alpha,
+                delta_group=delta_g,
+                bound=self.bound,
+            )
+            g_idx = int(g.item())
+            self._group_quantile_levels[g_idx] = q_level
+            self._group_epsilons[g_idx] = epsilon_g
             max_epsilon = max(max_epsilon, epsilon_g)
         self._epsilon = max_epsilon
 
-        # Adjusted alpha for per-group guarantees
-        adjusted_alpha = max(self.alpha - self._epsilon, 0.01)
-
-        # Per-group calibration with adjusted alpha
+        # Per-group calibration at the bound-selected order statistic.
         for g in unique_groups:
             mask = groups == g
             group_scores = scores[mask]
             n_g = group_scores.shape[0]
 
             if n_g > 0:
-                q_level = min(
-                    (1.0 - adjusted_alpha) * (1.0 + 1.0 / max(n_g, 1)), 1.0
+                g_idx = int(g.item())
+                self._group_thresholds[g_idx] = _quantile_threshold(
+                    group_scores, self._group_quantile_levels[g_idx]
                 )
-                self._group_thresholds[int(g.item())] = torch.quantile(
-                    group_scores, q_level
-                ).item()
 
         self._fitted = True
         logger.info(
-            f"  ECRCCalibrator fitted: ε = {self._epsilon:.4f}, "
-            f"adjusted_α = {adjusted_alpha:.4f}, "
+            f"  ECRCCalibrator fitted: bound={self.bound}, "
+            f"max_slack = {self._epsilon:.4f}, "
             f"G = {G} groups, n_cal = {n_cal}"
         )
 
@@ -962,8 +1134,6 @@ class ECRCCalibrator:
         r_f = r.reshape(-1).float().clamp(min=0.1)
         groups_f = groups.reshape(-1)
 
-        q_low, q_high = zinb_ppf_pair(self.alpha, pi_f, mu_f, r_f)
-
         # Build per-element threshold
         # Default to conservative global threshold
         all_thresholds = list(self._group_thresholds.values())
@@ -974,9 +1144,15 @@ class ECRCCalibrator:
             mask = groups_f == g
             thresholds[mask] = t
 
-        lower = (q_low - thresholds).clamp(min=0.0).floor()
-        upper = (q_high + thresholds).ceil()
-        upper = torch.max(upper, lower)
+        lower, upper = _apply_cqr_threshold(
+            self.alpha,
+            pi_f,
+            mu_f,
+            r_f,
+            thresholds,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
         point = (1.0 - pi_f) * mu_f
 
         return {
@@ -987,7 +1163,7 @@ class ECRCCalibrator:
 
     @property
     def epsilon(self) -> float:
-        """Hoeffding slack term."""
+        """Largest effective group-wise bound slack."""
         return self._epsilon
 
 
@@ -997,15 +1173,15 @@ class ECRCCalibrator:
 
 class AdaptiveTemporalECRCCalibrator:
     """Adaptive Temporal Conformal Calibration with Demographic Stratification.
-    
-    Combines Adaptive Conformal Inference (ACI, Gibbs & Candes 2021) with 
+
+    Combines Adaptive Conformal Inference (ACI, Gibbs & Candes 2021) with
     Equalized Conditional Risk Control (ECRC, Feldman et al. 2021).
-    Corrects for temporal non-exchangeability by dynamically adjusting the 
+    Corrects for temporal non-exchangeability by dynamically adjusting the
     target alpha level per demographic group based on recent empirical coverage.
-    
+
     For each group g at time t, the effective alpha is updated:
         alpha_{t,g} = alpha_{t-1,g} + gamma * (err_{t-1,g} - alpha)
-        
+
     Where err_{t-1,g} is the empirical miscoverage for group g at time t-1.
     """
 
@@ -1024,6 +1200,9 @@ class AdaptiveTemporalECRCCalibrator:
         k_d: float = 0.0005,
         max_width: float = float("inf"),
         max_width_ratio: float | None = None,
+        bound: ECRCBound = "exact_binomial",
+        score_type: ScoreType = "variance_scaled",
+        continuity_correction: float = 0.5,
     ) -> None:
         if not 0.01 <= alpha <= 0.5:
             raise ValueError(f"alpha must be in [0.01, 0.5], got {alpha}")
@@ -1050,12 +1229,16 @@ class AdaptiveTemporalECRCCalibrator:
         # Use `max_width_ratio` for a scale-free rule instead.
         self.max_width = max_width
         self.max_width_ratio = max_width_ratio
-        
+        self.bound = bound
+        self.score_type = score_type
+        self.continuity_correction = continuity_correction
+
         # State tracking per group
         self._alpha_t: dict[int, float] = {}
         self._integral_err: dict[int, float] = {}
         self._prev_err: dict[int, float] = {}
         self._calibration_scores: dict[int, torch.Tensor] = {}
+        self._initial_quantile_levels: dict[int, float] = {}
         self._epsilon: float = 0.0
         self._fitted = False
         # Counts update() calls. If predict() runs while this is 0, every
@@ -1083,19 +1266,30 @@ class AdaptiveTemporalECRCCalibrator:
         r = r.reshape(-1).float().clamp(min=0.1)
         groups = groups.reshape(-1)
 
-        scores = compute_cqr_scores(y, pi, mu, r, alpha=self.nominal_alpha)
+        scores = compute_cqr_scores(
+            y,
+            pi,
+            mu,
+            r,
+            alpha=self.nominal_alpha,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
 
-        unique_groups = groups.unique()
+        unique_groups = groups.unique()  # type: ignore[no-untyped-call]
         G = len(unique_groups)
-        n_cal = scores.shape[0]
 
-        # Initial Hoeffding epsilon per group (use actual group sizes, not n_cal/G)
-        # Bonferroni-corrected per-group delta
         delta_g = self.delta / G
         max_epsilon = 0.0
         for g in unique_groups:
-            n_g = (groups == g).sum().item()
-            epsilon_g = math.sqrt(math.log(2.0 / delta_g) / (2.0 * max(n_g, 1)))
+            group_scores = scores[groups == g]
+            q_level, epsilon_g = _ecrc_quantile_level(
+                group_scores,
+                alpha=self.nominal_alpha,
+                delta_group=delta_g,
+                bound=self.bound,
+            )
+            self._initial_quantile_levels[int(g.item())] = q_level
             max_epsilon = max(max_epsilon, epsilon_g)
         self._epsilon = max_epsilon
         base_alpha = max(self.nominal_alpha - self._epsilon, 0.01)
@@ -1141,27 +1335,34 @@ class AdaptiveTemporalECRCCalibrator:
         r_f = r.reshape(-1).float().clamp(min=0.1)
         groups_f = groups.reshape(-1)
 
-        q_low, q_high = zinb_ppf_pair(self.nominal_alpha, pi_f, mu_f, r_f)
-
         thresholds = torch.zeros_like(pi_f)
         for g, alpha_t in self._alpha_t.items():
             mask = groups_f == g
             if mask.sum() == 0:
                 continue
-                
+
             cal_scores = self._calibration_scores.get(g)
             if cal_scores is None or len(cal_scores) == 0:
                 t_val = 0.0
             else:
-                n_g = len(cal_scores)
-                q_level = min((1.0 - alpha_t) * (1.0 + 1.0 / n_g), 1.0)
-                t_val = torch.quantile(cal_scores, q_level).item()
-                
+                q_level = (
+                    self._initial_quantile_levels[g]
+                    if self._n_updates == 0
+                    else min(1.0 - alpha_t, 1.0)
+                )
+                t_val = _quantile_threshold(cal_scores, q_level)
+
             thresholds[mask] = t_val
 
-        lower = (q_low - thresholds).clamp(min=0.0).floor()
-        upper = (q_high + thresholds).ceil()
-        upper = torch.max(upper, lower)
+        lower, upper = _apply_cqr_threshold(
+            self.nominal_alpha,
+            pi_f,
+            mu_f,
+            r_f,
+            thresholds,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
         point = (1.0 - pi_f) * mu_f
 
         # Abstention: emit NaN where the interval is too wide to stand behind.
@@ -1208,7 +1409,7 @@ class AdaptiveTemporalECRCCalibrator:
         mu_f = mu.reshape(-1).float().clamp(min=1e-6)
         r_f = r.reshape(-1).float().clamp(min=0.1)
         groups_f = groups.reshape(-1)
-        
+
         # We need the intervals we *would have* predicted
         intervals = self.predict(pi_f, mu_f, r_f, groups=groups_f)
         lower = intervals["lower"].reshape(-1)
@@ -1223,15 +1424,23 @@ class AdaptiveTemporalECRCCalibrator:
         # default at mu=200, alpha_t collapsed 0.0315 -> 0.0100 (the floor) in
         # four updates and stayed pinned.
         issued = ~(torch.isnan(lower) | torch.isnan(upper))
-        
+
         # Also compute scores to add to the calibration set (sliding window / growing)
-        scores = compute_cqr_scores(y_f, pi_f, mu_f, r_f, alpha=self.nominal_alpha)
-        
-        unique_groups = groups_f.unique()
+        scores = compute_cqr_scores(
+            y_f,
+            pi_f,
+            mu_f,
+            r_f,
+            alpha=self.nominal_alpha,
+            score_type=self.score_type,
+            continuity_correction=self.continuity_correction,
+        )
+
+        unique_groups = groups_f.unique()  # type: ignore[no-untyped-call]
         for g in unique_groups:
             g_idx = int(g.item())
             mask = groups_f == g
-            
+
             if mask.sum() > 0:
                 # 1. Update alpha_t using ACI, on issued intervals only.
                 scored = mask & issued
@@ -1294,7 +1503,7 @@ class AdaptiveTemporalECRCCalibrator:
 
                     new_alpha = prev_alpha + p_term + i_term + d_term
                     self._alpha_t[g_idx] = max(min(new_alpha, 0.99), 0.01)
-                
+
                 # 2. Add to calibration set (EnbPI style)
                 # For memory bounds, keep only last N scores (e.g. 500)
                 if g_idx not in self._calibration_scores:
@@ -1337,6 +1546,12 @@ def create_calibrator(config: dict[str, Any]) -> (
     if method == "split_cp":
         return SplitConformalCalibrator(alpha=alpha)
 
+    elif method in ("variance_scaled", "variance_scaled_split_cp"):
+        return VarianceScaledConformalCalibrator(
+            alpha=alpha,
+            continuity_correction=cal_cfg.get("continuity_correction", 0.5),
+        )
+
     elif method == "randomized_split_cp":
         return RandomizedSplitConformalCalibrator(
             alpha=alpha,
@@ -1367,6 +1582,9 @@ def create_calibrator(config: dict[str, Any]) -> (
             alpha=alpha,
             delta=cal_cfg.get("delta", 0.05),
             group_type=cal_cfg.get("group_type", "geographic"),
+            bound=cal_cfg.get("bound", "exact_binomial"),
+            score_type=cal_cfg.get("score_type", "variance_scaled"),
+            continuity_correction=cal_cfg.get("continuity_correction", 0.5),
         )
 
     elif method == "adaptive_ecrc":
@@ -1375,6 +1593,9 @@ def create_calibrator(config: dict[str, Any]) -> (
             gamma=cal_cfg.get("gamma", 0.05),
             delta=cal_cfg.get("delta", 0.05),
             group_type=cal_cfg.get("group_type", "geographic"),
+            bound=cal_cfg.get("bound", "exact_binomial"),
+            score_type=cal_cfg.get("score_type", "variance_scaled"),
+            continuity_correction=cal_cfg.get("continuity_correction", 0.5),
         )
 
     else:

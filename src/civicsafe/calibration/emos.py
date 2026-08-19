@@ -30,7 +30,6 @@ References:
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 
 import numpy as np
@@ -55,6 +54,12 @@ def learn_emos_weights(
     lr: float = 0.05,
     max_iter: int = 300,
     patience: int = 30,
+    *,
+    category_wise: bool = False,
+    holdout_fraction: float = 0.30,
+    min_holdout_improvement: float = 0.0025,
+    entropy_lambda: float = 0.005,
+    category_dim: int = -1,
 ) -> dict[str, Any]:
     """Learn optimal EMOS weights by minimizing CRPS on calibration data.
 
@@ -91,91 +96,224 @@ def learn_emos_weights(
     if K < 2:
         return {
             "weights": [1.0],
+            "global_weights": [1.0],
+            "category_weights": None,
             "initial_crps": float("nan"),
             "final_crps": float("nan"),
             "improvement_pct": 0.0,
             "iterations": 0,
+            "holdout_improvement_pct": 0.0,
+            "fallback_used": False,
+            "fallback_by_category": [],
+            "category_wise": category_wise,
         }
 
+    if not 0.0 <= holdout_fraction < 1.0:
+        raise ValueError("holdout_fraction must be in [0, 1)")
+    if min_holdout_improvement < 0.0:
+        raise ValueError("min_holdout_improvement must be non-negative")
+    if entropy_lambda < 0.0:
+        raise ValueError("entropy_lambda must be non-negative")
+
     device = y_cal.device
-    y = y_cal.detach().float().reshape(-1)
+    y = y_cal.detach().float()
 
-    # Stack all member predictions: (K, N)
-    pi_stack = torch.stack([p.reshape(-1).float().clamp(0, 1) for p in all_pi]).to(device)
-    mu_stack = torch.stack([m.reshape(-1).float().clamp(min=1e-6) for m in all_mu]).to(device)
-    r_stack = torch.stack([r.reshape(-1).float().clamp(min=0.1) for r in all_r]).to(device)
+    if any(p.shape != y.shape for p in all_pi + all_mu + all_r):
+        raise ValueError("All EMOS tensors must have the same shape")
 
-    # Learnable logits (softmax → simplex)
-    logits = torch.nn.Parameter(torch.zeros(K, device=device))
-    optimizer = torch.optim.Adam([logits], lr=lr)
+    # Keep the temporal/sample axis intact for the honest holdout split. The
+    # helper flattens only after selecting the train or validation partition.
+    def _fit_one(
+        y_view: Tensor,
+        pi_view: list[Tensor],
+        mu_view: list[Tensor],
+        r_view: list[Tensor],
+    ) -> dict[str, Any]:
+        y_local = y_view.detach().float()
+        pi_stack = torch.stack(
+            [p.detach().float().clamp(0, 1) for p in pi_view]
+        ).to(device)
+        mu_stack = torch.stack(
+            [m.detach().float().clamp(min=1e-6) for m in mu_view]
+        ).to(device)
+        r_stack = torch.stack(
+            [r.detach().float().clamp(min=0.1) for r in r_view]
+        ).to(device)
 
-    # Initial CRPS with equal weights
-    w_equal = torch.ones(K, device=device) / K
-    pi_eq = (w_equal.unsqueeze(-1) * pi_stack).sum(dim=0)
-    mu_eq = (w_equal.unsqueeze(-1) * mu_stack).sum(dim=0)
-    r_eq = (w_equal.unsqueeze(-1) * r_stack).sum(dim=0)
-    initial_crps = crps_zinb(y, pi_eq, mu_eq, r_eq).mean().item()
-
-    best_crps = initial_crps
-    best_logits = logits.data.clone()
-    patience_counter = 0
-    final_iter = 0
-
-    for step in range(1, max_iter + 1):
-        optimizer.zero_grad()
-
-        # Softmax to enforce simplex constraint
-        w = torch.softmax(logits, dim=0)  # (K,)
-
-        # Weighted combination
-        pi_w = (w.unsqueeze(-1) * pi_stack).sum(dim=0).clamp(0, 1)
-        mu_w = (w.unsqueeze(-1) * mu_stack).sum(dim=0).clamp(min=1e-6)
-        r_w = (w.unsqueeze(-1) * r_stack).sum(dim=0).clamp(min=0.1)
-
-        loss = crps_zinb(y, pi_w, mu_w, r_w).mean()
-        loss.backward()
-        optimizer.step()
-
-        crps_val = loss.item()
-        if crps_val < best_crps - 1e-7:
-            best_crps = crps_val
-            best_logits = logits.data.clone()
-            patience_counter = 0
+        n_rows = y_local.shape[0] if y_local.ndim else 1
+        if n_rows >= 2 and holdout_fraction > 0.0:
+            split = min(max(int(n_rows * (1.0 - holdout_fraction)), 1), n_rows - 1)
+            train_slice = slice(0, split)
+            holdout_slice = slice(split, n_rows)
         else:
-            patience_counter += 1
+            train_slice = slice(None)
+            holdout_slice = slice(None)
 
-        if patience_counter >= patience:
+        y_train = y_local[train_slice].reshape(-1).to(device)
+        pi_train = pi_stack[(slice(None), train_slice)].reshape(K, -1)
+        mu_train = mu_stack[(slice(None), train_slice)].reshape(K, -1)
+        r_train = r_stack[(slice(None), train_slice)].reshape(K, -1)
+        y_holdout = y_local[holdout_slice].reshape(-1).to(device)
+        pi_holdout = pi_stack[(slice(None), holdout_slice)].reshape(K, -1)
+        mu_holdout = mu_stack[(slice(None), holdout_slice)].reshape(K, -1)
+        r_holdout = r_stack[(slice(None), holdout_slice)].reshape(K, -1)
+
+        def _combine(weights: Tensor, pis: Tensor, mus: Tensor, rs: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+            return (
+                (weights[:, None] * pis).sum(dim=0).clamp(0, 1),
+                (weights[:, None] * mus).sum(dim=0).clamp(min=1e-6),
+                (weights[:, None] * rs).sum(dim=0).clamp(min=0.1),
+            )
+
+        w_equal = torch.full((K,), 1.0 / K, device=device)
+        eq_pi, eq_mu, eq_r = _combine(w_equal, pi_train, mu_train, r_train)
+        initial_train = crps_zinb(y_train, eq_pi, eq_mu, eq_r).mean().item()
+
+        logits = torch.nn.Parameter(torch.zeros(K, device=device))
+        optimizer = torch.optim.Adam([logits], lr=lr)
+        best_objective = float("inf")
+        best_logits = logits.detach().clone()
+        patience_counter = 0
+        final_iter = 0
+
+        for step in range(1, max_iter + 1):
+            optimizer.zero_grad()
+            weights = torch.softmax(logits, dim=0)
+            pi_w, mu_w, r_w = _combine(weights, pi_train, mu_train, r_train)
+            crps_value = crps_zinb(y_train, pi_w, mu_w, r_w).mean()
+            entropy = -(weights * torch.log(weights.clamp_min(1e-12))).sum()
+            objective = crps_value - entropy_lambda * entropy
+            objective.backward()  # type: ignore[no-untyped-call]
+
+            objective_value = float(objective.detach().item())
+            if objective_value < best_objective - 1e-8:
+                best_objective = objective_value
+                best_logits = logits.detach().clone()
+                patience_counter = 0
+            else:
+                patience_counter += 1
+            optimizer.step()
             final_iter = step
-            break
-    else:
-        final_iter = max_iter
+            if patience_counter >= patience:
+                break
 
-    # Extract learned weights
-    with torch.no_grad():
-        final_weights = torch.softmax(best_logits, dim=0).cpu().tolist()
+        learned_weights = torch.softmax(best_logits, dim=0)
+        with torch.no_grad():
+            learned_holdout = crps_zinb(
+                y_holdout,
+                *_combine(learned_weights, pi_holdout, mu_holdout, r_holdout),
+            ).mean().item()
+            equal_holdout = crps_zinb(
+                y_holdout,
+                *_combine(w_equal, pi_holdout, mu_holdout, r_holdout),
+            ).mean().item()
 
-    improvement = (initial_crps - best_crps) / max(initial_crps, 1e-12) * 100.0
+        holdout_improvement = (
+            (equal_holdout - learned_holdout) / max(equal_holdout, 1e-12)
+        )
+        fallback = holdout_improvement < min_holdout_improvement
+        selected = w_equal if fallback else learned_weights
+        selected_train = crps_zinb(
+            y_train, *_combine(selected, pi_train, mu_train, r_train)
+        ).mean().item()
+        selected_all = crps_zinb(
+            y_local.reshape(-1).to(device),
+            *_combine(
+                selected,
+                pi_stack.reshape(K, -1),
+                mu_stack.reshape(K, -1),
+                r_stack.reshape(K, -1),
+            ),
+        ).mean().item()
+        return {
+            "weights": selected.detach().cpu().tolist(),
+            "learned_weights": learned_weights.detach().cpu().tolist(),
+            "initial_crps": initial_train,
+            "final_crps": selected_train,
+            "all_crps": selected_all,
+            "holdout_improvement": holdout_improvement * 100.0,
+            "fallback_used": fallback,
+            "iterations": final_iter,
+        }
 
-    logger.info(
-        f"  EMOS weights learned in {final_iter} steps: "
-        f"CRPS {initial_crps:.6f} → {best_crps:.6f} ({improvement:.2f}% improvement)"
-    )
-    logger.info(f"  Weights: {[f'{w:.4f}' for w in final_weights]}")
+    if not category_wise:
+        one = _fit_one(y, all_pi, all_mu, all_r)
+        improvement = (one["initial_crps"] - one["final_crps"]) / max(
+            one["initial_crps"], 1e-12
+        ) * 100.0
+        logger.info(
+            "  EMOS weights learned in %d steps: CRPS %.6f -> %.6f (%.2f%%).",
+            one["iterations"], one["initial_crps"], one["final_crps"], improvement,
+        )
+        return {
+            **one,
+            "global_weights": one["weights"],
+            "category_weights": None,
+            "improvement_pct": improvement,
+            "category_wise": False,
+            "entropy_lambda": entropy_lambda,
+        }
 
+    moved_y = torch.movedim(y, category_dim, -1)
+    moved_pi = [torch.movedim(p, category_dim, -1) for p in all_pi]
+    moved_mu = [torch.movedim(p, category_dim, -1) for p in all_mu]
+    moved_r = [torch.movedim(p, category_dim, -1) for p in all_r]
+    n_categories = moved_y.shape[-1]
+    category_results = [
+        _fit_one(
+            moved_y[..., category],
+            [p[..., category] for p in moved_pi],
+            [m[..., category] for m in moved_mu],
+            [r[..., category] for r in moved_r],
+        )
+        for category in range(n_categories)
+    ]
+    category_weights = [result["weights"] for result in category_results]
+    global_weights = torch.tensor(category_weights, dtype=torch.float32).mean(dim=0).tolist()
+    all_pi_stack = torch.stack(
+        [p.detach().float().clamp(0, 1) for p in all_pi]
+    ).to(device).reshape(K, -1)
+    all_mu_stack = torch.stack(
+        [m.detach().float().clamp(min=1e-6) for m in all_mu]
+    ).to(device).reshape(K, -1)
+    all_r_stack = torch.stack(
+        [r.detach().float().clamp(min=0.1) for r in all_r]
+    ).to(device).reshape(K, -1)
+    equal_weights = torch.full((K,), 1.0 / K, device=device)
+    equal_pi = (equal_weights[:, None] * all_pi_stack).sum(dim=0)
+    equal_mu = (equal_weights[:, None] * all_mu_stack).sum(dim=0)
+    equal_r = (equal_weights[:, None] * all_r_stack).sum(dim=0)
+    equal_all = crps_zinb(
+        y.reshape(-1).to(device), equal_pi, equal_mu, equal_r
+    ).mean().item()
+    selected_all = sum(result["all_crps"] for result in category_results) / n_categories
+    improvement = (equal_all - selected_all) / max(equal_all, 1e-12) * 100.0
     return {
-        "weights": final_weights,
-        "initial_crps": initial_crps,
-        "final_crps": best_crps,
+        # Compatibility: callers that expect one K-vector keep receiving the
+        # category-average weights. The actual applied matrix is explicit.
+        "weights": global_weights,
+        "category_weights": category_weights,
+        "global_weights": global_weights,
+        "initial_crps": equal_all,
+        "final_crps": selected_all,
         "improvement_pct": improvement,
-        "iterations": final_iter,
+        "holdout_improvement_pct": float(np.mean([r["holdout_improvement"] for r in category_results])),
+        "fallback_used": any(r["fallback_used"] for r in category_results),
+        "fallback_by_category": [r["fallback_used"] for r in category_results],
+        "learned_weights_by_category": [r["learned_weights"] for r in category_results],
+        "iterations": max(r["iterations"] for r in category_results),
+        "category_wise": True,
+        "entropy_lambda": entropy_lambda,
     }
 
 
 def apply_emos_weights(
-    weights: list[float],
+    weights: list[float] | list[list[float]],
     all_pi: list[Tensor],
     all_mu: list[Tensor],
     all_r: list[Tensor],
+    *,
+    category_dim: int = -1,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Apply learned EMOS weights to combine ensemble members.
 
@@ -191,17 +329,35 @@ def apply_emos_weights(
     (pi_emos, mu_emos, r_emos) : tuple of Tensor
         Weighted ZINB parameters.
     """
+    if not all_pi or len(all_pi) != len(all_mu) or len(all_pi) != len(all_r):
+        raise ValueError("all_pi, all_mu, and all_r must be non-empty and aligned")
     device = all_pi[0].device
-    w = torch.tensor(weights, device=device, dtype=torch.float32)
+    raw_weights = torch.as_tensor(weights, device=device, dtype=torch.float32)
+    member_ndim = all_pi[0].dim()
+    if raw_weights.ndim == 1:
+        if raw_weights.numel() != len(all_pi):
+            raise ValueError("global EMOS weights must match ensemble size")
+        w = raw_weights / raw_weights.sum().clamp_min(1e-12)
+        w_shape = [len(all_pi)] + [1] * member_ndim
+        w_exp = w.reshape(w_shape)
+    elif raw_weights.ndim == 2:
+        if raw_weights.shape[1] != len(all_pi):
+            raise ValueError("category EMOS weights must match ensemble size")
+        category_axis = category_dim % member_ndim
+        if raw_weights.shape[0] != all_pi[0].shape[category_axis]:
+            raise ValueError("category EMOS weights must match category dimension")
+        w = raw_weights / raw_weights.sum(dim=1, keepdim=True).clamp_min(1e-12)
+        w_shape = [len(all_pi)] + [1] * member_ndim
+        w_shape[category_axis + 1] = raw_weights.shape[0]
+        w_exp = w.transpose(0, 1).reshape(w_shape)
+    else:
+        raise ValueError("weights must be a global vector or category matrix")
+    if (w < 0).any() or not torch.isfinite(w).all():
+        raise ValueError("EMOS weights must be finite and non-negative")
 
     pi_stack = torch.stack([p.float() for p in all_pi])
     mu_stack = torch.stack([m.float() for m in all_mu])
     r_stack = torch.stack([r.float() for r in all_r])
-
-    # Weighted combination along ensemble dimension
-    # w shape: (K,), stacks shape: (K, ...)
-    w_shape = [len(weights)] + [1] * (pi_stack.dim() - 1)
-    w_exp = w.reshape(w_shape)
 
     pi_emos = (w_exp * pi_stack).sum(dim=0).clamp(0.0, 1.0)
     mu_emos = (w_exp * mu_stack).sum(dim=0).clamp(min=1e-6)
@@ -334,7 +490,7 @@ def crps_decomposition(
     crps_total = reliability - resolution + uncertainty
     skill_score = 1.0 - crps_actual / uncertainty if uncertainty > 1e-12 else 0.0
 
-    logger.info(f"  CRPS Decomposition (Hersbach 2000):")
+    logger.info("  CRPS Decomposition (Hersbach 2000):")
     logger.info(f"    Reliability (calibration error):    {reliability:.6f}")
     logger.info(f"    Resolution  (discrimination):       {resolution:.6f}")
     logger.info(f"    Uncertainty (inherent):              {uncertainty:.6f}")
@@ -352,4 +508,3 @@ def crps_decomposition(
         "resolution_fraction": float(resolution / max(crps_total, 1e-12)),
         "skill_score": float(skill_score),
     }
-
