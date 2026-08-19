@@ -47,6 +47,8 @@ MAIN_METRICS = [
     "CRPSS vs HA",
     r"DM $p$-value",
     r"Bootstrap $p$-value",
+    r"twCRPS (top 10\% tail)",
+    r"twCRPSS vs HA",
 ]
 CONFORMAL_METRICS = [
     r"Marginal Coverage (\%)",
@@ -58,6 +60,7 @@ CONFORMAL_METRICS = [
 
 # Number formatting: 4 decimal places for CRPS/MAE/RMSE, 2 for percentages
 FMT_4 = ".4f"
+FMT_3 = ".3f"
 FMT_2 = ".2f"
 FMT_PCT = ".2f"  # coverage percentages rendered as e.g. 90.03
 
@@ -212,6 +215,40 @@ def _crpss_vs_ha(
     if crps is None or baseline is None or baseline <= 0.0:
         return None
     return 1.0 - (crps / baseline)
+
+
+def _tail_score(metrics: dict[str, Any]) -> float | None:
+    """Read a saved threshold-weighted CRPS diagnostic."""
+    return _first_finite_number(metrics, "twcrps_tail", "twcrps", "tail_twcrps")
+
+
+def _tail_score_result(result: dict[str, Any] | None) -> float | None:
+    """Read tail diagnostics whether stored flat or under ``tail_metrics``."""
+    if not isinstance(result, dict):
+        return None
+    direct = _tail_score(result)
+    if direct is not None:
+        return direct
+    for key in ("tail_metrics", "tail_scores", "threshold_weighted_scores"):
+        nested = result.get(key)
+        if isinstance(nested, dict):
+            direct = _tail_score(nested)
+            if direct is not None:
+                return direct
+    point = result.get("point_forecast_metrics")
+    if isinstance(point, dict):
+        return _tail_score(point)
+    return None
+
+
+def _tail_skill(metrics: dict[str, Any], ha_tail: float | None) -> float | None:
+    direct = _first_finite_number(metrics, "twcrpss_vs_ha", "twcrps_skill_vs_ha")
+    if direct is not None:
+        return direct
+    score = _tail_score(metrics)
+    if score is None or ha_tail is None or ha_tail <= 0:
+        return None
+    return 1.0 - score / ha_tail
 
 
 def _fmt_pm(
@@ -435,6 +472,19 @@ def load_conformal_results(results_dir: Path, city: str) -> dict[str, Any] | Non
     return _load_json(path)
 
 
+def load_tail_results(results_dir: Path, city: str) -> dict[str, Any] | None:
+    """Load optional post-training twCRPS diagnostics."""
+    for path in (
+        results_dir / "tail_metrics" / f"{city}_tail_metrics.json",
+        results_dir / "evaluation" / f"{city}_tail_metrics.json",
+        results_dir / "conformal_evaluation" / f"{city}_tail_metrics.json",
+    ):
+        data = _load_json(path)
+        if data is not None:
+            return data
+    return None
+
+
 def load_fairness_results(results_dir: Path, city: str) -> dict[str, Any] | None:
     """Load fairness audit results JSON."""
     path = results_dir / "fairness" / f"{city}_audit.json"
@@ -460,6 +510,8 @@ def generate_main_results_table(
         "RMSE": True,
         "CRPSS vs HA": False,
         r"DM $p$-value": True,
+        r"twCRPS (top 10\% tail)": True,
+        r"twCRPSS vs HA": False,
     }
     city_specs = [
         (
@@ -509,6 +561,16 @@ def generate_main_results_table(
             "baseline_ha_rmse",
             "ha_rmse",
         )
+        ha_tail = None
+        if baseline_res:
+            ha_entry = next(
+                (v for k, v in baseline_res.items() if _is_historical_average(k) and isinstance(v, dict)),
+                None,
+            )
+            if isinstance(ha_entry, dict):
+                ha_tail = _tail_score(ha_entry)
+        if ha_tail is None:
+            ha_tail = _tail_score(conformal_skill)
 
         has_ha_row = False
         if baseline_res is not None:
@@ -541,6 +603,8 @@ def generate_main_results_table(
                         ),
                         r"DM $p$-value": "--",
                         r"Bootstrap $p$-value": "--",
+                        r"twCRPS (top 10\% tail)": _fmt(_tail_score(metrics)),
+                        r"twCRPSS vs HA": _fmt(_tail_skill(metrics, ha_tail), "+.4f"),
                     }
                 )
 
@@ -554,6 +618,8 @@ def generate_main_results_table(
                     "CRPSS vs HA": _fmt(0.0, "+.4f"),
                     r"DM $p$-value": "--",
                     r"Bootstrap $p$-value": "--",
+                    r"twCRPS (top 10\% tail)": _fmt(ha_tail),
+                    r"twCRPSS vs HA": _fmt(0.0, "+.4f"),
                 }
             )
 
@@ -574,6 +640,8 @@ def generate_main_results_table(
                     "CRPSS vs HA": _fmt(civic_crpss, "+.4f"),
                     r"DM $p$-value": _fmt_p_value(dm_p),
                     r"Bootstrap $p$-value": _fmt_p_value(bootstrap_p),
+                    r"twCRPS (top 10\% tail)": _fmt(_tail_score_result(conformal_res) or _tail_score(model_metrics)),
+                    r"twCRPSS vs HA": _fmt(_tail_skill({"twcrps": _tail_score_result(conformal_res) or _tail_score(model_metrics)}, ha_tail), "+.4f"),
                 }
             )
 
@@ -619,7 +687,7 @@ def generate_main_results_table(
         [
             r"    \midrule",
             (
-                r"    \multicolumn{7}{l}{\footnotesize "
+                rf"    \multicolumn{{{len(headers) + 1}}}{{l}}{{\footnotesize "
                 r"$^*p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$.} \\"
             ),
             r"    \bottomrule",
@@ -1183,6 +1251,44 @@ def generate_ensemble_table(results: dict[str, Any] | None = None) -> str:
     )
 
 
+def generate_policy_table(results: dict[str, Any] | None = None) -> str:
+    """Generate Table 7 from ``simulate_policy.py`` JSON output."""
+    headers = [
+        "Budget",
+        r"Hit rate (\%)",
+        "Over-allocation ratio",
+        r"Idle ratio (\%)",
+        "Allocation gap",
+    ]
+    rows: list[dict[str, str]] = []
+    payload = results if isinstance(results, dict) else {}
+    raw_rows = payload.get("rows", []) if isinstance(payload, dict) else []
+    if isinstance(raw_rows, list):
+        for item in raw_rows:
+            if not isinstance(item, dict):
+                continue
+            rows.append({
+                "name": str(item.get("policy", "--")).replace("_", " ").title(),
+                "Budget": str(item.get("budget", "--")),
+                r"Hit rate (\%)": _fmt(100.0 * float(item["violent_hit_rate"]) if item.get("violent_hit_rate") is not None else None, FMT_2),
+                "Over-allocation ratio": _fmt(item.get("demographic_overallocation_ratio"), FMT_3),
+                r"Idle ratio (\%)": _fmt(100.0 * float(item["idle_wasted_resource_ratio"]) if item.get("idle_wasted_resource_ratio") is not None else None, FMT_2),
+                "Allocation gap": _fmt(item.get("allocation_disparity"), FMT_4),
+            })
+    if not rows:
+        rows = [{"name": "No raw prediction artifact", **{header: "--" for header in headers}}]
+    _bold_best_column(rows, headers[1:], {headers[1]: False, headers[2]: True, headers[3]: True, headers[4]: True})
+    note = "Unavailable rows indicate that raw test prediction artifacts were not present; compact score summaries are insufficient for a spatial allocation audit."
+    return _build_booktabs_table(
+        caption="Decision-theoretic resource allocation simulation.",
+        label="tab:policy_simulation",
+        headers=headers,
+        rows=rows,
+        name_header="Policy",
+        note=note,
+    )
+
+
 def compute_ensemble_plot_data(
     results: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
@@ -1312,6 +1418,10 @@ def run_ablation_study(args: argparse.Namespace) -> None:
         city_model_results[city] = load_model_results(results_dir, city)
         city_baselines[city] = load_baseline_results(results_dir, city)
         city_conformal[city] = load_conformal_results(results_dir, city)
+        tail_results = load_tail_results(results_dir, city)
+        if tail_results is not None:
+            city_conformal[city] = city_conformal[city] or {}
+            city_conformal[city]["tail_metrics"] = tail_results
 
     # Discover ablation-specific results
     logger.info("\n  Discovering ablation-variant results...")
@@ -1381,6 +1491,15 @@ def run_ablation_study(args: argparse.Namespace) -> None:
     ens_results = ablation_data["ensemble"] if ablation_data["ensemble"] else None
     table6 = generate_ensemble_table(ens_results)
     _save_table(output_dir / "table6_ensemble.tex", table6, "Table 6: Ensemble")
+
+    # Table 7: Decision-theoretic allocation simulation.  This is a pure
+    # post-training diagnostic; missing raw prediction artifacts render an
+    # explicit auditable placeholder instead of fabricated numbers.
+    logger.info("[7/7] Generating Table 7: Policy Simulation...")
+    policy_path = results_dir / "policy_simulation_results.json"
+    policy_results = _load_json(policy_path)
+    table7 = generate_policy_table(policy_results)
+    _save_table(output_dir / "table7_policy_simulation.tex", table7, "Table 7: Policy Simulation")
 
     # Save ensemble plot data as JSON
     plot_data = compute_ensemble_plot_data(ens_results)

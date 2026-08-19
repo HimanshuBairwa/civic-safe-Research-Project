@@ -32,6 +32,11 @@ from civicsafe.calibration.ensemble_evaluator import (
     resolve_ensemble_checkpoints,
     rolling_panel_inference,
 )
+from civicsafe.calibration.fairness_sensitivity import (
+    coverage_disparity,
+    evaluate_imputation_sensitivity,
+    impute_demographic,
+)
 from civicsafe.calibration.metrics import (
     average_interval_width,
     compute_all_calibration_metrics,
@@ -39,6 +44,17 @@ from civicsafe.calibration.metrics import (
     coverage_gap,
     picp,
     winkler_score,
+)
+from civicsafe.calibration.metrics_tail import (
+    compare_tail_forecasts,
+    compute_twcrps,
+    tail_crps_summary,
+    threshold_weighted_crps,
+    threshold_weighted_crps_zinb,
+    twCRPS,
+    twcrps,
+    twcrps_deterministic,
+    twcrps_zinb,
 )
 from civicsafe.calibration.policies import (
     CalibratorSelection,
@@ -78,6 +94,18 @@ __all__ = [  # noqa: RUF022 - grouped by public API category
     "conditional_coverage",
     "coverage_gap",
     "compute_all_calibration_metrics",
+    "threshold_weighted_crps",
+    "twcrps_zinb",
+    "twCRPS",
+    "twcrps",
+    "tail_crps_summary",
+    "compute_twcrps",
+    "threshold_weighted_crps_zinb",
+    "twcrps_deterministic",
+    "compare_tail_forecasts",
+    "impute_demographic",
+    "coverage_disparity",
+    "evaluate_imputation_sensitivity",
     # Decision policies
     "CalibratorSelection",
     "ForecastingGate",
