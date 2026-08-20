@@ -357,10 +357,11 @@ def run_xgboost(train_ds, test_ds, adj) -> dict[str, float]:
 
 def main():
     parser = argparse.ArgumentParser(description="CIVIC-SAFE Baselines")
+    parser.add_argument("--data", default=None, help="Dataset name: chicago or nyc")
     parser.add_argument("args", nargs="*", help="Override configs like data=nyc")
     parsed = parser.parse_args()
 
-    data_name = "chicago"
+    data_name = parsed.data or "chicago"
     for arg in parsed.args:
         if arg.startswith("data="):
             data_name = arg.split("=", 1)[1]
