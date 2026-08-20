@@ -120,9 +120,15 @@ def nb_k_max(mu: Tensor, r: Tensor, tail_sigma: float = 10.0,
 
     Returns the integer k_max.
     """
-    mu_safe = mu.float().clamp(min=1e-6)
-    r_safe = r.float().clamp(min=0.1)
+    mu_safe = torch.nan_to_num(
+        mu.float(), nan=1e-6, posinf=float(cap), neginf=1e-6
+    ).clamp(min=1e-6, max=float(cap))
+    r_safe = torch.nan_to_num(
+        r.float(), nan=1.0, posinf=1e5, neginf=0.1
+    ).clamp(min=0.1, max=1e5)
     # NB variance: mu + mu^2/r. Per-observation, then maxed.
     sigma = (mu_safe + mu_safe**2 / r_safe).clamp(min=0.0).sqrt()
-    k_needed = (mu_safe + tail_sigma * sigma).max().item()
-    return max(min(int(k_needed) + 1, cap), floor)
+    val = (mu_safe + tail_sigma * sigma).max().item()
+    if not math.isfinite(val):
+        return cap
+    return max(min(int(val) + 1, cap), floor)
