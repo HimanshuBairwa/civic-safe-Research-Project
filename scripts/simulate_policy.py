@@ -230,6 +230,9 @@ run_policy_simulation = simulate_city
 def _load_artifact(city: str, path: Path) -> dict[str, Any] | None:
     candidates = [
         path,
+        # ``main`` receives the project-level outputs directory by default;
+        # conformal evaluation artifacts live in this nested directory.
+        path / "conformal_evaluation" / f"{city}_predictions.npz",
         path / f"{city}_policy_inputs.npz",
         path / "policy" / f"{city}_policy_inputs.npz",
         path / "evaluation" / f"{city}_policy_inputs.npz",
@@ -263,7 +266,7 @@ def _write_latex(rows: list[PolicyMetrics], path: Path) -> None:
         lines.append(
             f"{row.city.title()} & {row.policy.replace('_', ' ')} & {row.budget} & "
             f"{100 * row.violent_hit_rate:.2f} & {row.demographic_overallocation_ratio:.3f} & "
-            f"{100 * row.idle_wasted_resource_ratio:.2f} " + r"\\\\"
+            f"{100 * row.idle_wasted_resource_ratio:.2f} " + r"\\"
         )
     lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

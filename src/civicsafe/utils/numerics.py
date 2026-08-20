@@ -4,12 +4,21 @@ Every function preserves the input tensor's dtype and applies explicit
 epsilon floors to avoid NaN/Inf propagation.
 """
 
+import math
 from typing import Final
 
 import torch
 from torch import Tensor
 
-__all__ = ["NUMERICAL_EPS", "LOG_FLOOR", "nb_k_max", "safe_log", "safe_divide", "log_sum_exp", "clamp_probabilities"]
+__all__ = [
+    "LOG_FLOOR",
+    "NUMERICAL_EPS",
+    "clamp_probabilities",
+    "log_sum_exp",
+    "nb_k_max",
+    "safe_divide",
+    "safe_log",
+]
 
 # ---------------------------------------------------------------------------
 # Named constants
@@ -120,15 +129,25 @@ def nb_k_max(mu: Tensor, r: Tensor, tail_sigma: float = 10.0,
 
     Returns the integer k_max.
     """
+    # Keep all values in a bounded finite range before the variance
+    # calculation.  This is an evaluation-time guard: malformed model
+    # outputs must never reach ``int(...)`` or allocate an unbounded grid.
+    cap = max(int(cap), 1)
+    floor = max(min(int(floor), cap), 1)
     mu_safe = torch.nan_to_num(
-        mu.float(), nan=1e-6, posinf=float(cap), neginf=1e-6
-    ).clamp(min=1e-6, max=float(cap))
+        mu.float(), nan=1e-6, posinf=1e4, neginf=1e-6
+    ).clamp(min=1e-6, max=1e4)
     r_safe = torch.nan_to_num(
-        r.float(), nan=1.0, posinf=1e5, neginf=0.1
-    ).clamp(min=0.1, max=1e5)
+        r.float(), nan=1.0, posinf=1e4, neginf=0.1
+    ).clamp(min=0.1, max=1e4)
+    if mu_safe.numel() == 0 or r_safe.numel() == 0:
+        return floor
     # NB variance: mu + mu^2/r. Per-observation, then maxed.
     sigma = (mu_safe + mu_safe**2 / r_safe).clamp(min=0.0).sqrt()
-    val = (mu_safe + tail_sigma * sigma).max().item()
+    sigma_multiplier = float(tail_sigma)
+    if not math.isfinite(sigma_multiplier) or sigma_multiplier < 0.0:
+        sigma_multiplier = 0.0
+    val = (mu_safe + sigma_multiplier * sigma).max().item()
     if not math.isfinite(val):
         return cap
     return max(min(int(val) + 1, cap), floor)

@@ -71,6 +71,7 @@ from civicsafe.calibration.ensemble_evaluator import (
     rolling_panel_inference,
     select_checkpoint_weight_sets,
 )
+from civicsafe.calibration.metrics_tail import tail_crps_summary
 from civicsafe.calibration.policies import (
     DEFAULT_MAX_ABSTENTION,
     DEFAULT_MAX_DISPARITY,
@@ -84,6 +85,164 @@ from civicsafe.models.dataset import CrimeWindowDataset, create_chronological_sp
 from civicsafe.training.metrics import compute_all_metrics, crps_zinb, pit_values
 
 logger = logging.getLogger(__name__)
+
+
+def _panel_tensor(
+    value: Tensor | np.ndarray,
+    *,
+    name: str,
+    shape: tuple[int, int, int],
+) -> Tensor:
+    """Return an evaluation tensor with the canonical ``(week, unit, cat)`` shape."""
+    tensor = torch.as_tensor(value).detach().cpu().float()
+    if tuple(tensor.shape) == shape:
+        return tensor
+    if tensor.numel() == int(np.prod(shape)):
+        return tensor.reshape(shape)
+    raise ValueError(f"{name} has shape {tuple(tensor.shape)}; expected {shape}")
+
+
+def _finite_panel(
+    value: Tensor | np.ndarray,
+    *,
+    preserve_nan: bool = False,
+    lower: float = 0.0,
+    upper: float = 1e4,
+) -> np.ndarray:
+    """Convert a post-training panel to bounded floating-point NumPy values.
+
+    Conformal abstentions are represented by NaN bounds.  They remain NaN when
+    ``preserve_nan`` is true so downstream audits can distinguish an abstention
+    from a genuine zero score; infinities are always clamped to the finite
+    operational range.
+    """
+    arr = np.asarray(torch.as_tensor(value).detach().cpu(), dtype=np.float64)
+    if preserve_nan:
+        arr = np.where(np.isposinf(arr), upper, arr)
+        arr = np.where(np.isneginf(arr), lower, arr)
+        finite = np.isfinite(arr)
+        arr[finite] = np.clip(arr[finite], lower, upper)
+        return arr
+    return np.clip(
+        np.nan_to_num(arr, nan=lower, posinf=upper, neginf=lower),
+        lower,
+        upper,
+    )
+
+
+def _json_finite(value: Any) -> Any:
+    """Recursively replace non-finite JSON scalars with explicit nulls."""
+    if isinstance(value, dict):
+        return {str(key): _json_finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_finite(item) for item in value]
+    if isinstance(value, (float, np.floating)):
+        return float(value) if math.isfinite(float(value)) else None
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    return value
+
+
+def _save_post_training_artifacts(
+    data_name: str,
+    *,
+    test_y: Tensor,
+    test_pi: Tensor,
+    test_mu: Tensor,
+    test_r: Tensor,
+    rolling_ha: Tensor,
+    conformal_upper: Tensor,
+    demographic_group: Tensor | np.ndarray,
+    selected_method: str | None,
+    output_root: Path | None = None,
+    tail_quantile: float = 0.90,
+) -> tuple[Path, Path]:
+    """Persist raw violent-crime panels and tail diagnostics.
+
+    This helper is deliberately inference-free: it consumes tensors already
+    produced by the completed ensemble evaluation and writes only reproducible
+    post-training artifacts.  Keeping it separate also lets unit tests verify
+    the publication serialization without loading a checkpoint.
+    """
+    output_base = (
+        Path(PROJECT_ROOT) / "outputs"
+        if output_root is None
+        else Path(output_root)
+    )
+    test_y = torch.as_tensor(test_y).detach().cpu().float()
+    if test_y.ndim != 3:
+        raise ValueError(f"test_y must have shape (weeks, units, categories), got {tuple(test_y.shape)}")
+    n_weeks, n_units, n_categories = (int(dim) for dim in test_y.shape)
+    panel_shape = (n_weeks, n_units, n_categories)
+    test_pi = _panel_tensor(test_pi, name="test_pi", shape=panel_shape)
+    test_mu = _panel_tensor(test_mu, name="test_mu", shape=panel_shape)
+    test_r = _panel_tensor(test_r, name="test_r", shape=panel_shape)
+    rolling_ha = _panel_tensor(rolling_ha, name="rolling_ha", shape=panel_shape)
+    conformal_upper = _panel_tensor(
+        conformal_upper, name="conformal_upper", shape=panel_shape
+    )
+
+    groups = np.asarray(torch.as_tensor(demographic_group).detach().cpu()).reshape(-1)
+    if groups.size != n_units:
+        raise ValueError(
+            f"demographic_group has {groups.size} values; expected {n_units} spatial units"
+        )
+
+    c_idx = 0
+    predictions_dir = output_base / "conformal_evaluation"
+    predictions_dir.mkdir(parents=True, exist_ok=True)
+    predictions_path = predictions_dir / f"{data_name}_predictions.npz"
+    point_prediction = ((1.0 - test_pi) * test_mu).clamp_min(0.0)
+    np.savez_compressed(
+        predictions_path,
+        actual_violent=_finite_panel(test_y[:, :, c_idx]),
+        point_prediction=_finite_panel(point_prediction[:, :, c_idx]),
+        rolling_ha=_finite_panel(rolling_ha[:, :, c_idx]),
+        # Preserve NaN conformal abstentions while clamping infinities.
+        conformal_upper=_finite_panel(
+            conformal_upper[:, :, c_idx], preserve_nan=True
+        ),
+        demographic_group=np.clip(
+            np.nan_to_num(groups.astype(np.float64), nan=0.0, posinf=0.0, neginf=0.0),
+            0.0,
+            None,
+        ),
+    )
+
+    # Tail scores use the full ZINB panel so the JSON remains comparable to the
+    # headline CRPS and can be joined with Table 1.  Inputs are sanitized here
+    # because this is the final boundary before a potentially large CDF grid.
+    y_tail = torch.as_tensor(_finite_panel(test_y), dtype=torch.float32).reshape(-1)
+    pi_tail = torch.as_tensor(_finite_panel(test_pi, upper=1.0), dtype=torch.float32).reshape(-1)
+    mu_tail = torch.as_tensor(_finite_panel(test_mu), dtype=torch.float32).reshape(-1)
+    r_tail = torch.as_tensor(_finite_panel(test_r, lower=0.1), dtype=torch.float32).reshape(-1)
+    with torch.no_grad():
+        tail_summary = tail_crps_summary(
+            y_tail,
+            pi_tail,
+            mu_tail,
+            r_tail,
+            tail_quantile=tail_quantile,
+        )
+    tail_payload = {
+        **tail_summary,
+        "dataset": data_name,
+        "weeks": n_weeks,
+        "spatial_units": n_units,
+        "categories": n_categories,
+        "selected_calibrator": selected_method,
+        "definition": "Gneiting-Ranjan threshold-weighted CRPS over the empirical upper tail",
+    }
+    tail_dir = output_base / "tail_metrics"
+    tail_dir.mkdir(parents=True, exist_ok=True)
+    tail_path = tail_dir / f"{data_name}_tail_metrics.json"
+    tail_path.write_text(
+        json.dumps(_json_finite(tail_payload), indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("  Raw predictions saved: %s", predictions_path)
+    logger.info("  Tail metrics saved: %s", tail_path)
+    return predictions_path, tail_path
 
 # ───────────────────────────────────────────────────────────────────
 # Constants
@@ -933,6 +1092,9 @@ def run_conformal_evaluation(
     }
 
     all_coverage_results: dict[str, Any] = {}
+    # Keep the actual interval tensors alongside their scalar audit summaries.
+    # They are consumed only at Step 7 for publication/policy artifacts.
+    intervals_by_method: dict[str, dict[str, Tensor]] = {}
 
     for method_name, calibrator in calibrator_configs.items():
         logger.info(f"\n  ─── {method_name.upper()} ───")
@@ -981,6 +1143,11 @@ def run_conformal_evaluation(
             logger.error(f"  {method_name} prediction failed: {e}")
             all_coverage_results[method_name] = {"error": str(e)}
             continue
+
+        intervals_by_method[method_name] = {
+            "lower": intervals["lower"].detach().cpu(),
+            "upper": intervals["upper"].detach().cpu(),
+        }
 
         # Compute coverage metrics.
         # Reported on the DEMOGRAPHIC axis for every method regardless of what
@@ -1125,6 +1292,10 @@ def run_conformal_evaluation(
     # Concatenate all rolling predictions for aggregate metrics
     rolling_lower_all = torch.cat(all_rolling_lower)
     rolling_upper_all = torch.cat(all_rolling_upper)
+    intervals_by_method["adaptive_ecrc_rolling"] = {
+        "lower": rolling_lower_all.detach().cpu(),
+        "upper": rolling_upper_all.detach().cpu(),
+    }
     
     rolling_coverage_overall = compute_coverage_metrics(
         y_test, rolling_lower_all, rolling_upper_all,
@@ -1484,6 +1655,42 @@ def run_conformal_evaluation(
 
     logger.info("\n[7/7] Compiling results and saving to disk...")
 
+    # Select the interval panel according to the centralized policy decision.
+    # The selected method's tensor is flattened during calibration, so restore
+    # the same week/unit/category layout as the raw model outputs before saving.
+    selected_method = calibrator_selection.selected_method
+    selected_bundle = (
+        intervals_by_method.get(selected_method)
+        if selected_method is not None
+        else None
+    )
+    test_panel_shape = tuple(int(dim) for dim in test_results["y"].shape)
+    if selected_bundle is not None:
+        selected_upper = selected_bundle["upper"].reshape(test_panel_shape)
+    else:
+        # A run with no usable calibrator still gets a truthful, finite panel so
+        # downstream diagnostics can report ``selected_calibrator: null``.
+        # This is a post-training operational fallback, never a training path.
+        logger.warning(
+            "  No selected interval tensor available; using the finite raw mean "
+            "forecast as an explicit artifact fallback."
+        )
+        selected_upper = ((1.0 - test_results["pi"]) * test_results["mu"]).reshape(
+            test_panel_shape
+        )
+
+    predictions_path, tail_metrics_path = _save_post_training_artifacts(
+        data_name,
+        test_y=test_results["y"],
+        test_pi=test_results["pi"],
+        test_mu=test_results["mu"],
+        test_r=test_results["r"],
+        rolling_ha=rolling_ha_3d,
+        conformal_upper=selected_upper,
+        demographic_group=spatial_groups,
+        selected_method=selected_method,
+    )
+
     # Dataset hash for reproducibility
     panel_hash = hashlib.md5(
         counts.numpy().tobytes()[:10000]  # First 10KB for speed
@@ -1521,6 +1728,9 @@ def run_conformal_evaluation(
             "test_set_size": len(test_dataset),
             "total_cal_observations": int(y_cal.numel()),
             "total_test_observations": int(y_test.numel()),
+            "prediction_artifact": str(predictions_path),
+            "tail_metrics_artifact": str(tail_metrics_path),
+            "selected_calibrator": selected_method,
         },
         "point_forecast_metrics": test_metrics,
         "skill_scores": {

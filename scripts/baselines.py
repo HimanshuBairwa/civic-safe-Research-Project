@@ -59,17 +59,40 @@ def compute_metrics(
             given, a ``per_week`` block carrying the CRPS series is added so
             this baseline can enter the Diebold-Mariano comparison.
     """
+    # Sanitize both sides of every metric.  Baseline outputs can contain
+    # non-finite values after an unstable fit, and raw observations loaded from
+    # an external panel may contain sentinels as well.  Keeping the finite
+    # range bounded also prevents the downstream ZINB truncation rule from
+    # attempting an enormous support grid.
+    y_true_safe = np.nan_to_num(y_true, nan=0.0, posinf=1e4, neginf=0.0)
+    y_true_safe = np.clip(y_true_safe, a_min=0.0, a_max=1e4)
     y_pred_safe = np.nan_to_num(y_pred, nan=0.0, posinf=1e4, neginf=0.0)
-    mae = np.abs(y_true - y_pred_safe).mean()
-    rmse = np.sqrt(np.mean((y_true - y_pred_safe) ** 2))
+    y_pred_safe = np.clip(y_pred_safe, a_min=0.0, a_max=1e4)
+    mae = np.abs(y_true_safe - y_pred_safe).mean()
+    rmse = np.sqrt(np.mean((y_true_safe - y_pred_safe) ** 2))
 
     # Proper CRPS via Poisson approximation: pi=0, mu=y_pred, r=1000 (NB→Poisson)
     from civicsafe.training.metrics import crps_zinb
-    y_t = torch.tensor(y_true.flatten(), dtype=torch.float32)
+    y_t = torch.nan_to_num(
+        torch.tensor(y_true_safe.flatten(), dtype=torch.float32),
+        nan=0.0,
+        posinf=1e4,
+        neginf=0.0,
+    ).clamp(min=0.0, max=1e4)
     pi_t = torch.zeros_like(y_t)
-    mu_t = torch.tensor(y_pred_safe.flatten(), dtype=torch.float32).clamp(min=0.01, max=1e4)
+    mu_t = torch.nan_to_num(
+        torch.tensor(y_pred_safe.flatten(), dtype=torch.float32),
+        nan=0.01,
+        posinf=1e4,
+        neginf=0.01,
+    ).clamp(min=0.01, max=1e4)
     r_t = torch.full_like(y_t, 1000.0)
-    cell_crps = crps_zinb(y_t, pi_t, mu_t, r_t)
+    cell_crps = torch.nan_to_num(
+        crps_zinb(y_t, pi_t, mu_t, r_t),
+        nan=0.0,
+        posinf=1e8,
+        neginf=0.0,
+    ).clamp(min=0.0, max=1e8)
     crps = cell_crps.mean().item()
 
     out: dict[str, Any] = {

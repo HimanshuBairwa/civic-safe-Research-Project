@@ -11,6 +11,7 @@ import torch
 from civicsafe.utils.numerics import (
     clamp_probabilities,
     log_sum_exp,
+    nb_k_max,
     safe_divide,
     safe_log,
 )
@@ -131,6 +132,28 @@ def test_log_sum_exp_numerical_stability() -> None:
         f"Numerically stable result {stable_result.item()} deviates "
         f"from reference {reference.item()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Negative-binomial truncation safety
+# ---------------------------------------------------------------------------
+
+
+def test_nb_k_max_clamps_nan_and_infinities() -> None:
+    """Non-finite model outputs must never reach ``int`` or escape the cap."""
+    mu = torch.tensor([float("nan"), float("inf"), float("-inf"), 1e30])
+    r = torch.tensor([float("nan"), float("inf"), float("-inf"), 1e-30])
+
+    result = nb_k_max(mu, r, cap=500, floor=15)
+
+    assert isinstance(result, int)
+    assert 15 <= result <= 500
+
+
+def test_nb_k_max_handles_empty_tensors_and_nonfinite_sigma() -> None:
+    assert nb_k_max(torch.tensor([]), torch.tensor([]), cap=40, floor=12) == 12
+    result = nb_k_max(torch.tensor([5.0]), torch.tensor([2.0]), tail_sigma=float("inf"))
+    assert 50 <= result <= 5000
 
 
 # ---------------------------------------------------------------------------
