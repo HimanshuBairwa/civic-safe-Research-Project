@@ -1,11 +1,47 @@
 {
   "metadata": {
     "dataset": "chicago",
-    "checkpoint": "[PosixPath('/workspace/civic-safe-Research-Project/outputs/run_chicago_1785214452/seed_1024/best.pt'), PosixPath('/workspace/civic-safe-Research-Project/outputs/run_chicago_1785214452/seed_137/best.pt'), PosixPath('/workspace/civic-safe-Research-Project/outputs/run_chicago_1785214452/seed_256/best.pt'), PosixPath('/workspace/civic-safe-Research-Project/outputs/run_chicago_1785214452/seed_42/best.pt'), PosixPath('/workspace/civic-safe-Research-Project/outputs/run_chicago_1785214452/seed_512/best.pt')]",
+    "checkpoint": "outputs/run_chicago_anchor_1786718493",
+    "checkpoints": [
+      "outputs/run_chicago_anchor_1786718493/seed_42/best.pt",
+      "outputs/run_chicago_anchor_1786718493/seed_137/best.pt",
+      "outputs/run_chicago_anchor_1786718493/seed_256/best.pt",
+      "outputs/run_chicago_anchor_1786718493/seed_512/best.pt",
+      "outputs/run_chicago_anchor_1786718493/seed_1024/best.pt"
+    ],
     "num_ensemble_seeds": 5,
-    "weights_source": "raw",
+    "weights_source": "per_seed_validation",
+    "weights_source_per_seed": {
+      "seed_42": "ema",
+      "seed_137": "ema",
+      "seed_256": "ema",
+      "seed_512": "ema",
+      "seed_1024": "ema"
+    },
+    "weight_selection_val_crps_per_seed": {
+      "seed_42": {
+        "raw": 2.420504,
+        "ema": 2.399585
+      },
+      "seed_137": {
+        "raw": 2.412973,
+        "ema": 2.328
+      },
+      "seed_256": {
+        "raw": 2.410434,
+        "ema": 2.34887
+      },
+      "seed_512": {
+        "raw": 2.440654,
+        "ema": 2.41947
+      },
+      "seed_1024": {
+        "raw": 2.498843,
+        "ema": 2.445283
+      }
+    },
     "alpha": 0.1,
-    "timestamp": "2026-08-02T04:48:10.890297",
+    "timestamp": "2026-08-20T09:48:56.522054",
     "panel_hash": "4bb2e1e3322b",
     "spatial_units": 77,
     "time_steps": 313,
@@ -13,52 +49,59 @@
     "cal_set_size": 26,
     "test_set_size": 53,
     "total_cal_observations": 6006,
-    "total_test_observations": 12243
+    "total_test_observations": 12243,
+    "prediction_artifact": "/workspace/civic-safe-Research-Project/outputs/conformal_evaluation/chicago_predictions.npz",
+    "tail_metrics_artifact": "/workspace/civic-safe-Research-Project/outputs/tail_metrics/chicago_tail_metrics.json",
+    "selected_calibrator": "equalized_coverage"
   },
   "point_forecast_metrics": {
-    "crps": 3.2291386127471924,
-    "mae": 4.514423370361328,
-    "rmse": 8.21031665802002,
-    "brier_zero": 0.0677407756447792
+    "crps": 2.8267102241516113,
+    "mae": 3.9017200469970703,
+    "rmse": 7.098261833190918,
+    "brier_zero": 0.05915776267647743
   },
   "skill_scores": {
-    "baseline_crps_ha": 3.878098726272583,
-    "baseline_crps_seasonal_naive": 4.4008283615112305,
-    "model_crps": 3.2291386127471924,
-    "crpss_vs_ha": 0.16733976088049096,
-    "crpss_vs_seasonal_naive": 0.26624300075217733,
-    "crpss": 0.26624300075217733,
+    "baseline_crps_ha": 2.9321696758270264,
+    "baseline_crps_ha_frozen": 3.8789970874786377,
+    "crpss_vs_ha_frozen": 0.2712780751302437,
+    "baseline_crps_seasonal_naive": 4.400869369506836,
+    "model_crps": 2.8267102241516113,
+    "crpss_vs_ha": 0.03596635370211643,
+    "crpss_vs_seasonal_naive": 0.35769276776593484,
+    "crpss": 0.03596635370211643,
+    "crpss_binding_baseline": "ha_rolling",
+    "forecasting_gate_passed": true,
     "crpss_passes_threshold": true
   },
   "per_category_crpss": {
     "violent": {
-      "model_crps": 3.276211738586426,
-      "ha_crps": 3.82405161857605,
-      "crpss": 0.14326163311404816
+      "model_crps": 3.132446765899658,
+      "ha_crps": 3.3220276832580566,
+      "crpss": 0.057067831888886644
     },
     "property": {
-      "model_crps": 5.6651201248168945,
-      "ha_crps": 6.651858329772949,
-      "crpss": 0.1483402315619875
+      "model_crps": 4.796700954437256,
+      "ha_crps": 4.916576385498047,
+      "crpss": 0.024381891312494575
     },
     "drug": {
-      "model_crps": 0.7460858821868896,
-      "ha_crps": 1.158385992050171,
-      "crpss": 0.3559263602053504
+      "model_crps": 0.5509828925132751,
+      "ha_crps": 0.5579054951667786,
+      "crpss": 0.012408199441437673
     }
   },
   "calibration_diagnostics": {
     "pit_histogram": [
-      0.11230907457322552,
-      0.10185412072204525,
-      0.09875030629747611,
-      0.10495793514661439,
+      0.09540145389201993,
+      0.08747855917667238,
+      0.08780527648452177,
+      0.09205260148656375,
       0.0930327534101119,
-      0.09956709956709957,
-      0.0931961120640366,
-      0.08829535244629584,
-      0.09278771542922486,
-      0.11524953034386996
+      0.09491137793024586,
+      0.10144572408723353,
+      0.10185412072204525,
+      0.11034877072612921,
+      0.13566936208445643
     ],
     "pit_bin_edges": [
       0.0,
@@ -73,791 +116,1188 @@
       0.8999999761581421,
       1.0
     ],
-    "pit_max_deviation": 0.015249530343869958,
-    "pit_chi2_stat": 85.41705464346974,
-    "pit_chi2_pvalue": 1.3467160052401578e-14,
+    "pit_max_deviation": 0.035669362084456424,
+    "pit_chi2_stat": 226.39393939393943,
+    "pit_chi2_pvalue": 9.450927330794802e-44,
     "pit_is_uniform": false
   },
   "coverage_results": {
     "split_cp": {
-      "marginal_coverage": 0.9277954697608948,
-      "mean_width": 17.147022247314453,
-      "median_width": 15.0,
+      "marginal_coverage": 0.9405374526977539,
+      "mean_width": 16.249366760253906,
+      "median_width": 14.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.027795469760894753,
+      "coverage_gap": 0.040537452697753884,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9238993525505066,
-          "mean_width": 20.666351318359375,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9355345964431763,
+          "mean_width": 19.357547760009766
         },
         "group_1": {
-          "coverage": 0.91426682472229,
-          "mean_width": 15.745448112487793,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.933796763420105,
+          "mean_width": 15.053956031799316
         },
         "group_2": {
-          "coverage": 0.9281694889068604,
-          "mean_width": 15.064217567443848,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9410791397094727,
+          "mean_width": 14.375371932983398
         },
         "group_3": {
-          "coverage": 0.9450513124465942,
-          "mean_width": 16.92684555053711,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9520026445388794,
+          "mean_width": 16.04700469970703
         }
       },
-      "coverage_disparity": 0.0307844877243042,
-      "min_group_coverage": 0.91426682472229,
-      "max_group_coverage": 0.9450513124465942,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.018205881118774414,
+      "min_group_coverage": 0.933796763420105,
+      "max_group_coverage": 0.9520026445388794,
+      "calibration_axis": "none",
+      "calibration_threshold": 1.0,
+      "calibration_is_degenerate": false,
       "per_category": {
         "violent": {
-          "coverage": 0.9348198771476746,
-          "mean_width": 19.688312530517578,
+          "coverage": 0.9233031272888184,
+          "mean_width": 17.669198989868164,
           "n_samples": 4081
         },
         "property": {
-          "coverage": 0.8588581085205078,
-          "mean_width": 25.593481063842773,
+          "coverage": 0.9135016202926636,
+          "mean_width": 27.28914451599121,
           "n_samples": 4081
         },
         "drug": {
-          "coverage": 0.989708423614502,
-          "mean_width": 6.159274578094482,
+          "coverage": 0.9848076701164246,
+          "mean_width": 3.789757490158081,
+          "n_samples": 4081
+        }
+      }
+    },
+    "randomized_split_cp": {
+      "marginal_coverage": 0.93465656042099,
+      "mean_width": 16.534753799438477,
+      "median_width": 13.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.03465656042098997,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
+      "per_group": {
+        "group_0": {
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9295597672462463,
+          "mean_width": 19.960691452026367
+        },
+        "group_1": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.935451865196228,
+          "mean_width": 15.181065559387207
+        },
+        "group_2": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9328036904335022,
+          "mean_width": 14.454815864562988
+        },
+        "group_3": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9410791397094727,
+          "mean_width": 16.362131118774414
+        }
+      },
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.011519372463226318,
+      "min_group_coverage": 0.9295597672462463,
+      "max_group_coverage": 0.9410791397094727,
+      "calibration_axis": "none",
+      "pit_space_coverage": 0.8955321311950684,
+      "pit_band": [
+        0.07044696062803268,
+        0.9830083250999451
+      ],
+      "pit_randomization_seed": 0,
+      "per_category": {
+        "violent": {
+          "coverage": 0.9198725819587708,
+          "mean_width": 17.724822998046875,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.9044351577758789,
+          "mean_width": 28.490320205688477,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 0.9796618223190308,
+          "mean_width": 3.38912034034729,
           "n_samples": 4081
         }
       }
     },
     "weighted_cp": {
-      "marginal_coverage": 0.9277954697608948,
-      "mean_width": 17.147022247314453,
-      "median_width": 15.0,
+      "marginal_coverage": 0.9075390100479126,
+      "mean_width": 14.579514503479004,
+      "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.027795469760894753,
+      "coverage_gap": 0.0075390100479125755,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9238993525505066,
-          "mean_width": 20.666351318359375,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.8993710875511169,
+          "mean_width": 17.649370193481445
         },
         "group_1": {
-          "coverage": 0.91426682472229,
-          "mean_width": 15.745448112487793,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.903674304485321,
+          "mean_width": 13.36213207244873
         },
         "group_2": {
-          "coverage": 0.9281694889068604,
-          "mean_width": 15.064217567443848,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9043363332748413,
+          "mean_width": 12.71135425567627
         },
         "group_3": {
-          "coverage": 0.9450513124465942,
-          "mean_width": 16.92684555053711,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.923204243183136,
+          "mean_width": 14.43363094329834
         }
       },
-      "coverage_disparity": 0.0307844877243042,
-      "min_group_coverage": 0.91426682472229,
-      "max_group_coverage": 0.9450513124465942,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.023833155632019043,
+      "min_group_coverage": 0.8993710875511169,
+      "max_group_coverage": 0.923204243183136,
+      "calibration_axis": "none",
+      "calibration_threshold": 0.0,
+      "calibration_is_degenerate": true,
       "per_category": {
         "violent": {
-          "coverage": 0.9348198771476746,
-          "mean_width": 19.688312530517578,
+          "coverage": 0.8882626891136169,
+          "mean_width": 15.717716217041016,
           "n_samples": 4081
         },
         "property": {
-          "coverage": 0.8588581085205078,
-          "mean_width": 25.593481063842773,
+          "coverage": 0.8828718662261963,
+          "mean_width": 25.295024871826172,
           "n_samples": 4081
         },
         "drug": {
-          "coverage": 0.989708423614502,
-          "mean_width": 6.159274578094482,
+          "coverage": 0.9514824748039246,
+          "mean_width": 2.725802421569824,
           "n_samples": 4081
         }
       }
     },
     "mondrian": {
-      "marginal_coverage": 0.9210160970687866,
-      "mean_width": 16.7874698638916,
-      "median_width": 14.0,
+      "marginal_coverage": 0.9169321060180664,
+      "mean_width": 15.023197174072266,
+      "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.0210160970687866,
+      "coverage_gap": 0.016932106018066384,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9323899149894714,
-          "mean_width": 22.327043533325195,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9355345964431763,
+          "mean_width": 19.357547760009766
         },
         "group_1": {
-          "coverage": 0.91426682472229,
-          "mean_width": 15.745448112487793,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.903674304485321,
+          "mean_width": 13.36213207244873
         },
         "group_2": {
-          "coverage": 0.9106256365776062,
-          "mean_width": 13.426679611206055,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9043363332748413,
+          "mean_width": 12.71135425567627
         },
         "group_3": {
-          "coverage": 0.9261834025382996,
-          "mean_width": 15.359152793884277,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.923204243183136,
+          "mean_width": 14.43363094329834
         }
       },
-      "coverage_disparity": 0.021764278411865234,
-      "min_group_coverage": 0.9106256365776062,
-      "max_group_coverage": 0.9323899149894714,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.031860291957855225,
+      "min_group_coverage": 0.903674304485321,
+      "max_group_coverage": 0.9355345964431763,
+      "calibration_axis": "demographic",
       "per_category": {
         "violent": {
-          "coverage": 0.9237931966781616,
-          "mean_width": 19.256555557250977,
+          "coverage": 0.8965939879417419,
+          "mean_width": 16.22420883178711,
           "n_samples": 4081
         },
         "property": {
-          "coverage": 0.8515070080757141,
-          "mean_width": 25.154373168945312,
+          "coverage": 0.8909580707550049,
+          "mean_width": 25.81450653076172,
           "n_samples": 4081
         },
         "drug": {
-          "coverage": 0.9877480864524841,
-          "mean_width": 5.95148229598999,
+          "coverage": 0.9632443189620972,
+          "mean_width": 3.030874729156494,
+          "n_samples": 4081
+        }
+      }
+    },
+    "mondrian_category": {
+      "marginal_coverage": 0.9313076734542847,
+      "mean_width": 17.193334579467773,
+      "median_width": 14.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.031307673454284646,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
+      "per_group": {
+        "group_0": {
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9207547307014465,
+          "mean_width": 20.236478805541992
+        },
+        "group_1": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9308176040649414,
+          "mean_width": 16.002647399902344
+        },
+        "group_2": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9285004734992981,
+          "mean_width": 15.37173080444336
+        },
+        "group_3": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9457133412361145,
+          "mean_width": 17.002317428588867
+        }
+      },
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.02495861053466797,
+      "min_group_coverage": 0.9207547307014465,
+      "max_group_coverage": 0.9457133412361145,
+      "calibration_axis": "category",
+      "per_category": {
+        "violent": {
+          "coverage": 0.8882626891136169,
+          "mean_width": 15.717716217041016,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.9541779160499573,
+          "mean_width": 33.1364860534668,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 0.9514824748039246,
+          "mean_width": 2.725802421569824,
+          "n_samples": 4081
+        }
+      }
+    },
+    "mondrian_demo_x_category": {
+      "marginal_coverage": 0.9304909110069275,
+      "mean_width": 17.346647262573242,
+      "median_width": 14.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.030490911006927468,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
+      "per_group": {
+        "group_0": {
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9289308190345764,
+          "mean_width": 22.651885986328125
+        },
+        "group_1": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9308176040649414,
+          "mean_width": 16.002647399902344
+        },
+        "group_2": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9251903295516968,
+          "mean_width": 14.71135425567627
+        },
+        "group_3": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9371069073677063,
+          "mean_width": 15.741476058959961
+        }
+      },
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.011916577816009521,
+      "min_group_coverage": 0.9251903295516968,
+      "max_group_coverage": 0.9371069073677063,
+      "calibration_axis": "demo_x_category",
+      "per_category": {
+        "violent": {
+          "coverage": 0.8882626891136169,
+          "mean_width": 15.717716217041016,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.9517275094985962,
+          "mean_width": 33.5964241027832,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 0.9514824748039246,
+          "mean_width": 2.725802421569824,
           "n_samples": 4081
         }
       }
     },
     "equalized_coverage": {
-      "marginal_coverage": 0.9069672226905823,
-      "mean_width": 15.514579772949219,
-      "median_width": 13.0,
+      "marginal_coverage": 0.9075390100479126,
+      "mean_width": 14.579514503479004,
+      "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.006967222690582253,
+      "coverage_gap": 0.0075390100479125755,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9034591317176819,
-          "mean_width": 18.998743057250977,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.8993710875511169,
+          "mean_width": 17.649370193481445
         },
         "group_1": {
-          "coverage": 0.8877854943275452,
-          "mean_width": 14.090367317199707,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.903674304485321,
+          "mean_width": 13.36213207244873
         },
         "group_2": {
-          "coverage": 0.9106256365776062,
-          "mean_width": 13.426679611206055,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9043363332748413,
+          "mean_width": 12.71135425567627
         },
         "group_3": {
-          "coverage": 0.9261834025382996,
-          "mean_width": 15.359152793884277,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.923204243183136,
+          "mean_width": 14.43363094329834
         }
       },
-      "coverage_disparity": 0.038397908210754395,
-      "min_group_coverage": 0.8877854943275452,
-      "max_group_coverage": 0.9261834025382996,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.023833155632019043,
+      "min_group_coverage": 0.8993710875511169,
+      "max_group_coverage": 0.923204243183136,
+      "calibration_axis": "demographic",
+      "calibration_threshold": 0.0,
+      "calibration_is_degenerate": true,
       "per_category": {
         "violent": {
-          "coverage": 0.9078657031059265,
-          "mean_width": 17.763294219970703,
+          "coverage": 0.8882626891136169,
+          "mean_width": 15.717716217041016,
           "n_samples": 4081
         },
         "property": {
-          "coverage": 0.8314138650894165,
-          "mean_width": 23.64984130859375,
+          "coverage": 0.8828718662261963,
+          "mean_width": 25.295024871826172,
           "n_samples": 4081
         },
         "drug": {
-          "coverage": 0.9816221594810486,
-          "mean_width": 5.130605220794678,
+          "coverage": 0.9514824748039246,
+          "mean_width": 2.725802421569824,
+          "n_samples": 4081
+        }
+      }
+    },
+    "variance_scaled_split_cp": {
+      "marginal_coverage": 0.9079474210739136,
+      "mean_width": 14.65008544921875,
+      "median_width": 12.0,
+      "target_coverage": 0.9,
+      "coverage_gap": 0.007947421073913552,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
+      "per_group": {
+        "group_0": {
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.8999999761581421,
+          "mean_width": 17.74496841430664
+        },
+        "group_1": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.903674304485321,
+          "mean_width": 13.39721965789795
+        },
+        "group_2": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9043363332748413,
+          "mean_width": 12.71135425567627
+        },
+        "group_3": {
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.924197256565094,
+          "mean_width": 14.58391284942627
+        }
+      },
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.024197280406951904,
+      "min_group_coverage": 0.8999999761581421,
+      "max_group_coverage": 0.924197256565094,
+      "calibration_axis": "none",
+      "calibration_threshold": 0.03479341045022011,
+      "calibration_is_degenerate": false,
+      "per_category": {
+        "violent": {
+          "coverage": 0.8882626891136169,
+          "mean_width": 15.733888626098633,
+          "n_samples": 4081
+        },
+        "property": {
+          "coverage": 0.8840970396995544,
+          "mean_width": 25.49056625366211,
+          "n_samples": 4081
+        },
+        "drug": {
+          "coverage": 0.9514824748039246,
+          "mean_width": 2.725802421569824,
           "n_samples": 4081
         }
       }
     },
     "ecrc": {
-      "marginal_coverage": 0.9554030895233154,
-      "mean_width": 20.789756774902344,
-      "median_width": 19.0,
+      "marginal_coverage": 0.92354816198349,
+      "mean_width": 15.89267349243164,
+      "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.05540308952331541,
+      "coverage_gap": 0.023548161983489968,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9663522243499756,
-          "mean_width": 28.688051223754883,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.9305031299591064,
+          "mean_width": 20.266036987304688
         },
         "group_1": {
-          "coverage": 0.9500165581703186,
-          "mean_width": 18.924198150634766,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9172459244728088,
+          "mean_width": 14.431976318359375
         },
         "group_2": {
-          "coverage": 0.947037398815155,
-          "mean_width": 16.67328643798828,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.915259838104248,
+          "mean_width": 13.46143627166748
         },
         "group_3": {
-          "coverage": 0.957629919052124,
-          "mean_width": 18.457796096801758,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.9308176040649414,
+          "mean_width": 15.181065559387207
         }
       },
-      "coverage_disparity": 0.019314825534820557,
-      "min_group_coverage": 0.947037398815155,
-      "max_group_coverage": 0.9663522243499756,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.01555776596069336,
+      "min_group_coverage": 0.915259838104248,
+      "max_group_coverage": 0.9308176040649414,
+      "calibration_axis": "demographic",
       "per_category": {
         "violent": {
-          "coverage": 0.9654496312141418,
-          "mean_width": 23.882871627807617,
+          "coverage": 0.9059054255485535,
+          "mean_width": 17.111248016357422,
           "n_samples": 4081
         },
         "property": {
-          "coverage": 0.9044351577758789,
-          "mean_width": 29.91644287109375,
+          "coverage": 0.908845841884613,
+          "mean_width": 27.706689834594727,
           "n_samples": 4081
         },
         "drug": {
-          "coverage": 0.9963244199752808,
-          "mean_width": 8.569958686828613,
-          "n_samples": 4081
-        }
-      }
-    },
-    "adaptive_ecrc": {
-      "marginal_coverage": 0.9554030895233154,
-      "mean_width": 20.789756774902344,
-      "median_width": 19.0,
-      "target_coverage": 0.9,
-      "coverage_gap": 0.05540308952331541,
-      "per_group": {
-        "group_0": {
-          "coverage": 0.9663522243499756,
-          "mean_width": 28.688051223754883,
-          "n_samples": 3180
-        },
-        "group_1": {
-          "coverage": 0.9500165581703186,
-          "mean_width": 18.924198150634766,
-          "n_samples": 3021
-        },
-        "group_2": {
-          "coverage": 0.947037398815155,
-          "mean_width": 16.67328643798828,
-          "n_samples": 3021
-        },
-        "group_3": {
-          "coverage": 0.957629919052124,
-          "mean_width": 18.457796096801758,
-          "n_samples": 3021
-        }
-      },
-      "coverage_disparity": 0.019314825534820557,
-      "min_group_coverage": 0.947037398815155,
-      "max_group_coverage": 0.9663522243499756,
-      "per_category": {
-        "violent": {
-          "coverage": 0.9654496312141418,
-          "mean_width": 23.882871627807617,
-          "n_samples": 4081
-        },
-        "property": {
-          "coverage": 0.9044351577758789,
-          "mean_width": 29.91644287109375,
-          "n_samples": 4081
-        },
-        "drug": {
-          "coverage": 0.9963244199752808,
-          "mean_width": 8.569958686828613,
+          "coverage": 0.9558931589126587,
+          "mean_width": 2.8600833415985107,
           "n_samples": 4081
         }
       }
     },
     "adaptive_ecrc_rolling": {
-      "marginal_coverage": 0.9193825125694275,
-      "mean_width": 16.480520248413086,
-      "median_width": 14.0,
+      "marginal_coverage": 0.893000066280365,
+      "mean_width": 13.876664161682129,
+      "median_width": 11.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.019382512569427468,
+      "coverage_gap": -0.006999933719635032,
+      "abstention_rate": 0.0,
+      "n_issued": 12243,
+      "n_total": 12243,
       "per_group": {
         "group_0": {
-          "coverage": 0.9163522124290466,
-          "mean_width": 20.325786590576172,
-          "n_samples": 3180
+          "n_samples": 3180,
+          "n_issued": 3180,
+          "abstention_rate": 0.0,
+          "coverage": 0.8933961987495422,
+          "mean_width": 17.395282745361328
         },
         "group_1": {
-          "coverage": 0.91426682472229,
-          "mean_width": 15.702747344970703,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.8937438130378723,
+          "mean_width": 12.86991024017334
         },
         "group_2": {
-          "coverage": 0.9192320704460144,
-          "mean_width": 14.068851470947266,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.8924197554588318,
+          "mean_width": 12.105594635009766
         },
         "group_3": {
-          "coverage": 0.9278384447097778,
-          "mean_width": 15.622310638427734,
-          "n_samples": 3021
+          "n_samples": 3021,
+          "n_issued": 3021,
+          "abstention_rate": 0.0,
+          "coverage": 0.8924197554588318,
+          "mean_width": 12.950678825378418
         }
       },
-      "coverage_disparity": 0.013571619987487793,
-      "min_group_coverage": 0.91426682472229,
-      "max_group_coverage": 0.9278384447097778,
+      "abstention_disparity": 0.0,
+      "coverage_disparity": 0.0013240575790405273,
+      "min_group_coverage": 0.8924197554588318,
+      "max_group_coverage": 0.8937438130378723,
+      "per_category": {
+        "violent": {
+          "coverage": 0.8627787232398987,
+          "mean_width": 14.959078788757324,
+          "n_samples": 4081,
+          "n_issued": 4081,
+          "abstention_rate": 0.0
+        },
+        "property": {
+          "coverage": 0.8652291297912598,
+          "mean_width": 23.984561920166016,
+          "n_samples": 4081,
+          "n_issued": 4081,
+          "abstention_rate": 0.0
+        },
+        "drug": {
+          "coverage": 0.9509924054145813,
+          "mean_width": 2.6863512992858887,
+          "n_samples": 4081,
+          "n_issued": 4081,
+          "abstention_rate": 0.0
+        }
+      },
       "per_window_coverage": [
-        0.9264069199562073,
-        0.948051929473877,
-        0.9264069199562073,
-        0.9696969985961914,
-        0.9653679728507996,
-        0.948051929473877,
-        0.9523809552192688,
-        0.9610389471054077,
-        0.9134199023246765,
-        0.948051929473877,
-        0.9264069199562073,
+        0.8831169009208679,
         0.9004328846931458,
+        0.8917748928070068,
+        0.9523809552192688,
+        0.9437229633331299,
         0.9134199023246765,
-        0.9307359457015991,
-        0.9350649118423462,
-        0.9567099809646606,
-        0.939393937587738,
         0.9177489280700684,
-        0.9307359457015991,
-        0.948051929473877,
-        0.9177489280700684,
+        0.9220778942108154,
+        0.8787878751754761,
+        0.9047619104385376,
+        0.9220778942108154,
+        0.9264069199562073,
+        0.9090909361839294,
+        0.9264069199562073,
+        0.8831169009208679,
+        0.9610389471054077,
+        0.9004328846931458,
+        0.8701298832893372,
+        0.9220778942108154,
+        0.9047619104385376,
+        0.8701298832893372,
+        0.8831169009208679,
+        0.9134199023246765,
+        0.9264069199562073,
+        0.8831169009208679,
+        0.8831169009208679,
+        0.9047619104385376,
+        0.9264069199562073,
+        0.9437229633331299,
+        0.9047619104385376,
+        0.8658008575439453,
+        0.9437229633331299,
+        0.9090909361839294,
+        0.8441558480262756,
+        0.887445867061615,
+        0.8917748928070068,
+        0.8354978561401367,
+        0.8787878751754761,
+        0.9220778942108154,
         0.9047619104385376,
         0.9307359457015991,
-        0.939393937587738,
-        0.9220778942108154,
-        0.9307359457015991,
-        0.939393937587738,
-        0.9220778942108154,
-        0.9437229633331299,
-        0.9307359457015991,
-        0.8917748928070068,
-        0.9437229633331299,
-        0.9437229633331299,
-        0.9350649118423462,
-        0.9264069199562073,
-        0.9264069199562073,
-        0.8787878751754761,
-        0.9004328846931458,
-        0.939393937587738,
+        0.8658008575439453,
         0.887445867061615,
-        0.9220778942108154,
         0.9090909361839294,
+        0.9177489280700684,
+        0.9220778942108154,
+        0.887445867061615,
+        0.9177489280700684,
         0.9004328846931458,
+        0.9047619104385376,
         0.9177489280700684,
-        0.9567099809646606,
-        0.9567099809646606,
-        0.9307359457015991,
-        0.9264069199562073,
-        0.9523809552192688,
-        0.9134199023246765,
-        0.9177489280700684,
-        0.9177489280700684,
-        0.39393940567970276
+        0.8831169009208679,
+        0.32900431752204895
       ],
       "per_window_width": [
-        19.350648880004883,
-        19.337661743164062,
-        18.87445831298828,
-        19.354978561401367,
-        18.458873748779297,
-        18.05194854736328,
-        17.83116912841797,
-        17.341991424560547,
-        16.670995712280273,
-        16.74458885192871,
-        16.233766555786133,
-        16.246753692626953,
-        16.0,
-        16.15151596069336,
-        15.779220581054688,
-        16.37229347229004,
-        15.558441162109375,
-        15.645021438598633,
-        15.770563125610352,
-        15.913419723510742,
-        15.995671272277832,
-        16.207792282104492,
-        16.290042877197266,
-        16.753246307373047,
-        16.29437255859375,
-        16.389610290527344,
-        16.519479751586914,
-        16.493507385253906,
-        16.57575798034668,
-        16.65367889404297,
-        16.220779418945312,
-        16.303030014038086,
-        16.199134826660156,
-        16.376623153686523,
-        16.350648880004883,
-        16.35930824279785,
-        16.37229347229004,
-        16.108224868774414,
-        16.060606002807617,
-        16.095237731933594,
-        16.160173416137695,
-        16.05194854736328,
-        16.15151596069336,
-        16.082250595092773,
-        16.0,
-        15.883116722106934,
-        15.839826583862305,
-        15.601731300354004,
-        15.675324440002441,
-        15.428571701049805,
-        15.42424201965332,
-        15.510822296142578,
-        15.350648880004883
+        14.809523582458496,
+        14.160173416137695,
+        14.047618865966797,
+        14.632034301757812,
+        13.848484992980957,
+        13.69264030456543,
+        13.53246784210205,
+        13.471861839294434,
+        13.458874702453613,
+        13.77489185333252,
+        13.666666984558105,
+        13.49350643157959,
+        13.203463554382324,
+        13.406926155090332,
+        13.285714149475098,
+        13.406926155090332,
+        13.05627727508545,
+        12.874459266662598,
+        13.22510814666748,
+        13.108224868774414,
+        13.303030014038086,
+        13.779220581054688,
+        13.896103858947754,
+        13.991341590881348,
+        13.727272987365723,
+        14.017315864562988,
+        14.064934730529785,
+        14.363636016845703,
+        14.259739875793457,
+        13.735930442810059,
+        13.757575988769531,
+        14.021644592285156,
+        14.090909004211426,
+        13.683982849121094,
+        13.948052406311035,
+        13.861472129821777,
+        13.831169128417969,
+        14.549783706665039,
+        14.567099571228027,
+        14.567099571228027,
+        14.441558837890625,
+        14.497835159301758,
+        14.861472129821777,
+        14.982684135437012,
+        14.796536445617676,
+        14.580086708068848,
+        14.277056694030762,
+        14.02597427368164,
+        13.744588851928711,
+        13.666666984558105,
+        13.49350643157959,
+        12.94372272491455,
+        12.978355407714844
       ],
       "alpha_convergence": {
         "0": [
-          0.05862039309650471,
-          0.06117039248853733,
-          0.06291205935388614,
-          0.06297872478276301,
-          0.06649538999706317,
-          0.07090372410327006,
-          0.07452872261911442,
-          0.07565372358470968,
-          0.08025372434168868,
-          0.08232872450262121,
-          0.08532039052158408,
-          0.08749539068847709,
-          0.08713705690413527,
-          0.08764538896590285,
-          0.08986205577760749,
-          0.09295372176080757,
-          0.09780372250586564,
-          0.10272038991957719,
-          0.10600372258335168,
-          0.1076370568862539,
-          0.11187872207075172,
-          0.11272872078925185,
-          0.1153287209144216,
-          0.11708705518156104,
-          0.11801205387621932,
-          0.11894538590222412,
-          0.12331205103307777,
-          0.1268537169566732,
-          0.1278787155798059,
-          0.1297870497694593,
-          0.13256204980522207,
-          0.12935371611028723,
-          0.1329870486727338,
-          0.13660371456056644,
-          0.14112871295124102,
-          0.14399537962585496,
-          0.14862871131807373,
-          0.14644537674099015,
-          0.14597871023922968,
-          0.1497537093749623,
-          0.148387043683825,
-          0.14702037799864814,
-          0.1481787098816018,
-          0.1475953767350297,
-          0.14957037752777147,
-          0.15582871064454126,
-          0.15871204397588778,
-          0.16166204397588776,
-          0.16464537731319473,
-          0.16766204398780868,
-          0.16899537590056463,
-          0.17292037508398098,
-          0.17515370921999018
+          0.0823211875843455,
+          0.08232118636841075,
+          0.08317952071303622,
+          0.08318785280460612,
+          0.08492118632668749,
+          0.0875295190202643,
+          0.08932118586177126,
+          0.09029618685120837,
+          0.09215452036732928,
+          0.08802952015275255,
+          0.08645452055210366,
+          0.088254520748799,
+          0.08919618843669191,
+          0.08930452055210368,
+          0.09113785409802691,
+          0.09041285368675486,
+          0.09484618783468501,
+          0.09416285409206646,
+          0.092654521171992,
+          0.09197952076668041,
+          0.09385452097529667,
+          0.09144618887180585,
+          0.0907461884784152,
+          0.09172952285880347,
+          0.09442952227467796,
+          0.09115452128524085,
+          0.09216285565966864,
+          0.08971285690540572,
+          0.0906795246350219,
+          0.09506285884851716,
+          0.09348785933727524,
+          0.09193785983795426,
+          0.09292952762717507,
+          0.09562952712649607,
+          0.09235452622050545,
+          0.09250452509397768,
+          0.09262119061226153,
+          0.09016285856241488,
+          0.089396191542094,
+          0.09031285929555202,
+          0.08865452644104267,
+          0.09042119339579846,
+          0.09047119225734974,
+          0.08796286023134496,
+          0.0888628613340309,
+          0.0897461957919052,
+          0.09322119448060301,
+          0.09416286228770522,
+          0.09686286178702622,
+          0.0987378621088913,
+          0.10065452909344941,
+          0.10432119444484025,
+          0.10117119352692873
         ],
         "1": [
-          0.05862039309650471,
-          0.05924670771270801,
-          0.0607888144722562,
-          0.061448462401924635,
-          0.06574319961577466,
-          0.06827828845292142,
-          0.07087828958540966,
-          0.07442916755586675,
-          0.07984320268541387,
-          0.08082214891820957,
-          0.08547127213984539,
-          0.08745723858982135,
-          0.08949934540897418,
-          0.08886074856430103,
-          0.08822566050201465,
-          0.08937478220373203,
-          0.09322916898637822,
-          0.09350811560660412,
-          0.09562390664726306,
-          0.09775197839647341,
-          0.10081338313132333,
-          0.10029934773355532,
-          0.09708706785946895,
-          0.09563268197089245,
-          0.10044496318608333,
-          0.10527829703599025,
-          0.10567654198914575,
-          0.10882391168385554,
-          0.11018531415372897,
-          0.11338356104403544,
-          0.11570812410026599,
-          0.11807128367334414,
-          0.12136777623206187,
-          0.12379935691267062,
-          0.1244625142505746,
-          0.12784848055153897,
-          0.1258344460478406,
-          0.12742918198019076,
-          0.1290011108866315,
-          0.13239234033137368,
-          0.13400637447744415,
-          0.13655374464899112,
-          0.13641163920074512,
-          0.1371765509298425,
-          0.13792742755919507,
-          0.14048006087451986,
-          0.1448519916883092,
-          0.14746427415519764,
-          0.14831690520554594,
-          0.15369936200886777,
-          0.1600239236941915,
-          0.16101866001397186,
-          0.16115725635200553
+          0.0823211875843455,
+          0.07847381985658901,
+          0.07726153873080509,
+          0.0732896096157481,
+          0.07830364471549289,
+          0.0815229437338759,
+          0.0821141706454207,
+          0.08093697725409761,
+          0.08156153747910753,
+          0.08308434599513308,
+          0.08733873233074442,
+          0.08984224224561944,
+          0.09150715606087938,
+          0.08959662974352137,
+          0.08858434867734209,
+          0.08754048865908877,
+          0.09279838344926135,
+          0.09538434954160945,
+          0.09533347160095468,
+          0.09891768294448151,
+          0.0962071570145537,
+          0.09440364826196923,
+          0.09164750831002488,
+          0.08974575394863381,
+          0.09140891343230499,
+          0.09397031816715491,
+          0.09385979116434347,
+          0.09648084505075705,
+          0.09821944317693007,
+          0.0990931263553549,
+          0.10360189881796134,
+          0.10454400304431212,
+          0.10824400393838181,
+          0.10565803948516145,
+          0.10217207541937127,
+          0.10313698667163149,
+          0.09774576020712152,
+          0.09411242772812142,
+          0.09400014639372124,
+          0.09294400578612581,
+          0.09639137512320774,
+          0.0980527803050925,
+          0.09705102567548053,
+          0.09695628822321192,
+          0.0995580439257075,
+          0.09675979882354035,
+          0.1002808524119307,
+          0.09838436134332909,
+          0.10011418763274445,
+          0.10093523931378617,
+          0.10268085509413971,
+          0.10444752350920929,
+          0.1026299798654963
         ],
         "2": [
-          0.05862039309650471,
-          0.05924670771270801,
-          0.061692322867212795,
-          0.06507127097755482,
-          0.06850635945707371,
-          0.07110285183697751,
-          0.07194846472650579,
-          0.07643793882638028,
-          0.07826425615459492,
-          0.08105022224694301,
-          0.08477829325109532,
-          0.08494846797495892,
-          0.08695548711925556,
-          0.0889747869721036,
-          0.09283092820554784,
-          0.0949274210920911,
-          0.0970712824216466,
-          0.09924496834188509,
-          0.0987379505982976,
-          0.10184847828656245,
-          0.10316426682382632,
-          0.10541339138656663,
-          0.10858707697897958,
-          0.11360637587815332,
-          0.11598006188779879,
-          0.11569936001211215,
-          0.11993971196323443,
-          0.12058707989960718,
-          0.12126427239686059,
-          0.12555023836999943,
-          0.12625199225455333,
-          0.13059760734945347,
-          0.1331660302153211,
-          0.13668532991915755,
-          0.13933971774488502,
-          0.1420327020874601,
-          0.14475551102071818,
-          0.14570112468510685,
-          0.1484660389175993,
-          0.1494362139990908,
-          0.1486116529992205,
-          0.1531853384128195,
-          0.15596428774505677,
-          0.15879060552030627,
-          0.15983972802668636,
-          0.16180463963657443,
-          0.16648358825355594,
-          0.1693941165676696,
-          0.17325552171975203,
-          0.17715552338868207,
-          0.17748885685115878,
-          0.1778344710221869,
-          0.1817713148167712
+          0.0823211875843455,
+          0.08026329279417292,
+          0.07997206391567484,
+          0.08056153640622392,
+          0.08386504590386644,
+          0.08449662363404527,
+          0.08245627266639963,
+          0.08401592324847475,
+          0.08557031068677201,
+          0.08534750285619988,
+          0.08694399559373153,
+          0.08584224078530563,
+          0.08926153980368867,
+          0.09270189145678773,
+          0.09711066380018486,
+          0.09797908371562257,
+          0.09979838350886597,
+          0.09802469928735985,
+          0.09443873513216271,
+          0.09531241822118058,
+          0.0961545223581244,
+          0.09520189038390413,
+          0.09695452349061265,
+          0.09690364552015557,
+          0.09686504825824989,
+          0.09682118782276404,
+          0.09948259246820701,
+          0.09764750470394384,
+          0.10033347076648963,
+          0.1021194372164656,
+          0.09942645513886701,
+          0.10214049143070471,
+          0.10575277297372114,
+          0.10671066663140547,
+          0.10228610640639554,
+          0.10143522888297331,
+          0.10233347341889631,
+          0.09961242120141278,
+          0.0995790871428896,
+          0.10132119399184475,
+          0.09855803650492914,
+          0.09939487752789744,
+          0.09388435276026019,
+          0.09735979220742472,
+          0.09448786282414683,
+          0.09704049566263445,
+          0.09687733710283525,
+          0.09763873957270867,
+          0.10021067065471893,
+          0.09739137285823113,
+          0.09818084549779184,
+          0.09623698592657334,
+          0.09789312790507561
         ],
         "3": [
-          0.05862039309650471,
-          0.060141447221336866,
-          0.06440285112172177,
-          0.06600987020641377,
-          0.06948004645019581,
-          0.07390109953194668,
-          0.07749232844024707,
-          0.08025373317509701,
-          0.08216776988416723,
-          0.08050636646061948,
-          0.08064671668320707,
-          0.08347478813439421,
-          0.08180636717587522,
-          0.08465900004416518,
-          0.08751514169484191,
-          0.09041865178853088,
-          0.09336953032523208,
-          0.09636777730494553,
-          0.09760637286811882,
-          0.09977830445676857,
-          0.10377830547004754,
-          0.10782567492633874,
-          0.10922742842346246,
-          0.11337830666214045,
-          0.11666427299290713,
-          0.11910287129789408,
-          0.11977304626017626,
-          0.1240695385804754,
-          0.1292993638566118,
-          0.13279585656434115,
-          0.13726076996236858,
-          0.1363607702901941,
-          0.1399905963709932,
-          0.14362393123417908,
-          0.14730463454037718,
-          0.14832217803507858,
-          0.15297481081396155,
-          0.15313972310930304,
-          0.15422919643431718,
-          0.15891867130905207,
-          0.16183095395475447,
-          0.16569411343842566,
-          0.16869236104398788,
-          0.1708256937018019,
-          0.17569060724884092,
-          0.18149762567788183,
-          0.18647481993347226,
-          0.18971868162065567,
-          0.1930099117508513,
-          0.1972344748666865,
-          0.19788359784990373,
-          0.20215903819113792,
-          0.20554325084596695
+          0.0823211875843455,
+          0.08473697817796963,
+          0.0853931173550536,
+          0.08698259255761402,
+          0.08768960893029469,
+          0.09022469779724376,
+          0.09278961122507351,
+          0.09540189309591549,
+          0.09625452355021732,
+          0.09532996177548664,
+          0.0925931200372626,
+          0.09433347246522204,
+          0.09425276996368663,
+          0.09508785656565921,
+          0.09592645192021625,
+          0.0940668027686526,
+          0.09580715516680972,
+          0.0966387329565932,
+          0.09658785498613612,
+          0.09834750562781587,
+          0.10011943697804704,
+          0.10011417305940881,
+          0.09921768145436541,
+          0.10372820818895594,
+          0.10555803429955736,
+          0.10382996412987008,
+          0.09757908577198281,
+          0.10118259535903229,
+          0.10204399773949875,
+          0.10475101646656287,
+          0.10658435135955108,
+          0.09851768428558601,
+          0.10032294903868925,
+          0.10206154713505995,
+          0.10292645835751783,
+          0.10110189702982199,
+          0.10468435404176009,
+          0.10105102153295767,
+          0.09831593427533399,
+          0.10183874219531308,
+          0.10446155050272238,
+          0.10714049917930853,
+          0.10715628804439793,
+          0.10448260435933363,
+          0.10629488676661741,
+          0.1099001508938719,
+          0.10813173002475988,
+          0.10637558986419927,
+          0.10367559043044342,
+          0.1045405017721106,
+          0.10176857250804199,
+          0.10258786979789032,
+          0.10338436006182923
         ]
       },
       "final_alpha_t": {
-        "0": 0.14823704202979604,
-        "1": 0.1350800633928161,
-        "2": 0.15680815686791963,
-        "3": 0.18547483100503506
+        "0": 0.07055452755564957,
+        "1": 0.07370191048557057,
+        "2": 0.07063172428781277,
+        "3": 0.07347383329743638
       }
     }
   },
   "recalibration": {
-    "cal_initial_crps": 3.3845653533935547,
-    "cal_final_crps": 3.3232600688934326,
-    "cal_improvement_pct": 1.8113192714288695,
-    "test_crps_before": 3.2291386127471924,
-    "test_crps_after": 3.2287728786468506,
-    "test_improvement_pct": 0.011326057633389985,
+    "cal_initial_crps": 3.2560853958129883,
+    "cal_final_crps": 2.9019956588745117,
+    "cal_improvement_pct": 10.874706707440836,
+    "test_crps_before": 2.8267102241516113,
+    "test_crps_after": 2.8267102241516113,
+    "test_improvement_pct": 0.0,
+    "holdout_crps_before": 2.674304246902466,
+    "holdout_crps_after": 2.8143060207366943,
+    "holdout_improvement_pct": -5.235072785618415,
+    "recal_applied": false,
+    "recalibration_gate": "identity fallback",
     "learned_params": {
-      "scale_mu": 1.0414512157440186,
-      "shift_mu": -0.022416982799768448,
-      "scale_r": 0.42472100257873535,
-      "shift_r": -1.183969259262085
+      "scale_mu": 1.127812385559082,
+      "shift_mu": -0.019179949536919594,
+      "scale_r": 0.8267316818237305,
+      "shift_r": 0.0026244516484439373
     },
-    "iterations": 168,
-    "crpss_ha_recalibrated": 0.16743406845906394,
-    "crpss_sn_recalibrated": 0.2663261064928012
+    "iterations": 154,
+    "crpss_ha_recalibrated": 0.03596635370211643,
+    "crpss_sn_recalibrated": 0.35769276776593484
   },
   "feedback_loop_analysis": {
     "asc": {
       "per_group": {
-        "0": 0.10815893512683962,
-        "1": 0.2040379213869698,
-        "2": 0.10879769441250665,
-        "3": 0.43831591187446967
+        "0": 0.2036493923776014,
+        "1": 0.2783031940762336,
+        "2": 0.17434817631199973,
+        "3": 0.475684773388159
       },
       "aggregate": {
-        "mean_asc": 0.21482761570019643,
-        "max_asc": 0.43831591187446967,
-        "min_asc": 0.10815893512683962
+        "mean_asc": 0.2829963840384984,
+        "max_asc": 0.475684773388159,
+        "min_asc": 0.17434817631199973
       }
     },
     "bas": {
       "per_group": {
-        "0": 0.007453827504203758,
-        "1": -0.02064787984034877,
-        "2": -0.031024134304705853,
-        "3": 0.033049138933385125
+        "0": -0.016054129089816516,
+        "1": -0.03177872640241508,
+        "2": -0.024440763945591026,
+        "3": -0.0292264200411273
       },
       "aggregate": {
-        "max_abs_bas": 0.033049138933385125,
-        "mean_abs_bas": 0.023043745145660877
+        "max_abs_bas": 0.03177872640241508,
+        "mean_abs_bas": 0.02537500986973748
       }
     },
     "dad": {
       "per_group": {
-        "0": 0.0073396826673119975,
-        "1": -0.02075877726329889,
-        "2": -0.031133916957449936,
-        "3": 0.032932060290798315
+        "0": 0.008513455967364525,
+        "1": -0.007603749980841457,
+        "2": -8.257774212361291e-05,
+        "3": -0.004987776693377577
       },
       "aggregate": {
-        "max_alloc_disparity": 0.032932060290798315,
-        "mean_alloc_disparity": 0.023041109294714784
+        "max_alloc_disparity": 0.008513455967364525,
+        "mean_alloc_disparity": 0.005296890095926793
       }
     },
     "disparity": {
-      "asc_range": 0.33015697674763006,
-      "bas_range": 0.06407327323809098,
-      "max_abs_asc": 0.43831591187446967,
-      "max_abs_bas": 0.033049138933385125
+      "asc_range": 0.3013365970761593,
+      "bas_range": 0.015724597312598565,
+      "max_abs_asc": 0.475684773388159,
+      "max_abs_bas": 0.03177872640241508
     }
   },
   "crps_decomposition": {
-    "reliability": 0.00015116129449464305,
-    "resolution": 9.024430883087078,
+    "reliability": 0.0012796005250453584,
+    "resolution": 9.427987710913209,
     "uncertainty": 12.253418334539775,
-    "crps_total": 3.2291386127471924,
-    "crps_actual": 3.2291386127471924,
-    "reliability_fraction": 4.6811646269356786e-05,
-    "resolution_fraction": 2.794686746323824,
-    "skill_score": 0.7364703852764956
+    "crps_total": 2.8267102241516113,
+    "crps_actual": 2.8267102241516113,
+    "reliability_fraction": 0.000452681889396501,
+    "resolution_fraction": 3.335321615339209,
+    "skill_score": 0.7693125177825915
   },
   "statistical_significance": {
     "dm": {
-      "dm_stat": -5.109667367588644,
-      "p_value": 3.227264917526895e-07,
-      "mean_diff": -0.6489595422204936,
-      "ci_lower": -0.8978871628865137,
-      "ci_upper": -0.4000319215544734
+      "dm_stat": -2.1220388245326927,
+      "p_value": 0.03383447787832927,
+      "mean_diff": -0.10545980255558805,
+      "ci_lower": -0.20286490846903837,
+      "ci_upper": -0.008054696642137718
     },
     "bootstrap": {
-      "mean_diff": -0.6489595422204936,
-      "p_value": 0.0002,
-      "ci_lower": -1.097481341182061,
-      "ci_upper": -0.3857735773302475,
-      "block_length": 10.0
+      "mean_diff": -0.10545980255558805,
+      "p_value": 0.0053,
+      "ci_lower": -0.1736081985932476,
+      "ci_upper": -0.026322846480135654,
+      "block_length": 2.0
     },
-    "summary": "Forecast comparison vs 'Historical Average' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.648960 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-5.1097, p=0.0000 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.897887, -0.400032]\n  Block bootstrap:  p=0.0002 (significant at 5%: YES)\n    95% CI (percentile): [-1.097481, -0.385774]\n  Winner: our model",
+    "summary": "Forecast comparison vs 'Historical Average' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.105460 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-2.1220, p=0.0338 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.202865, -0.008055]\n  Block bootstrap:  p=0.0053 (significant at 5%: YES)\n    95% CI (percentile): [-0.173608, -0.026323]\n  Winner: our model",
     "baseline_name": "Historical Average",
     "T": 53
   },
+  "forecasting_gate": {
+    "passed": true,
+    "rule": "CRPSS vs rolling HA > 0 and (DM p < 0.05 or block-bootstrap p < 0.05)",
+    "crpss_ha": 0.03596635370211643,
+    "crpss_ha_positive": true,
+    "statistically_significant": true,
+    "significance_level": 0.05,
+    "dm_stat": -2.1220388245326927,
+    "dm_p_value": 0.03383447787832927,
+    "dm_ci": [
+      -0.20286490846903837,
+      -0.008054696642137718
+    ],
+    "bootstrap_p_value": 0.0053,
+    "bootstrap_ci": [
+      -0.1736081985932476,
+      -0.026322846480135654
+    ]
+  },
+  "calibrator_selection": {
+    "selected_method": "equalized_coverage",
+    "eligible_methods": [
+      "ecrc",
+      "equalized_coverage",
+      "mondrian_category",
+      "mondrian_demo_x_category",
+      "randomized_split_cp",
+      "split_cp",
+      "variance_scaled_split_cp",
+      "weighted_cp"
+    ],
+    "fallback_used": false,
+    "selection_rule": "minimum width subject to coverage, demographic disparity, abstention, and status constraints",
+    "coverage_floor": 0.895,
+    "max_disparity": 0.03,
+    "max_abstention": 0.01,
+    "rejected_reasons": {
+      "mondrian": [
+        "demographic disparity 0.031860 exceeds 0.030000"
+      ],
+      "adaptive_ecrc_rolling": [
+        "coverage 0.893000 is below 0.895000"
+      ]
+    }
+  },
   "ensemble": {
     "num_seeds": 5,
-    "per_seed_crps": [
-      3.300856113433838,
-      3.252345085144043,
-      3.5327789783477783,
-      3.2845253944396973,
-      3.4404942989349365
-    ],
-    "mean_seed_crps": 3.3621999740600588,
-    "ensemble_crps_equal_weight": 3.2734575271606445,
-    "emos_crps_learned_weight": 3.2291386127471924,
+    "method": "category_conditioned_entropy_regularized_emos",
     "emos_weights": [
-      0.1327715516090393,
-      0.4154622256755829,
-      0.00135429622605443,
-      0.44880908727645874,
-      0.0016029310645535588
+      0.11399581283330917,
+      0.171062171459198,
+      0.4812653064727783,
+      0.12041441351175308,
+      0.11326231807470322
     ],
-    "emos_improvement_pct": 2.088258941377439,
-    "ensemble_improvement": 0.0395756832845926,
-    "aleatoric_uncertainty": 39.47066650390625,
-    "epistemic_uncertainty": 4.607030391693115,
-    "epistemic_fraction": 0.1045206695487094
+    "emos_category_weights": [
+      [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.20000000298023224,
+        0.20000000298023224,
+        0.20000000298023224
+      ],
+      [
+        0.0021057992707937956,
+        0.0006901334854774177,
+        0.9958059787750244,
+        0.0010083611123263836,
+        0.0003897044516634196
+      ],
+      [
+        0.13988161087036133,
+        0.3124963939189911,
+        0.24798984825611115,
+        0.16023486852645874,
+        0.1393972486257553
+      ]
+    ],
+    "emos_fallback_used": true,
+    "emos_fallback_by_category": [
+      true,
+      false,
+      false
+    ],
+    "emos_holdout_improvement_pct": 1.5514956665956932,
+    "emos_entropy_lambda": 0.005,
+    "emos_calibration_crps_equal_weight": 3.136105537414551,
+    "emos_calibration_crps_learned_weight": 3.0815294484297433,
+    "per_seed_test_crps": [
+      2.931330919265747,
+      2.8538670539855957,
+      2.818178653717041,
+      2.8682327270507812,
+      2.893545150756836
+    ],
+    "equal_weight_test_crps": 2.8507792949676514,
+    "learned_weight_test_crps": 2.8267102241516113,
+    "epistemic_uncertainty": 0.8807850480079651,
+    "aleatoric_uncertainty": 32.89156494140625,
+    "epistemic_fraction": 0.026080063966056347,
+    "mean_seed_crps": 2.8730309009552,
+    "ensemble_improvement": 0.016122582179046052,
+    "emos_improvement_pct": 0.8442979384103166
   }
 }

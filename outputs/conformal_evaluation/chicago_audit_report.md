@@ -1,59 +1,84 @@
 # CIVIC-SAFE Conformal Prediction Audit Report
 
 **Dataset:** chicago  
-**Timestamp:** 2026-08-02T04:48:10.890297  
+**Timestamp:** 2026-08-20T09:48:56.522054  
 **Alpha (miscoverage):** 0.1  
-**Checkpoint:** `best.pt')]`  
+**Checkpoint:** `run_chicago_anchor_1786718493`  
 **Panel hash:** `4bb2e1e3322b`  
 
 ## Point Forecast Metrics (Test Set — 2023)
 
 | Metric | Value |
 |--------|-------|
-| CRPS | 3.2291 |
-| MAE | 4.5144 |
-| RMSE | 8.2103 |
-| Brier (zero-inflation) | 0.0677 |
+| CRPS | 2.8267 |
+| MAE | 3.9017 |
+| RMSE | 7.0983 |
+| Brier (zero-inflation) | 0.0592 |
 
 ## CRPS Skill Score
 
 | Component | Value |
 |-----------|-------|
-| Baseline CRPS (Historical Average) | 3.8781 |
-| Baseline CRPS (Seasonal Naive) | 4.4008283615112305 |
-| Model CRPS | 3.2291 |
-| CRPSS vs HA | 0.1673 |
-| **CRPSS vs Seasonal Naive** | **0.2662** |
-| Threshold (≥0.10 vs SN) | ✓ PASS |
+| Baseline CRPS (Historical Average, rolling) | 2.9322 |
+| Baseline CRPS (Historical Average, frozen) | 3.8790 |
+| Baseline CRPS (Seasonal Naive) | 4.400869369506836 |
+| Model CRPS | 2.8267 |
+| CRPSS vs HA (rolling) | +0.0360 |
+| CRPSS vs Seasonal Naive | +0.3577 |
+| **CRPSS (min over naive family)** | **+0.0360** |
+| Binding baseline | ha_rolling |
+| Forecasting claim gate | **PASS** |
+
+## Forecasting Claim Gate
+
+| Evidence | Value |
+|----------|-------|
+| Rule | CRPSS vs rolling HA > 0 and (DM p < 0.05 or block-bootstrap p < 0.05) |
+| CRPSS vs rolling HA | 0.035966 |
+| DM statistic | -2.122039 |
+| DM p-value | 0.033834 |
+| DM 95% CI | [-0.202865, -0.008055] |
+| Block-bootstrap p-value | 0.005300 |
+| Block-bootstrap 95% CI | [-0.173608, -0.026323] |
+| **Decision** | **PASS** |
+
+## Calibrator Selection
+
+**Rule:** minimum width subject to coverage, demographic disparity, abstention, and status constraints  
+**Selected method:** `equalized_coverage`  
+**Fallback used:** False  
 
 ## Coverage Results by Calibration Method
 
-| Method | Marginal Coverage | Target | Mean Width | Disparity |
-|--------|:-----------------:|:------:|:----------:|:---------:|
-| split_cp | ⚠ 0.9278 | 0.90 | 17.15 | 0.0308 |
-| weighted_cp | ⚠ 0.9278 | 0.90 | 17.15 | 0.0308 |
-| mondrian | ⚠ 0.9210 | 0.90 | 16.79 | 0.0218 |
-| equalized_coverage | ✓ 0.9070 | 0.90 | 15.51 | 0.0384 |
-| ecrc | ⚠ 0.9554 | 0.90 | 20.79 | 0.0193 |
-| adaptive_ecrc | ⚠ 0.9554 | 0.90 | 20.79 | 0.0193 |
-| adaptive_ecrc_rolling | ⚠ 0.9194 | 0.90 | 16.48 | 0.0136 |
+| Method | Marginal Coverage | Target | Mean Width | Demographic Disparity | Abstention | Policy Status |
+|--------|:-----------------:|:------:|:----------:|:---------------------:|:----------:|---------------|
+| split_cp | 0.9405 | 0.90 | 16.25 | 0.0182 | 0.00% | eligible |
+| randomized_split_cp | 0.9347 | 0.90 | 16.53 | 0.0115 | 0.00% | eligible |
+| weighted_cp | 0.9075 | 0.90 | 14.58 | 0.0238 | 0.00% | eligible |
+| mondrian | 0.9169 | 0.90 | 15.02 | 0.0319 | 0.00% | demographic disparity 0.031860 exceeds 0.030000 |
+| mondrian_category | 0.9313 | 0.90 | 17.19 | 0.0250 | 0.00% | eligible |
+| mondrian_demo_x_category | 0.9305 | 0.90 | 17.35 | 0.0119 | 0.00% | eligible |
+| equalized_coverage | 0.9075 | 0.90 | 14.58 | 0.0238 | 0.00% | selected; eligible |
+| variance_scaled_split_cp | 0.9079 | 0.90 | 14.65 | 0.0242 | 0.00% | eligible |
+| ecrc | 0.9235 | 0.90 | 15.89 | 0.0156 | 0.00% | eligible |
+| adaptive_ecrc_rolling | 0.8930 | 0.90 | 13.88 | 0.0013 | 0.00% | coverage 0.893000 is below 0.895000 |
 
 ### Per-Category Coverage (equalized_coverage)
 
 | Category | Coverage | Width | N |
 |----------|:--------:|:-----:|--:|
-| violent | 0.9079 | 17.76 | 4081 |
-| property | 0.8314 | 23.65 | 4081 |
-| drug | 0.9816 | 5.13 | 4081 |
+| violent | 0.8883 | 15.72 | 4081 |
+| property | 0.8829 | 25.30 | 4081 |
+| drug | 0.9515 | 2.73 | 4081 |
 
 ### Per-Demographic-Quartile Coverage (equalized_coverage)
 
 | Group | Coverage | Width | N |
 |-------|:--------:|:-----:|--:|
-| group_0 | 0.9035 | 19.00 | 3180 |
-| group_1 | 0.8878 | 14.09 | 3021 |
-| group_2 | 0.9106 | 13.43 | 3021 |
-| group_3 | 0.9262 | 15.36 | 3021 |
+| group_0 | 0.8994 | 17.65 | 3180 |
+| group_1 | 0.9037 | 13.36 | 3021 |
+| group_2 | 0.9043 | 12.71 | 3021 |
+| group_3 | 0.9232 | 14.43 | 3021 |
 
 ## Methods Paragraph (Paper-Ready)
 
@@ -68,11 +93,7 @@ $P(Y \in [L, U]) \geq 1-\alpha$ under exchangeability. To correct for
 temporal non-exchangeability, we additionally implement Adaptive Conformal 
 Inference (ACI; Gibbs & Candès, 2021) with per-demographic-quartile tracking, 
 achieving asymptotic conditional coverage $P(Y \in C(X) | G=g) \to 1-\alpha$ 
-for each income quartile $g$. On the 2023 test set (53 windows), 
-the best calibrator (equalized_coverage) achieves 90.7% marginal 
-coverage with mean prediction interval width 15.51 
-counts and a maximum cross-group coverage disparity of 
-0.0384.
+for each income quartile $g$. On the 2023 test set (53 windows), The selected calibrator (equalized_coverage) achieves 90.8% marginal coverage with mean prediction interval width 14.58 counts and a maximum cross-group coverage disparity of 0.0238.
 
 ## Ablation TODO Registry (Table 2)
 

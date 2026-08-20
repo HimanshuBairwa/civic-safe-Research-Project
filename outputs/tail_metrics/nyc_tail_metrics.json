@@ -1,0 +1,15 @@
+{
+  "threshold": 61.0,
+  "tail_quantile": 0.9,
+  "tail_n": 1278,
+  "tail_fraction": 0.10304789245128632,
+  "twcrps": 0.767739474773407,
+  "twcrps_tail": 6.4582109451293945,
+  "crps": 3.1401207447052,
+  "dataset": "nyc",
+  "weeks": 53,
+  "spatial_units": 78,
+  "categories": 3,
+  "selected_calibrator": "variance_scaled_split_cp",
+  "definition": "Gneiting-Ranjan threshold-weighted CRPS over the empirical upper tail"
+}

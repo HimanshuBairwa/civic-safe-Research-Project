@@ -1,0 +1,32 @@
+\begin{table*}[htbp]
+  \centering
+  \caption{Conformal prediction efficiency and fairness on the 2023 test set.}
+  \label{tab:conformal_fairness}
+  \begin{tabular}{l r r r r r}
+    \toprule
+    \textbf{Method} & \textbf{Marginal Coverage (\%)} & \textbf{Interval Width} & \textbf{Demographic Disparity ($\Delta_{\mathrm{dem}}\alpha$)} & \textbf{Category Disparity ($\Delta_{\mathrm{cat}}\alpha$)} & \textbf{Abstention Rate (\%)} \\
+    \midrule
+    \multicolumn{6}{l}{\textit{Chicago}} \\
+    \midrule
+    Split CP & 94.05 & 16.25 & 0.0182 & 0.0713 & 0.00 \\
+    Randomized Split CP & 93.47 & 16.53 & 0.0115 & 0.0752 & 0.00 \\
+    Weighted CP & 90.75 & 14.58 & 0.0238 & 0.0686 & 0.00 \\
+    Mondrian & 93.05 & 17.35 & 0.0119 & 0.0635 & 0.00 \\
+    Equalized Coverage & 90.75 & 14.58 & 0.0238 & 0.0686 & 0.00 \\
+    Variance-Scaled CP & 90.79 & 14.65 & 0.0242 & 0.0674 & 0.00 \\
+    \textsc{ECRC} & 92.35 & 15.89 & 0.0156 & 0.0500 & 0.00 \\
+    Adaptive ECRC & 89.30 & 13.88 & 0.0013 & 0.0882 & 0.00 \\
+    \midrule
+    \multicolumn{6}{l}{\textit{NYC}} \\
+    \midrule
+    Split CP & 93.27 & 18.57 & 0.0198 & 0.0363 & 0.00 \\
+    Randomized Split CP & 93.28 & 18.60 & 0.0201 & 0.0385 & 0.00 \\
+    Weighted CP & 93.27 & 18.57 & 0.0198 & 0.0363 & 0.00 \\
+    Mondrian & 93.19 & 18.25 & 0.0154 & 0.0428 & 0.00 \\
+    Equalized Coverage & 93.27 & 18.57 & 0.0198 & 0.0363 & 0.00 \\
+    Variance-Scaled CP & 90.02 & 16.45 & 0.0286 & 0.0701 & 0.00 \\
+    \textsc{ECRC} & 91.87 & 17.41 & 0.0138 & 0.0583 & 0.00 \\
+    Adaptive ECRC & 89.18 & 16.31 & 0.0046 & 0.0520 & 0.00 \\
+    \bottomrule
+  \end{tabular}
+\end{table*}

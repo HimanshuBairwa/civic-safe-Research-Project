@@ -1,0 +1,37 @@
+\begin{table}[htbp]
+  \centering
+  \caption{Decision-theoretic resource allocation simulation.}
+  \label{tab:policy_simulation}
+  \begin{tabular}{l r r r r r}
+    \toprule
+    \textbf{Policy} & \textbf{Budget} & \textbf{Hit rate (\%)} & \textbf{Over-allocation ratio} & \textbf{Idle ratio (\%)} & \textbf{Allocation gap} \\
+    \midrule
+    Naive Ha & 20 & 56.75 & 1.361 & \textbf{0.00} & 0.1452 \\
+    Point Prediction & 20 & 56.76 & 1.351 & 0.00 & 0.1414 \\
+    Unconstrained Conformal & 20 & 56.77 & 1.349 & 0.00 & 0.1405 \\
+    Civic Safe Oicc & 20 & 52.42 & \textbf{0.618} & 0.00 & 0.1548 \\
+    Naive Ha & 50 & 82.60 & 1.033 & 0.00 & 0.0184 \\
+    Point Prediction & 50 & 82.82 & 1.022 & 0.00 & 0.0147 \\
+    Unconstrained Conformal & 50 & 84.69 & 0.942 & 0.00 & 0.0259 \\
+    Civic Safe Oicc & 50 & 84.76 & 0.643 & 0.04 & 0.1448 \\
+    Naive Ha & 100 & 93.99 & 1.036 & 0.08 & 0.0185 \\
+    Point Prediction & 100 & 93.91 & 1.023 & 0.08 & 0.0140 \\
+    Unconstrained Conformal & 100 & 95.29 & 0.997 & 0.09 & \textbf{0.0132} \\
+    Civic Safe Oicc & 100 & 96.36 & 0.643 & 0.15 & 0.1448 \\
+    Naive Ha & 20 & 50.14 & 1.245 & 0.28 & 0.0734 \\
+    Point Prediction & 20 & 50.05 & 1.267 & 0.28 & 0.0800 \\
+    Unconstrained Conformal & 20 & 49.99 & 1.295 & 0.28 & 0.0885 \\
+    Civic Safe Oicc & 20 & 48.96 & 0.832 & 0.38 & 0.0517 \\
+    Naive Ha & 50 & 80.31 & 0.919 & 0.34 & 0.0288 \\
+    Point Prediction & 50 & 80.26 & 0.915 & 0.34 & 0.0293 \\
+    Unconstrained Conformal & 50 & 80.44 & 0.908 & 0.34 & 0.0302 \\
+    Civic Safe Oicc & 50 & 80.47 & 0.865 & 0.38 & 0.0421 \\
+    Naive Ha & 100 & 96.89 & 1.030 & 0.51 & 0.0167 \\
+    Point Prediction & 100 & 96.60 & 1.031 & 0.47 & 0.0156 \\
+    Unconstrained Conformal & 100 & 98.59 & 0.967 & 0.64 & 0.0174 \\
+    Civic Safe Oicc & 100 & \textbf{98.97} & 0.865 & 0.70 & 0.0421 \\
+    \midrule
+    \multicolumn{6}{l}{\footnotesize Unavailable rows indicate that raw test prediction artifacts were not present; compact score summaries are insufficient for a spatial allocation audit.} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

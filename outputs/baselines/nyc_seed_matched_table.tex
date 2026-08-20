@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\caption{Seed-matched comparison (Nyc). Baselines and CIVIC-SAFE are both reported as mean $\pm$ sample std over seeds, so the architecture margin is separated from the ensembling gain. $n$ is the number of seeds.}
+\label{tab:seed_matched_nyc}
+\begin{tabular}{lcc}
+\toprule
+Model & CRPS & $n$ \\
+\midrule
+GraphWaveNet & 3.8857 $\pm$ 0.2102 & 3 \\
+STZINB\_GNN & 3.6921 $\pm$ 0.0525 & 3 \\
+TFT\_ZINB & 3.4244 $\pm$ 0.1581 & 3 \\
+LSTM\_NB & 3.3426 $\pm$ 0.0616 & 3 \\
+\midrule
+CIVIC-SAFE (single model) & 3.3622 $\pm$ 0.1195 & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
