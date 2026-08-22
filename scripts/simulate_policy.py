@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """Post-training decision simulation for CIVIC-SAFE resource allocation.
 
 The simulator consumes saved prediction artifacts when available.  It never
@@ -334,6 +334,7 @@ def main() -> None:
     if rows:
         _write_latex(rows, output_dir / "tables" / "table7_policy_simulation.tex")
         _write_figure(rows, output_dir / "figures" / "fig9_policy_tradeoff.pdf")
+        _write_figure(rows, output_dir / "figures" / "fig9_policy_tradeoff.png")
     logger.info("Policy simulation status: %s", payload["status"])
 
 
