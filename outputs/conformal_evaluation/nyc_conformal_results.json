@@ -20,28 +20,28 @@
     },
     "weight_selection_val_crps_per_seed": {
       "seed_42": {
-        "raw": 3.180752,
-        "ema": 2.96497
+        "raw": 3.180759,
+        "ema": 2.964971
       },
       "seed_137": {
-        "raw": 3.040021,
-        "ema": 3.057221
+        "raw": 3.040022,
+        "ema": 3.057218
       },
       "seed_256": {
-        "raw": 3.010677,
-        "ema": 3.023213
+        "raw": 3.010672,
+        "ema": 3.023212
       },
       "seed_512": {
-        "raw": 3.126181,
-        "ema": 2.981261
+        "raw": 3.126185,
+        "ema": 2.98126
       },
       "seed_1024": {
-        "raw": 3.232812,
-        "ema": 3.093808
+        "raw": 3.23281,
+        "ema": 3.093809
       }
     },
     "alpha": 0.1,
-    "timestamp": "2026-08-20T09:51:11.281935",
+    "timestamp": "2026-08-22T06:24:55.421703",
     "panel_hash": "3ff6707b716d",
     "spatial_units": 78,
     "time_steps": 313,
@@ -55,53 +55,53 @@
     "selected_calibrator": "variance_scaled_split_cp"
   },
   "point_forecast_metrics": {
-    "crps": 3.1401207447052,
-    "mae": 4.3674845695495605,
-    "rmse": 7.612645149230957,
-    "brier_zero": 0.049256984144449234
+    "crps": 3.140108346939087,
+    "mae": 4.367481231689453,
+    "rmse": 7.61261510848999,
+    "brier_zero": 0.049255672842264175
   },
   "skill_scores": {
     "baseline_crps_ha": 3.3033671379089355,
     "baseline_crps_ha_frozen": 4.594170570373535,
-    "crpss_vs_ha_frozen": 0.3164988768691084,
+    "crpss_vs_ha_frozen": 0.3165015754554851,
     "baseline_crps_seasonal_naive": 4.7308526039123535,
-    "model_crps": 3.1401207447052,
-    "crpss_vs_ha": 0.049418180416686,
-    "crpss_vs_seasonal_naive": 0.33624633705384077,
-    "crpss": 0.049418180416686,
+    "model_crps": 3.140108346939087,
+    "crpss_vs_ha": 0.04942193348608326,
+    "crpss_vs_seasonal_naive": 0.3362489576736637,
+    "crpss": 0.04942193348608326,
     "crpss_binding_baseline": "ha_rolling",
     "forecasting_gate_passed": true,
     "crpss_passes_threshold": true
   },
   "per_category_crpss": {
     "violent": {
-      "model_crps": 2.1531941890716553,
+      "model_crps": 2.153193950653076,
       "ha_crps": 2.219902276992798,
-      "crpss": 0.030050011035399726
+      "crpss": 0.030050118435883788
     },
     "property": {
-      "model_crps": 6.158492565155029,
+      "model_crps": 6.158487319946289,
       "ha_crps": 6.486748695373535,
-      "crpss": 0.05060410779480695
+      "crpss": 0.05060491639846754
     },
     "drug": {
-      "model_crps": 1.1086740493774414,
+      "model_crps": 1.108644723892212,
       "ha_crps": 1.2034506797790527,
-      "crpss": 0.07875406279134911
+      "crpss": 0.07877843062438317
     }
   },
   "calibration_diagnostics": {
     "pit_histogram": [
-      0.10199967747137559,
-      0.1014352523786486,
-      0.09885502338332527,
-      0.10095145944202548,
+      0.10014513788098693,
       0.10256410256410256,
-      0.10256410256410256,
-      0.10377358490566038,
-      0.09748427672955975,
-      0.09675858732462506,
-      0.09361393323657474
+      0.09909691985163684,
+      0.10248347040799871,
+      0.10353168843734882,
+      0.09974197710046767,
+      0.10369295274955652,
+      0.09780680535397517,
+      0.09619416223189808,
+      0.0947427834220287
     ],
     "pit_bin_edges": [
       0.0,
@@ -116,18 +116,18 @@
       0.8999999761581421,
       1.0
     ],
-    "pit_max_deviation": 0.006386066763425263,
-    "pit_chi2_stat": 11.568779229156586,
-    "pit_chi2_pvalue": 0.23872496356767817,
+    "pit_max_deviation": 0.005257216577971305,
+    "pit_chi2_stat": 10.751169166263505,
+    "pit_chi2_pvalue": 0.2931514202960409,
     "pit_is_uniform": true
   },
   "coverage_results": {
     "split_cp": {
-      "marginal_coverage": 0.9326721429824829,
-      "mean_width": 18.56724739074707,
+      "marginal_coverage": 0.9325914978981018,
+      "mean_width": 18.566925048828125,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.03267214298248289,
+      "coverage_gap": 0.032591497898101784,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -136,8 +136,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9210692048072815,
-          "mean_width": 19.179874420166016
+          "coverage": 0.9207547307014465,
+          "mean_width": 19.178930282592773
         },
         "group_1": {
           "n_samples": 3021,
@@ -151,7 +151,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9408804774284363,
-          "mean_width": 16.82830238342285
+          "mean_width": 16.827987670898438
         },
         "group_3": {
           "n_samples": 3021,
@@ -162,8 +162,8 @@
         }
       },
       "abstention_disparity": 0.0,
-      "coverage_disparity": 0.019811272621154785,
-      "min_group_coverage": 0.9210692048072815,
+      "coverage_disparity": 0.020125746726989746,
+      "min_group_coverage": 0.9207547307014465,
       "max_group_coverage": 0.9408804774284363,
       "calibration_axis": "none",
       "calibration_threshold": 0.0,
@@ -171,16 +171,16 @@
       "per_category": {
         "violent": {
           "coverage": 0.918964684009552,
-          "mean_width": 12.197145462036133,
+          "mean_width": 12.196661949157715,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9238026142120361,
-          "mean_width": 37.34954071044922,
+          "mean_width": 37.349056243896484,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
@@ -188,7 +188,7 @@
     },
     "randomized_split_cp": {
       "marginal_coverage": 0.9328334331512451,
-      "mean_width": 18.5971622467041,
+      "mean_width": 18.596839904785156,
       "median_width": 12.0,
       "target_coverage": 0.9,
       "coverage_gap": 0.032833433151245095,
@@ -201,28 +201,28 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9204402565956116,
-          "mean_width": 19.215408325195312
+          "mean_width": 19.215723037719727
         },
         "group_1": {
           "n_samples": 3021,
           "n_issued": 3021,
           "abstention_rate": 0.0,
           "coverage": 0.9328036904335022,
-          "mean_width": 22.050975799560547
+          "mean_width": 22.05064582824707
         },
         "group_2": {
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9405660629272461,
-          "mean_width": 16.873584747314453
+          "mean_width": 16.872955322265625
         },
         "group_3": {
           "n_samples": 3021,
           "n_issued": 3021,
           "abstention_rate": 0.0,
           "coverage": 0.9377689361572266,
-          "mean_width": 16.306852340698242
+          "mean_width": 16.306190490722656
         }
       },
       "abstention_disparity": 0.0,
@@ -233,33 +233,33 @@
       "pit_space_coverage": 0.9007418155670166,
       "pit_band": [
         0.05717136710882187,
-        0.954659104347229
+        0.9546568393707275
       ],
       "pit_randomization_seed": 0,
       "per_category": {
         "violent": {
           "coverage": 0.9179971218109131,
-          "mean_width": 12.23391342163086,
+          "mean_width": 12.233672142028809,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9240444898605347,
-          "mean_width": 37.32075500488281,
+          "mean_width": 37.32051467895508,
           "n_samples": 4134
         },
         "drug": {
           "coverage": 0.9564586281776428,
-          "mean_width": 6.23681640625,
+          "mean_width": 6.236332893371582,
           "n_samples": 4134
         }
       }
     },
     "weighted_cp": {
-      "marginal_coverage": 0.9326721429824829,
-      "mean_width": 18.56724739074707,
+      "marginal_coverage": 0.9325914978981018,
+      "mean_width": 18.566925048828125,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.03267214298248289,
+      "coverage_gap": 0.032591497898101784,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -268,8 +268,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9210692048072815,
-          "mean_width": 19.179874420166016
+          "coverage": 0.9207547307014465,
+          "mean_width": 19.178930282592773
         },
         "group_1": {
           "n_samples": 3021,
@@ -283,7 +283,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9408804774284363,
-          "mean_width": 16.82830238342285
+          "mean_width": 16.827987670898438
         },
         "group_3": {
           "n_samples": 3021,
@@ -294,8 +294,8 @@
         }
       },
       "abstention_disparity": 0.0,
-      "coverage_disparity": 0.019811272621154785,
-      "min_group_coverage": 0.9210692048072815,
+      "coverage_disparity": 0.020125746726989746,
+      "min_group_coverage": 0.9207547307014465,
       "max_group_coverage": 0.9408804774284363,
       "calibration_axis": "none",
       "calibration_threshold": 0.0,
@@ -303,27 +303,27 @@
       "per_category": {
         "violent": {
           "coverage": 0.918964684009552,
-          "mean_width": 12.197145462036133,
+          "mean_width": 12.196661949157715,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9238026142120361,
-          "mean_width": 37.34954071044922,
+          "mean_width": 37.349056243896484,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
       }
     },
     "mondrian": {
-      "marginal_coverage": 0.9326721429824829,
-      "mean_width": 18.56724739074707,
+      "marginal_coverage": 0.9325914978981018,
+      "mean_width": 18.566925048828125,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.03267214298248289,
+      "coverage_gap": 0.032591497898101784,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -332,8 +332,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9210692048072815,
-          "mean_width": 19.179874420166016
+          "coverage": 0.9207547307014465,
+          "mean_width": 19.178930282592773
         },
         "group_1": {
           "n_samples": 3021,
@@ -347,7 +347,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9408804774284363,
-          "mean_width": 16.82830238342285
+          "mean_width": 16.827987670898438
         },
         "group_3": {
           "n_samples": 3021,
@@ -358,34 +358,34 @@
         }
       },
       "abstention_disparity": 0.0,
-      "coverage_disparity": 0.019811272621154785,
-      "min_group_coverage": 0.9210692048072815,
+      "coverage_disparity": 0.020125746726989746,
+      "min_group_coverage": 0.9207547307014465,
       "max_group_coverage": 0.9408804774284363,
       "calibration_axis": "demographic",
       "per_category": {
         "violent": {
           "coverage": 0.918964684009552,
-          "mean_width": 12.197145462036133,
+          "mean_width": 12.196661949157715,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9238026142120361,
-          "mean_width": 37.34954071044922,
+          "mean_width": 37.349056243896484,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
       }
     },
     "mondrian_category": {
-      "marginal_coverage": 0.9242057800292969,
-      "mean_width": 17.90791893005371,
+      "marginal_coverage": 0.9241251349449158,
+      "mean_width": 17.907594680786133,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.024205780029296853,
+      "coverage_gap": 0.02412513494491575,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -394,8 +394,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9172955751419067,
-          "mean_width": 18.513208389282227
+          "coverage": 0.9169811606407166,
+          "mean_width": 18.512264251708984
         },
         "group_1": {
           "n_samples": 3021,
@@ -409,7 +409,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9220125675201416,
-          "mean_width": 16.19025230407715
+          "mean_width": 16.189937591552734
         },
         "group_3": {
           "n_samples": 3021,
@@ -420,34 +420,34 @@
         }
       },
       "abstention_disparity": 0.0,
-      "coverage_disparity": 0.012860000133514404,
-      "min_group_coverage": 0.9172955751419067,
+      "coverage_disparity": 0.01317441463470459,
+      "min_group_coverage": 0.9169811606407166,
       "max_group_coverage": 0.9301555752754211,
       "calibration_axis": "category",
       "per_category": {
         "violent": {
           "coverage": 0.918964684009552,
-          "mean_width": 12.197145462036133,
+          "mean_width": 12.196661949157715,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.8984034657478333,
-          "mean_width": 35.371551513671875,
+          "mean_width": 35.371070861816406,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
       }
     },
     "mondrian_demo_x_category": {
-      "marginal_coverage": 0.9319464564323425,
-      "mean_width": 18.251007080078125,
+      "marginal_coverage": 0.9318658113479614,
+      "mean_width": 18.25068473815918,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.03194645643234251,
+      "coverage_gap": 0.031865811347961404,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -456,8 +456,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9330188632011414,
-          "mean_width": 19.846540451049805
+          "coverage": 0.9327043890953064,
+          "mean_width": 19.845598220825195
         },
         "group_1": {
           "n_samples": 3021,
@@ -471,7 +471,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9408804774284363,
-          "mean_width": 16.82830238342285
+          "mean_width": 16.827987670898438
         },
         "group_3": {
           "n_samples": 3021,
@@ -489,27 +489,27 @@
       "per_category": {
         "violent": {
           "coverage": 0.9281567335128784,
-          "mean_width": 12.709965705871582,
+          "mean_width": 12.709482192993164,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9124335050582886,
-          "mean_width": 35.88800048828125,
+          "mean_width": 35.88751983642578,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
       }
     },
     "equalized_coverage": {
-      "marginal_coverage": 0.9326721429824829,
-      "mean_width": 18.56724739074707,
+      "marginal_coverage": 0.9325914978981018,
+      "mean_width": 18.566925048828125,
       "median_width": 12.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.03267214298248289,
+      "coverage_gap": 0.032591497898101784,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -518,8 +518,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9210692048072815,
-          "mean_width": 19.179874420166016
+          "coverage": 0.9207547307014465,
+          "mean_width": 19.178930282592773
         },
         "group_1": {
           "n_samples": 3021,
@@ -533,7 +533,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9408804774284363,
-          "mean_width": 16.82830238342285
+          "mean_width": 16.827987670898438
         },
         "group_3": {
           "n_samples": 3021,
@@ -544,8 +544,8 @@
         }
       },
       "abstention_disparity": 0.0,
-      "coverage_disparity": 0.019811272621154785,
-      "min_group_coverage": 0.9210692048072815,
+      "coverage_disparity": 0.020125746726989746,
+      "min_group_coverage": 0.9207547307014465,
       "max_group_coverage": 0.9408804774284363,
       "calibration_axis": "demographic",
       "calibration_threshold": 0.0,
@@ -553,16 +553,16 @@
       "per_category": {
         "violent": {
           "coverage": 0.918964684009552,
-          "mean_width": 12.197145462036133,
+          "mean_width": 12.196661949157715,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9238026142120361,
-          "mean_width": 37.34954071044922,
+          "mean_width": 37.349056243896484,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9552491307258606,
+          "coverage": 0.9550072550773621,
           "mean_width": 6.155055522918701,
           "n_samples": 4134
         }
@@ -570,7 +570,7 @@
     },
     "variance_scaled_split_cp": {
       "marginal_coverage": 0.9001774191856384,
-      "mean_width": 16.445653915405273,
+      "mean_width": 16.445331573486328,
       "median_width": 10.0,
       "target_coverage": 0.9,
       "coverage_gap": 0.00017741918563840553,
@@ -583,7 +583,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.8858490586280823,
-          "mean_width": 16.943395614624023
+          "mean_width": 16.942453384399414
         },
         "group_1": {
           "n_samples": 3021,
@@ -597,7 +597,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9144654273986816,
-          "mean_width": 14.940251350402832
+          "mean_width": 14.939936637878418
         },
         "group_3": {
           "n_samples": 3021,
@@ -612,17 +612,17 @@
       "min_group_coverage": 0.8858490586280823,
       "max_group_coverage": 0.9144654273986816,
       "calibration_axis": "none",
-      "calibration_threshold": -0.1547950655221939,
+      "calibration_threshold": -0.15479597449302673,
       "calibration_is_degenerate": false,
       "per_category": {
         "violent": {
           "coverage": 0.8676826357841492,
-          "mean_width": 10.415820121765137,
+          "mean_width": 10.415336608886719,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.8950169086456299,
-          "mean_width": 33.2513313293457,
+          "mean_width": 33.25084686279297,
           "n_samples": 4134
         },
         "drug": {
@@ -633,11 +633,11 @@
       }
     },
     "ecrc": {
-      "marginal_coverage": 0.9187228083610535,
-      "mean_width": 17.40936851501465,
+      "marginal_coverage": 0.9186421632766724,
+      "mean_width": 17.409046173095703,
       "median_width": 10.0,
       "target_coverage": 0.9,
-      "coverage_gap": 0.018722808361053445,
+      "coverage_gap": 0.01864216327667234,
       "abstention_rate": 0.0,
       "n_issued": 12402,
       "n_total": 12402,
@@ -646,8 +646,8 @@
           "n_samples": 3180,
           "n_issued": 3180,
           "abstention_rate": 0.0,
-          "coverage": 0.9223270416259766,
-          "mean_width": 19.38867950439453
+          "coverage": 0.9220125675201416,
+          "mean_width": 19.38773536682129
         },
         "group_1": {
           "n_samples": 3021,
@@ -661,7 +661,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.9261006116867065,
-          "mean_width": 15.350314140319824
+          "mean_width": 15.350000381469727
         },
         "group_3": {
           "n_samples": 3021,
@@ -679,16 +679,16 @@
       "per_category": {
         "violent": {
           "coverage": 0.8933236598968506,
-          "mean_width": 11.212627410888672,
+          "mean_width": 11.212142944335938,
           "n_samples": 4134
         },
         "property": {
           "coverage": 0.9112240076065063,
-          "mean_width": 35.039913177490234,
+          "mean_width": 35.0394287109375,
           "n_samples": 4134
         },
         "drug": {
-          "coverage": 0.9516206979751587,
+          "coverage": 0.9513788223266602,
           "mean_width": 5.9755682945251465,
           "n_samples": 4134
         }
@@ -696,7 +696,7 @@
     },
     "adaptive_ecrc_rolling": {
       "marginal_coverage": 0.8917916417121887,
-      "mean_width": 16.30696678161621,
+      "mean_width": 16.306644439697266,
       "median_width": 10.0,
       "target_coverage": 0.9,
       "coverage_gap": -0.008208358287811302,
@@ -709,7 +709,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.8924528360366821,
-          "mean_width": 17.308176040649414
+          "mean_width": 17.307231903076172
         },
         "group_1": {
           "n_samples": 3021,
@@ -723,7 +723,7 @@
           "n_issued": 3180,
           "abstention_rate": 0.0,
           "coverage": 0.8905660510063171,
-          "mean_width": 14.350943565368652
+          "mean_width": 14.350628852844238
         },
         "group_3": {
           "n_samples": 3021,
@@ -740,14 +740,14 @@
       "per_category": {
         "violent": {
           "coverage": 0.8647798895835876,
-          "mean_width": 10.430334091186523,
+          "mean_width": 10.429849624633789,
           "n_samples": 4134,
           "n_issued": 4134,
           "abstention_rate": 0.0
         },
         "property": {
           "coverage": 0.8938074707984924,
-          "mean_width": 33.0394287109375,
+          "mean_width": 33.038944244384766,
           "n_samples": 4134,
           "n_issued": 4134,
           "abstention_rate": 0.0
@@ -820,14 +820,14 @@
         16.935897827148438,
         16.69230842590332,
         16.72649574279785,
-        16.653846740722656,
+        16.66239356994629,
         16.581195831298828,
         16.52991485595703,
         16.461538314819336,
         16.235042572021484,
         16.22649574279785,
         16.188034057617188,
-        15.923076629638672,
+        15.918803215026855,
         16.102563858032227,
         16.22222137451172,
         16.286325454711914,
@@ -836,21 +836,21 @@
         15.730769157409668,
         16.008546829223633,
         16.0,
-        16.042734146118164,
+        16.038461685180664,
         16.064102172851562,
-        16.158119201660156,
+        16.16239356994629,
         16.132478713989258,
-        16.10683822631836,
+        16.102563858032227,
         15.952991485595703,
         16.19658088684082,
         16.512821197509766,
         16.354700088500977,
-        16.512821197509766,
+        16.508546829223633,
         16.52991485595703,
         16.794872283935547,
         16.756410598754883,
-        16.756410598754883,
-        16.71794891357422,
+        16.75213623046875,
+        16.72222137451172,
         16.60683822631836,
         16.77350425720215,
         16.71794891357422,
@@ -859,11 +859,11 @@
         16.658119201660156,
         16.512821197509766,
         16.376068115234375,
-        16.316238403320312,
+        16.311965942382812,
         16.170940399169922,
-        16.02991485595703,
+        16.0256404876709,
         15.965811729431152,
-        15.80341911315918,
+        15.799145698547363,
         15.931623458862305,
         15.884614944458008,
         15.786324501037598,
@@ -1101,118 +1101,118 @@
     }
   },
   "recalibration": {
-    "cal_initial_crps": 3.0968258380889893,
-    "cal_final_crps": 3.0889294147491455,
-    "cal_improvement_pct": 0.25498441800384,
-    "test_crps_before": 3.1401207447052,
-    "test_crps_after": 3.1401207447052,
+    "cal_initial_crps": 3.0968198776245117,
+    "cal_final_crps": 3.088930368423462,
+    "cal_improvement_pct": 0.25476164300203463,
+    "test_crps_before": 3.140108346939087,
+    "test_crps_after": 3.140108346939087,
     "test_improvement_pct": 0.0,
-    "holdout_crps_before": 2.9673569202423096,
-    "holdout_crps_after": 2.986898422241211,
-    "holdout_improvement_pct": -0.6585490901211047,
+    "holdout_crps_before": 2.9673359394073486,
+    "holdout_crps_after": 2.986966371536255,
+    "holdout_improvement_pct": -0.6615507151787788,
     "recal_applied": false,
     "recalibration_gate": "identity fallback",
     "learned_params": {
-      "scale_mu": 1.0019999742507935,
-      "shift_mu": 0.11879060417413712,
-      "scale_r": 1.3185158967971802,
-      "shift_r": -0.0010972479358315468
+      "scale_mu": 1.0020005702972412,
+      "shift_mu": 0.11851266771554947,
+      "scale_r": 1.326529622077942,
+      "shift_r": -0.001074270810931921
     },
-    "iterations": 129,
-    "crpss_ha_recalibrated": 0.049418180416686,
-    "crpss_sn_recalibrated": 0.33624633705384077
+    "iterations": 181,
+    "crpss_ha_recalibrated": 0.04942193348608326,
+    "crpss_sn_recalibrated": 0.3362489576736637
   },
   "feedback_loop_analysis": {
     "asc": {
       "per_group": {
-        "0": 0.45567504806945075,
-        "1": 0.5471589037207922,
-        "2": 0.32430393193157014,
-        "3": 0.5279939726628895
+        "0": 0.45567785080303286,
+        "1": 0.5471602424688166,
+        "2": 0.3243044928110955,
+        "3": 0.5279938073517105
       },
       "aggregate": {
-        "mean_asc": 0.46378296409617564,
-        "max_asc": 0.5471589037207922,
-        "min_asc": 0.32430393193157014
+        "mean_asc": 0.4637840983586639,
+        "max_asc": 0.5471602424688166,
+        "min_asc": 0.3243044928110955
       }
     },
     "bas": {
       "per_group": {
-        "0": 0.027231160036693902,
-        "1": 0.024142322207803435,
-        "2": 0.028079586170003168,
-        "3": 0.03546906954601914
+        "0": 0.02723858153908787,
+        "1": 0.02414797092042731,
+        "2": 0.02808351003982823,
+        "3": 0.03546897326549914
       },
       "aggregate": {
-        "max_abs_bas": 0.03546906954601914,
-        "mean_abs_bas": 0.02873053449012991
+        "max_abs_bas": 0.03546897326549914,
+        "mean_abs_bas": 0.028734758941210636
       }
     },
     "dad": {
       "per_group": {
-        "0": -0.0010020612397463324,
-        "1": -0.004006005341095298,
-        "2": -0.0001769056212312936,
-        "3": 0.007009479285095432
+        "0": -0.000999281277159536,
+        "1": -0.004004878700859638,
+        "2": -0.00017747475971729987,
+        "3": 0.007004889395363145
       },
       "aggregate": {
-        "max_alloc_disparity": 0.007009479285095432,
-        "mean_alloc_disparity": 0.003048612871792089
+        "max_alloc_disparity": 0.007004889395363145,
+        "mean_alloc_disparity": 0.0030466310332749047
       }
     },
     "disparity": {
-      "asc_range": 0.2228549717892221,
-      "bas_range": 0.011326747338215704,
-      "max_abs_asc": 0.5471589037207922,
-      "max_abs_bas": 0.03546906954601914
+      "asc_range": 0.22285574965772104,
+      "bas_range": 0.011321002345071829,
+      "max_abs_asc": 0.5471602424688166,
+      "max_abs_bas": 0.03546897326549914
     }
   },
   "crps_decomposition": {
-    "reliability": 5.053858665418673e-05,
-    "resolution": 10.704753450016737,
+    "reliability": 6.036242054169786e-05,
+    "resolution": 10.704775671616737,
     "uncertainty": 13.844823656135283,
-    "crps_total": 3.1401207447052,
-    "crps_actual": 3.1401207447052,
-    "reliability_fraction": 1.609447239868204e-05,
-    "resolution_fraction": 3.409026059926787,
-    "skill_score": 0.7731917124626093
+    "crps_total": 3.140108346939087,
+    "crps_actual": 3.140108346939087,
+    "reliability_fraction": 1.922303751096293e-05,
+    "resolution_fraction": 3.409046596131478,
+    "skill_score": 0.7731926079428567
   },
   "statistical_significance": {
     "dm": {
-      "dm_stat": -2.9087026049016207,
-      "p_value": 0.0036293192485139514,
-      "mean_diff": -0.16324676657622716,
-      "ci_lower": -0.2732469381532833,
-      "ci_upper": -0.053246594999171004
+      "dm_stat": -2.9088240329757786,
+      "p_value": 0.0036279099687974714,
+      "mean_diff": -0.16325863352361716,
+      "ci_lower": -0.27326220911568777,
+      "ci_upper": -0.05325505793154654
     },
     "bootstrap": {
-      "mean_diff": -0.16324676657622716,
+      "mean_diff": -0.16325863352361716,
       "p_value": 0.0003,
-      "ci_lower": -0.22887206954776115,
-      "ci_upper": -0.056569387665334744,
+      "ci_lower": -0.2288817233634445,
+      "ci_upper": -0.0565821408100848,
       "block_length": 3.0
     },
-    "summary": "Forecast comparison vs 'Historical Average' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.163247 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-2.9087, p=0.0036 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.273247, -0.053247]\n  Block bootstrap:  p=0.0003 (significant at 5%: YES)\n    95% CI (percentile): [-0.228872, -0.056569]\n  Winner: our model",
+    "summary": "Forecast comparison vs 'Historical Average' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.163259 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-2.9088, p=0.0036 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.273262, -0.053255]\n  Block bootstrap:  p=0.0003 (significant at 5%: YES)\n    95% CI (percentile): [-0.228882, -0.056582]\n  Winner: our model",
     "baseline_name": "Historical Average",
     "T": 53
   },
   "forecasting_gate": {
     "passed": true,
     "rule": "CRPSS vs rolling HA > 0 and (DM p < 0.05 or block-bootstrap p < 0.05)",
-    "crpss_ha": 0.049418180416686,
+    "crpss_ha": 0.04942193348608326,
     "crpss_ha_positive": true,
     "statistically_significant": true,
     "significance_level": 0.05,
-    "dm_stat": -2.9087026049016207,
-    "dm_p_value": 0.0036293192485139514,
+    "dm_stat": -2.9088240329757786,
+    "dm_p_value": 0.0036279099687974714,
     "dm_ci": [
-      -0.2732469381532833,
-      -0.053246594999171004
+      -0.27326220911568777,
+      -0.05325505793154654
     ],
     "bootstrap_p_value": 0.0003,
     "bootstrap_ci": [
-      -0.22887206954776115,
-      -0.056569387665334744
+      -0.2288817233634445,
+      -0.0565821408100848
     ]
   },
   "calibrator_selection": {
@@ -1243,11 +1243,11 @@
     "num_seeds": 5,
     "method": "category_conditioned_entropy_regularized_emos",
     "emos_weights": [
-      0.1244574561715126,
-      0.26573237776756287,
-      0.2254282832145691,
-      0.14146384596824646,
-      0.24291802942752838
+      0.12437758594751358,
+      0.26573675870895386,
+      0.22556321322917938,
+      0.14163212478160858,
+      0.2426903396844864
     ],
     "emos_category_weights": [
       [
@@ -1258,18 +1258,18 @@
         0.20000000298023224
       ],
       [
-        0.010214035399258137,
-        0.033242981880903244,
-        0.34971359372138977,
-        0.13079425692558289,
-        0.47603505849838257
+        0.00992871169000864,
+        0.03333821892738342,
+        0.3497888147830963,
+        0.13085228204727173,
+        0.47609201073646545
       ],
       [
-        0.1631583273410797,
-        0.5639541149139404,
-        0.12657125294208527,
-        0.09359725564718246,
-        0.05271907150745392
+        0.16320404410362244,
+        0.5638720393180847,
+        0.1269007921218872,
+        0.09404410421848297,
+        0.05197900906205177
       ]
     ],
     "emos_fallback_used": true,
@@ -1278,24 +1278,24 @@
       false,
       false
     ],
-    "emos_holdout_improvement_pct": -3.6835383268929434e-05,
+    "emos_holdout_improvement_pct": 0.0005465133031605044,
     "emos_entropy_lambda": 0.005,
-    "emos_calibration_crps_equal_weight": 3.0714046955108643,
-    "emos_calibration_crps_learned_weight": 3.057967742284139,
+    "emos_calibration_crps_equal_weight": 3.0714056491851807,
+    "emos_calibration_crps_learned_weight": 3.057957867781321,
     "per_seed_test_crps": [
-      3.160914182662964,
+      3.1609132289886475,
       3.222818374633789,
-      3.189150094985962,
-      3.1804842948913574,
-      3.2632625102996826
+      3.1891491413116455,
+      3.1804823875427246,
+      3.2632627487182617
     ],
-    "equal_weight_test_crps": 3.140000104904175,
-    "learned_weight_test_crps": 3.1401207447052,
-    "epistemic_uncertainty": 2.5876057147979736,
-    "aleatoric_uncertainty": 57.37000503540039,
-    "epistemic_fraction": 0.0431572519722096,
-    "mean_seed_crps": 3.203325891494751,
-    "ensemble_improvement": 0.01973110102764397,
-    "emos_improvement_pct": -0.0038420317514311756
+    "equal_weight_test_crps": 3.140001058578491,
+    "learned_weight_test_crps": 3.140108346939087,
+    "epistemic_uncertainty": 2.5876078605651855,
+    "aleatoric_uncertainty": 57.370008850097655,
+    "epistemic_fraction": 0.04315728346995831,
+    "mean_seed_crps": 3.2033251762390136,
+    "ensemble_improvement": 0.019734752428146818,
+    "emos_improvement_pct": -0.0034168256186599376
   }
 }

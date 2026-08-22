@@ -1,7 +1,7 @@
 # CIVIC-SAFE Conformal Prediction Audit Report
 
 **Dataset:** nyc  
-**Timestamp:** 2026-08-20T09:51:11.281935  
+**Timestamp:** 2026-08-22T06:24:55.421703  
 **Alpha (miscoverage):** 0.1  
 **Checkpoint:** `run_nyc_anchor_1786812069`  
 **Panel hash:** `3ff6707b716d`  
@@ -34,12 +34,12 @@
 | Evidence | Value |
 |----------|-------|
 | Rule | CRPSS vs rolling HA > 0 and (DM p < 0.05 or block-bootstrap p < 0.05) |
-| CRPSS vs rolling HA | 0.049418 |
-| DM statistic | -2.908703 |
-| DM p-value | 0.003629 |
-| DM 95% CI | [-0.273247, -0.053247] |
+| CRPSS vs rolling HA | 0.049422 |
+| DM statistic | -2.908824 |
+| DM p-value | 0.003628 |
+| DM 95% CI | [-0.273262, -0.053255] |
 | Block-bootstrap p-value | 0.000300 |
-| Block-bootstrap 95% CI | [-0.228872, -0.056569] |
+| Block-bootstrap 95% CI | [-0.228882, -0.056582] |
 | **Decision** | **PASS** |
 
 ## Calibrator Selection
@@ -52,15 +52,15 @@
 
 | Method | Marginal Coverage | Target | Mean Width | Demographic Disparity | Abstention | Policy Status |
 |--------|:-----------------:|:------:|:----------:|:---------------------:|:----------:|---------------|
-| split_cp | 0.9327 | 0.90 | 18.57 | 0.0198 | 0.00% | eligible |
+| split_cp | 0.9326 | 0.90 | 18.57 | 0.0201 | 0.00% | eligible |
 | randomized_split_cp | 0.9328 | 0.90 | 18.60 | 0.0201 | 0.00% | eligible |
-| weighted_cp | 0.9327 | 0.90 | 18.57 | 0.0198 | 0.00% | eligible |
-| mondrian | 0.9327 | 0.90 | 18.57 | 0.0198 | 0.00% | eligible |
-| mondrian_category | 0.9242 | 0.90 | 17.91 | 0.0129 | 0.00% | eligible |
+| weighted_cp | 0.9326 | 0.90 | 18.57 | 0.0201 | 0.00% | eligible |
+| mondrian | 0.9326 | 0.90 | 18.57 | 0.0201 | 0.00% | eligible |
+| mondrian_category | 0.9241 | 0.90 | 17.91 | 0.0132 | 0.00% | eligible |
 | mondrian_demo_x_category | 0.9319 | 0.90 | 18.25 | 0.0154 | 0.00% | eligible |
-| equalized_coverage | 0.9327 | 0.90 | 18.57 | 0.0198 | 0.00% | eligible |
+| equalized_coverage | 0.9326 | 0.90 | 18.57 | 0.0201 | 0.00% | eligible |
 | variance_scaled_split_cp | 0.9002 | 0.90 | 16.45 | 0.0286 | 0.00% | selected; eligible |
-| ecrc | 0.9187 | 0.90 | 17.41 | 0.0138 | 0.00% | eligible |
+| ecrc | 0.9186 | 0.90 | 17.41 | 0.0138 | 0.00% | eligible |
 | adaptive_ecrc_rolling | 0.8918 | 0.90 | 16.31 | 0.0046 | 0.00% | coverage 0.891792 is below 0.895000 |
 
 ### Per-Category Coverage (variance_scaled_split_cp)

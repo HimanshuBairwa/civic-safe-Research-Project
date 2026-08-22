@@ -1,7 +1,7 @@
 # CIVIC-SAFE Conformal Prediction Audit Report
 
 **Dataset:** chicago  
-**Timestamp:** 2026-08-20T09:48:56.522054  
+**Timestamp:** 2026-08-22T06:21:29.084495  
 **Alpha (miscoverage):** 0.1  
 **Checkpoint:** `run_chicago_anchor_1786718493`  
 **Panel hash:** `4bb2e1e3322b`  
@@ -34,12 +34,12 @@
 | Evidence | Value |
 |----------|-------|
 | Rule | CRPSS vs rolling HA > 0 and (DM p < 0.05 or block-bootstrap p < 0.05) |
-| CRPSS vs rolling HA | 0.035966 |
-| DM statistic | -2.122039 |
-| DM p-value | 0.033834 |
-| DM 95% CI | [-0.202865, -0.008055] |
+| CRPSS vs rolling HA | 0.035968 |
+| DM statistic | -2.122168 |
+| DM p-value | 0.033824 |
+| DM 95% CI | [-0.202867, -0.008061] |
 | Block-bootstrap p-value | 0.005300 |
-| Block-bootstrap 95% CI | [-0.173608, -0.026323] |
+| Block-bootstrap 95% CI | [-0.173609, -0.026330] |
 | **Decision** | **PASS** |
 
 ## Calibrator Selection
@@ -53,7 +53,7 @@
 | Method | Marginal Coverage | Target | Mean Width | Demographic Disparity | Abstention | Policy Status |
 |--------|:-----------------:|:------:|:----------:|:---------------------:|:----------:|---------------|
 | split_cp | 0.9405 | 0.90 | 16.25 | 0.0182 | 0.00% | eligible |
-| randomized_split_cp | 0.9347 | 0.90 | 16.53 | 0.0115 | 0.00% | eligible |
+| randomized_split_cp | 0.9347 | 0.90 | 16.54 | 0.0115 | 0.00% | eligible |
 | weighted_cp | 0.9075 | 0.90 | 14.58 | 0.0238 | 0.00% | eligible |
 | mondrian | 0.9169 | 0.90 | 15.02 | 0.0319 | 0.00% | demographic disparity 0.031860 exceeds 0.030000 |
 | mondrian_category | 0.9313 | 0.90 | 17.19 | 0.0250 | 0.00% | eligible |

@@ -148,7 +148,7 @@
       "city": "chicago",
       "policy": "civic_safe_oicc",
       "budget": 100,
-      "violent_hit_rate": 0.963580506285605,
+      "violent_hit_rate": 0.9636309103118871,
       "demographic_overallocation_ratio": 0.6432282751192945,
       "idle_wasted_resource_ratio": 0.0015094339622641509,
       "allocation_disparity": 0.14481884957961422,

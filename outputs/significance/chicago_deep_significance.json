@@ -1,11 +1,114 @@
 {
-  "status": "unavailable",
+  "status": "ok",
   "data": "chicago",
-  "reason": "No all-category CIVIC-SAFE per-week CRPS series was found. The aggregate CRPS and violent-only policy NPZ cannot support a paired deep-baseline test.",
-  "baselines_available": [
-    "GraphWaveNet",
-    "LSTM_NB",
-    "STZINB_GNN",
-    "TFT_ZINB"
-  ]
+  "n_baselines_tested": 4,
+  "comparisons": {
+    "GraphWaveNet": {
+      "dm": {
+        "dm_stat": -9.319478760326861,
+        "p_value": 0.0,
+        "mean_diff": -0.29220852567094524,
+        "ci_lower": -0.35366241226020356,
+        "ci_upper": -0.23075463908168695
+      },
+      "bootstrap": {
+        "mean_diff": -0.29220852567094524,
+        "p_value": 0.0,
+        "ci_lower": -0.3501095794943468,
+        "ci_upper": -0.24556018881275726,
+        "block_length": 2.0
+      },
+      "summary": "Forecast comparison vs 'GraphWaveNet' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.292209 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-9.3195, p=0.0000 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.353662, -0.230755]\n  Block bootstrap:  p=0.0000 (significant at 5%: YES)\n    95% CI (percentile): [-0.350110, -0.245560]\n  Winner: our model",
+      "baseline_name": "GraphWaveNet",
+      "T": 53,
+      "n_weeks_tested": 53,
+      "week_range": [
+        260,
+        312
+      ],
+      "mean_crps_ours": 2.8267058831340863,
+      "mean_crps_baseline": 3.1189144088050313
+    },
+    "LSTM_NB": {
+      "dm": {
+        "dm_stat": -7.481899770227658,
+        "p_value": 7.327471962526033e-14,
+        "mean_diff": -0.27701748793509623,
+        "ci_lower": -0.34958519405216204,
+        "ci_upper": -0.20444978181803042
+      },
+      "bootstrap": {
+        "mean_diff": -0.27701748793509623,
+        "p_value": 0.0,
+        "ci_lower": -0.347433510082859,
+        "ci_upper": -0.22192915616291944,
+        "block_length": 2.0
+      },
+      "summary": "Forecast comparison vs 'LSTM_NB' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.277017 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-7.4819, p=0.0000 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.349585, -0.204450]\n  Block bootstrap:  p=0.0000 (significant at 5%: YES)\n    95% CI (percentile): [-0.347434, -0.221929]\n  Winner: our model",
+      "baseline_name": "LSTM_NB",
+      "T": 53,
+      "n_weeks_tested": 53,
+      "week_range": [
+        260,
+        312
+      ],
+      "mean_crps_ours": 2.8267058831340863,
+      "mean_crps_baseline": 3.1037233710691825
+    },
+    "STZINB_GNN": {
+      "dm": {
+        "dm_stat": -10.18558881111253,
+        "p_value": 0.0,
+        "mean_diff": -0.49552636214893264,
+        "ci_lower": -0.5908781232374297,
+        "ci_upper": -0.40017460106043556
+      },
+      "bootstrap": {
+        "mean_diff": -0.49552636214893264,
+        "p_value": 0.0,
+        "ci_lower": -0.5877885796894745,
+        "ci_upper": -0.42895510336632636,
+        "block_length": 2.0
+      },
+      "summary": "Forecast comparison vs 'STZINB_GNN' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.495526 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-10.1856, p=0.0000 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.590878, -0.400175]\n  Block bootstrap:  p=0.0000 (significant at 5%: YES)\n    95% CI (percentile): [-0.587789, -0.428955]\n  Winner: our model",
+      "baseline_name": "STZINB_GNN",
+      "T": 53,
+      "n_weeks_tested": 53,
+      "week_range": [
+        260,
+        312
+      ],
+      "mean_crps_ours": 2.8267058831340863,
+      "mean_crps_baseline": 3.3222322452830193
+    },
+    "TFT_ZINB": {
+      "dm": {
+        "dm_stat": -4.789562420083896,
+        "p_value": 1.6714539974316267e-06,
+        "mean_diff": -0.11888153824956156,
+        "ci_lower": -0.1675297267055087,
+        "ci_upper": -0.07023334979361441
+      },
+      "bootstrap": {
+        "mean_diff": -0.11888153824956156,
+        "p_value": 0.0,
+        "ci_lower": -0.1538374046112084,
+        "ci_upper": -0.0676900056958396,
+        "block_length": 2.0
+      },
+      "summary": "Forecast comparison vs 'TFT_ZINB' (T=53)\n  Mean CRPS diff (ours \u2212 baseline): -0.118882 [LOWER (better)]\n  Diebold\u2013Mariano: DM=-4.7896, p=0.0000 (significant at 5%: YES)\n    95% CI for E[d_t]: [-0.167530, -0.070233]\n  Block bootstrap:  p=0.0000 (significant at 5%: YES)\n    95% CI (percentile): [-0.153837, -0.067690]\n  Winner: our model",
+      "baseline_name": "TFT_ZINB",
+      "T": 53,
+      "n_weeks_tested": 53,
+      "week_range": [
+        260,
+        312
+      ],
+      "mean_crps_ours": 2.8267058831340863,
+      "mean_crps_baseline": 2.945587421383648
+    }
+  },
+  "skipped": {},
+  "sign_convention": "mean_diff = CRPS_CIVIC_SAFE - CRPS_baseline; negative is better",
+  "source": "persisted per-week CRPS; no model retraining"
 }
