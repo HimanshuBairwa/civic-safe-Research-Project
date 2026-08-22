@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """CIVIC-SAFE Publication Figure Generator.
 
 Reads JSON results from ``outputs/conformal_evaluation/{city}_conformal_results.json``
@@ -27,7 +27,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 
-# ─── Premium academic style ─────────────────────────────────────────
+# â”€â”€â”€ Premium academic style â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 plt.rcParams.update({
     'font.family': 'serif',
     'font.size': 11,
@@ -85,9 +85,9 @@ METHOD_LABELS = {
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Helpers
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _load_results(city: str) -> dict:
     """Load the conformal results JSON for *city*."""
@@ -119,12 +119,12 @@ def _add_watermark(ax: plt.Axes, text: str = "CIVIC-SAFE") -> None:
     )
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 1 – Coverage Convergence Plot
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 1 â€“ Coverage Convergence Plot
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig1_coverage_convergence(results: dict, output_dir: Path) -> list[Path]:
-    """ECRC / Adaptive-ECRC rolling coverage over time with α_t on 2nd axis."""
+    """ECRC / Adaptive-ECRC rolling coverage over time with Î±_t on 2nd axis."""
     coverage = results.get("coverage_results", {})
     ecrc = coverage.get("adaptive_ecrc", coverage.get("ecrc", {}))
 
@@ -145,7 +145,7 @@ def fig1_coverage_convergence(results: dict, output_dir: Path) -> list[Path]:
         noise = rng.normal(0, 0.06 * max(1 - t / n_steps, 0.05))
         window_coverages[t] = np.clip(marginal + noise * (1 - t / n_steps), 0.5, 1.0)
 
-    # α_t trace: initial alpha converges toward stable value
+    # Î±_t trace: initial alpha converges toward stable value
     alpha_init = 1.0 - target_cov  # 0.1
     alpha_t = np.empty(n_steps)
     for t in range(n_steps):
@@ -186,9 +186,9 @@ def fig1_coverage_convergence(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig1_coverage_convergence')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 2 – PIT Histogram
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 2 â€“ PIT Histogram
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig2_pit_histogram(results: dict, output_dir: Path) -> list[Path]:
     """Probability Integral Transform histogram with uniformity reference."""
@@ -197,7 +197,7 @@ def fig2_pit_histogram(results: dict, output_dir: Path) -> list[Path]:
     chi2_p = diag.get("pit_chi2_pvalue", None)
 
     if pit_hist is None:
-        print("  ⚠  calibration_diagnostics.pit_histogram not found – generating synthetic PIT")
+        print("  âš   calibration_diagnostics.pit_histogram not found â€“ generating synthetic PIT")
         rng = np.random.RandomState(0)
         pit_hist = rng.dirichlet(np.ones(10)).tolist()
 
@@ -220,7 +220,7 @@ def fig2_pit_histogram(results: dict, output_dir: Path) -> list[Path]:
     if chi2_p is not None:
         sig = 'Uniform' if chi2_p > 0.05 else 'Non-uniform'
         ax.annotate(
-            f'χ² p = {chi2_p:.3f}\n({sig})',
+            f'Ï‡Â² p = {chi2_p:.3f}\n({sig})',
             xy=(0.97, 0.95), xycoords='axes fraction',
             ha='right', va='top',
             fontsize=9,
@@ -237,9 +237,9 @@ def fig2_pit_histogram(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig2_pit_histogram')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 3 – CRPSS Comparison Bar Chart
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 3 â€“ CRPSS Comparison Bar Chart
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig3_crpss_comparison(results: dict, output_dir: Path) -> list[Path]:
     """Horizontal bar chart of CRPS Skill Score vs baselines, with per-category breakdown."""
@@ -254,7 +254,7 @@ def fig3_crpss_comparison(results: dict, output_dir: Path) -> list[Path]:
         values.append(skill["crpss_vs_ha"])
         colours.append(COLORS['baseline'])
     if "crpss_vs_seasonal_naive" in skill:
-        labels.append("vs Seasonal Naïve")
+        labels.append("vs Seasonal NaÃ¯ve")
         values.append(skill["crpss_vs_seasonal_naive"])
         colours.append(COLORS['emos'])
 
@@ -272,7 +272,7 @@ def fig3_crpss_comparison(results: dict, output_dir: Path) -> list[Path]:
             colours.append(COLORS['neutral'])
 
     if not labels:
-        print("  ⚠  No CRPSS data found – skipping Figure 3")
+        print("  âš   No CRPSS data found â€“ skipping Figure 3")
         return []
 
     values = np.asarray(values)
@@ -306,15 +306,15 @@ def fig3_crpss_comparison(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig3_crpss_comparison')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 4 – CRPS Decomposition
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 4 â€“ CRPS Decomposition
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig4_crps_decomposition(results: dict, output_dir: Path) -> list[Path]:
     """Stacked bar chart of Reliability, Resolution, Uncertainty (Hersbach 2000)."""
     decomp = results.get("crps_decomposition", {})
     if not decomp:
-        print("  ⚠  crps_decomposition not found – skipping Figure 4")
+        print("  âš   crps_decomposition not found â€“ skipping Figure 4")
         return []
 
     reliability = decomp.get("reliability", 0)
@@ -345,9 +345,9 @@ def fig4_crps_decomposition(results: dict, output_dir: Path) -> list[Path]:
 
     fig, ax = plt.subplots(figsize=(5.5, 4.5))
 
-    ax.bar(x, rel_vals, width, label='Reliability (↓ better)',
+    ax.bar(x, rel_vals, width, label='Reliability (â†“ better)',
            color='#EF5350', edgecolor='white', zorder=3)
-    ax.bar(x, [-r for r in res_vals], width, label='Resolution (↑ better)',
+    ax.bar(x, [-r for r in res_vals], width, label='Resolution (â†‘ better)',
            color='#42A5F5', edgecolor='white', zorder=3)
     ax.bar(x, unc_vals, width, bottom=rel_vals, label='Uncertainty (const.)',
            color='#BDBDBD', edgecolor='white', alpha=0.7, zorder=3)
@@ -372,15 +372,15 @@ def fig4_crps_decomposition(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig4_crps_decomposition')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 5 – Conformal Method Comparison
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 5 â€“ Conformal Method Comparison
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig5_conformal_comparison(results: dict, output_dir: Path) -> list[Path]:
     """Grouped bar chart: marginal coverage and mean interval width for 6 methods."""
     coverage = results.get("coverage_results", {})
     if not coverage:
-        print("  ⚠  coverage_results not found – skipping Figure 5")
+        print("  âš   coverage_results not found â€“ skipping Figure 5")
         return []
 
     methods = list(coverage.keys())
@@ -428,9 +428,9 @@ def fig5_conformal_comparison(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig5_conformal_comparison')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 6 – Uncertainty Decomposition
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 6 â€“ Uncertainty Decomposition
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig6_uncertainty_decomposition(results: dict, output_dir: Path) -> list[Path]:
     """Pie / donut chart splitting aleatoric vs epistemic uncertainty."""
@@ -446,11 +446,11 @@ def fig6_uncertainty_decomposition(results: dict, output_dir: Path) -> list[Path
         aleatoric = uncertainty
         epistemic = reliability
         if aleatoric == 1.0 and epistemic == 0.2:
-            print("  ⚠  No ensemble data – using CRPS decomposition proxy for Figure 6")
+            print("  âš   No ensemble data â€“ using CRPS decomposition proxy for Figure 6")
 
     total = aleatoric + epistemic
     if total < 1e-12:
-        print("  ⚠  Uncertainty values are near-zero – skipping Figure 6")
+        print("  âš   Uncertainty values are near-zero â€“ skipping Figure 6")
         return []
 
     fracs = [aleatoric / total, epistemic / total]
@@ -478,9 +478,9 @@ def fig6_uncertainty_decomposition(results: dict, output_dir: Path) -> list[Path
     return _savefig(fig, output_dir, 'fig6_uncertainty_decomposition')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 7 – ASC (Anomaly Skill Coefficient) Heatmap
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 7 â€“ ASC (Anomaly Skill Coefficient) Heatmap
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
     """Heatmap of Anomaly Skill Coefficient per demographic group, diverging colour scale."""
@@ -491,7 +491,7 @@ def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
     bas_per_group = bas_data.get("per_group", {})
 
     if not per_group:
-        print("  ⚠  feedback_loop_analysis.asc.per_group not found – skipping Figure 7")
+        print("  âš   feedback_loop_analysis.asc.per_group not found â€“ skipping Figure 7")
         return []
 
     groups = sorted(per_group.keys(), key=lambda k: int(k) if k.isdigit() else k)
@@ -502,7 +502,7 @@ def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
     metrics = ['ASC', 'BAS']
     data = np.array([asc_values, bas_values])
 
-    # Diverging colourmap: green (corrective) → white (neutral) → red (amplifying)
+    # Diverging colourmap: green (corrective) â†’ white (neutral) â†’ red (amplifying)
     from matplotlib.colors import TwoSlopeNorm
     vmin = np.nanmin(data)
     vmax = np.nanmax(data)
@@ -521,7 +521,7 @@ def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
     for i in range(len(metrics)):
         for j in range(len(groups)):
             val = data[i, j]
-            txt = f'{val:.3f}' if not np.isnan(val) else '—'
+            txt = f'{val:.3f}' if not np.isnan(val) else 'â€”'
             text_color = 'white' if abs(val) > abs_max * 0.65 else '#212121'
             ax.text(j, i, txt, ha='center', va='center', fontsize=10,
                     fontweight='bold', color=text_color)
@@ -535,9 +535,9 @@ def fig7_asc_heatmap(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig7_asc_heatmap')
 
 
-# ───────────────────────────────────────────────────────────────────
-# Figure 8 – Recalibration Effect
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Figure 8 â€“ Recalibration Effect
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig8_recalibration_effect(results: dict, output_dir: Path) -> list[Path]:
     """Before / after CRPS comparison with learned parameters annotation."""
@@ -548,7 +548,7 @@ def fig8_recalibration_effect(results: dict, output_dir: Path) -> list[Path]:
     improvement = recal.get("test_improvement_pct", None)
 
     if crps_before is None or crps_after is None:
-        print("  ⚠  recalibration data not found – skipping Figure 8")
+        print("  âš   recalibration data not found â€“ skipping Figure 8")
         return []
 
     labels = ['Before', 'After']
@@ -597,21 +597,21 @@ def fig8_recalibration_effect(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'fig8_recalibration_effect')
 
 
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Combined multi-panel figure
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def fig_main_combined(results: dict, output_dir: Path) -> list[Path]:
     """Four-panel summary figure for the main paper body.
 
-    Layout (2 × 2):
+    Layout (2 Ã— 2):
       (a) Coverage Convergence   (b) PIT Histogram
       (c) Conformal Comparison   (d) CRPS Decomposition
     """
     fig = plt.figure(figsize=(14, 10))
     gs = gridspec.GridSpec(2, 2, hspace=0.35, wspace=0.30)
 
-    # ─ Panel (a): Coverage Convergence ─
+    # â”€ Panel (a): Coverage Convergence â”€
     ax_a = fig.add_subplot(gs[0, 0])
     ecrc = results.get("coverage_results", {}).get(
         "adaptive_ecrc", results.get("coverage_results", {}).get("ecrc", {}))
@@ -629,7 +629,7 @@ def fig_main_combined(results: dict, output_dir: Path) -> list[Path]:
     ax_a.set_ylim(0.5, 1.05)
     ax_a.xaxis.set_major_locator(MaxNLocator(integer=True))
 
-    # ─ Panel (b): PIT Histogram ─
+    # â”€ Panel (b): PIT Histogram â”€
     ax_b = fig.add_subplot(gs[0, 1])
     diag = results.get("calibration_diagnostics", {})
     pit_hist = np.asarray(diag.get("pit_histogram", np.ones(10) / 10), dtype=float)
@@ -644,7 +644,7 @@ def fig_main_combined(results: dict, output_dir: Path) -> list[Path]:
     ax_b.set_title('(b) PIT Histogram', fontweight='bold', fontsize=11)
     ax_b.set_xlim(0, 1)
 
-    # ─ Panel (c): Conformal Comparison ─
+    # â”€ Panel (c): Conformal Comparison â”€
     ax_c = fig.add_subplot(gs[1, 0])
     cov_res = results.get("coverage_results", {})
     methods = list(cov_res.keys())
@@ -659,7 +659,7 @@ def fig_main_combined(results: dict, output_dir: Path) -> list[Path]:
     ax_c.set_ylim(0.6, 1.05)
     ax_c.set_title('(c) Method Comparison', fontweight='bold', fontsize=11)
 
-    # ─ Panel (d): CRPS Decomposition ─
+    # â”€ Panel (d): CRPS Decomposition â”€
     ax_d = fig.add_subplot(gs[1, 1])
     decomp = results.get("crps_decomposition", {})
     rel = decomp.get("reliability", 0)
@@ -676,9 +676,9 @@ def fig_main_combined(results: dict, output_dir: Path) -> list[Path]:
     return _savefig(fig, output_dir, 'main_figure')
 
 
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Main driver
-# ───────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -691,7 +691,7 @@ def main() -> None:
     args = parser.parse_args()
     city = args.data.lower()
 
-    print(f"Loading results for '{city}' …")
+    print(f"Loading results for '{city}' â€¦")
     results = _load_results(city)
 
     output_dir = PROJECT_ROOT / "outputs" / "figures"
@@ -712,18 +712,18 @@ def main() -> None:
     ]
 
     for label, fn in generators:
-        print(f"Generating {label} …")
+        print(f"Generating {label} â€¦")
         try:
             saved = fn(results, output_dir)
             all_saved.extend(saved)
             for p in saved:
-                print(f"  ✓ {p.relative_to(PROJECT_ROOT)}")
+                print(f"  âœ“ {p.relative_to(PROJECT_ROOT)}")
         except Exception as exc:
-            print(f"  ✗ FAILED: {exc}")
+            print(f"  âœ— FAILED: {exc}")
 
-    print(f"\n{'═' * 60}")
+    print(f"\n{'â•' * 60}")
     print(f"  Summary: {len(all_saved)} files generated")
-    print(f"{'═' * 60}")
+    print(f"{'â•' * 60}")
     for p in all_saved:
         print(f"  {p.relative_to(PROJECT_ROOT)}")
     print()
