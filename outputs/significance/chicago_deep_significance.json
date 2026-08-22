@@ -1,0 +1,11 @@
+{
+  "status": "unavailable",
+  "data": "chicago",
+  "reason": "No all-category CIVIC-SAFE per-week CRPS series was found. The aggregate CRPS and violent-only policy NPZ cannot support a paired deep-baseline test.",
+  "baselines_available": [
+    "GraphWaveNet",
+    "LSTM_NB",
+    "STZINB_GNN",
+    "TFT_ZINB"
+  ]
+}

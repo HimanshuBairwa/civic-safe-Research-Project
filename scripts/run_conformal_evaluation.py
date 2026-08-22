@@ -154,6 +154,7 @@ def _save_post_training_artifacts(
     conformal_upper: Tensor,
     demographic_group: Tensor | np.ndarray,
     selected_method: str | None,
+    week_index: Tensor | np.ndarray | list[int] | None = None,
     output_root: Path | None = None,
     tail_quantile: float = 0.90,
 ) -> tuple[Path, Path]:
@@ -209,6 +210,38 @@ def _save_post_training_artifacts(
         ),
     )
 
+    # Persist the all-category weekly CRPS vector needed for paired DM and
+    # block-bootstrap comparisons.  This is evaluation-only output and is kept
+    # separate from the violent-only policy panel to prevent metric mixing.
+    weekly_crps = crps_zinb(test_y, test_pi, test_mu, test_r).reshape(
+        n_weeks, n_units, n_categories
+    ).mean(dim=(1, 2))
+    if week_index is None:
+        weeks = list(range(260, 260 + n_weeks))
+    else:
+        weeks = [int(value) for value in np.asarray(week_index).reshape(-1)]
+        if len(weeks) != n_weeks:
+            raise ValueError(
+                f"week_index has {len(weeks)} entries; expected {n_weeks}"
+            )
+    weekly_path = predictions_dir / f"{data_name}_per_week_crps.json"
+    weekly_path.write_text(
+        json.dumps(
+            {
+                "dataset": data_name,
+                "per_week": {
+                    "week_index": weeks,
+                    "crps": [float(value) for value in weekly_crps.tolist()],
+                    "n_weeks": n_weeks,
+                    "aggregation": "mean over spatial units and categories",
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     # Tail scores use the full ZINB panel so the JSON remains comparable to the
     # headline CRPS and can be joined with Table 1.  Inputs are sanitized here
     # because this is the final boundary before a potentially large CDF grid.
@@ -241,6 +274,7 @@ def _save_post_training_artifacts(
         encoding="utf-8",
     )
     logger.info("  Raw predictions saved: %s", predictions_path)
+    logger.info("  Per-week CRPS saved: %s", weekly_path)
     logger.info("  Tail metrics saved: %s", tail_path)
     return predictions_path, tail_path
 
@@ -1689,6 +1723,7 @@ def run_conformal_evaluation(
         conformal_upper=selected_upper,
         demographic_group=spatial_groups,
         selected_method=selected_method,
+        week_index=test_results.get("week_idx"),
     )
 
     # Dataset hash for reproducibility

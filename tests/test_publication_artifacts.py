@@ -60,6 +60,13 @@ def test_conformal_step7_saves_prediction_panel_and_tail_metrics(
     assert predictions_path == (
         tmp_path / "conformal_evaluation" / "synthetic_predictions.npz"
     )
+    weekly_path = (
+        tmp_path / "conformal_evaluation" / "synthetic_per_week_crps.json"
+    )
+    weekly = json.loads(weekly_path.read_text(encoding="utf-8"))["per_week"]
+    assert weekly["week_index"] == [260, 261]
+    assert len(weekly["crps"]) == 2
+    assert np.isfinite(weekly["crps"]).all()
     with np.load(predictions_path, allow_pickle=False) as panel:
         assert set(panel.files) == {
             "actual_violent",

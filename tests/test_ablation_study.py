@@ -8,6 +8,7 @@ from scripts.ablation_study import (
     _significance_stars,
     generate_conformal_table,
     generate_main_results_table,
+    generate_policy_table,
     generate_uncertainty_table,
 )
 
@@ -251,3 +252,63 @@ def test_uncertainty_table_reports_hersbach_and_variance_shares() -> None:
     assert "87.50" in table
     assert "25.00" in table
     assert "75.00" in table
+
+
+def test_main_table_renders_deep_spread_significance_and_divergence() -> None:
+    chicago = _conformal_result(
+        city="chicago", crps=2.8, mae=3.8, rmse=7.0,
+        crpss=0.04, dm_p=0.01, epistemic_fraction=0.1,
+    )
+    nyc = _conformal_result(
+        city="nyc", crps=3.1, mae=4.3, rmse=7.6,
+        crpss=0.05, dm_p=0.01, epistemic_fraction=0.2,
+    )
+    table = generate_main_results_table(
+        chicago_conformal=chicago,
+        nyc_conformal=nyc,
+        chicago_baselines={
+            "HA": {"crps": 2.93},
+            "LSTM_NB": {"crps": 3.10, "crps_std": 0.04},
+        },
+        nyc_baselines={
+            "HA": {"crps": 3.30},
+            "ZINB": {"crps": 924.10, "mae": 1844.0, "rmse": 4270.0},
+        },
+        chicago_significance={
+            "LSTM_NB": {
+                "dm": {"p_value": 0.02},
+                "bootstrap": {"p_value": 0.01},
+            }
+        },
+        nyc_significance={},
+    )
+
+    assert r"3.1000 $\pm$ 0.0400" in table
+    assert r"$0.0200^{*}$" in table
+    assert r"$0.0100^{*}$" in table
+    assert r"Diverged$^{\dagger}$" in table
+    assert "924.1000" not in table
+
+
+def test_policy_table_has_explicit_city_headers() -> None:
+    rows = []
+    for city in ("chicago", "nyc"):
+        rows.append({
+            "city": city,
+            "policy": "naive_ha",
+            "budget": 20,
+            "violent_hit_rate": 0.5,
+            "demographic_overallocation_ratio": 1.1,
+            "idle_wasted_resource_ratio": 0.01,
+            "allocation_disparity": 0.02,
+        })
+
+    table = generate_policy_table({"status": "ok", "rows": rows})
+
+    assert r"\multicolumn{6}{l}{\textit{Chicago}}" in table
+    assert r"\multicolumn{6}{l}{\textit{NYC}}" in table
+    assert all(
+        line.endswith(r"\\")
+        for line in table.splitlines()
+        if line.strip().startswith("Naive Ha &")
+    )

@@ -91,14 +91,55 @@ def collect_civicsafe_seeds(data: str) -> list[dict[str, Any]]:
     """CIVIC-SAFE per-seed evaluations, written by run_ablations.py."""
     d = PROJECT_ROOT / "outputs" / "ablation" / "_per_seed"
     runs: list[dict[str, Any]] = []
-    for fp in sorted(d.glob("full_model_seed_*.json")):
+    qualified = sorted(d.glob(f"{data}_full_model_seed_*.json"))
+    qualified += sorted(d.glob(f"full_model_{data}_seed_*.json"))
+    candidates = qualified or sorted(d.glob("full_model_seed_*.json"))
+    for fp in candidates:
         blob = _load(fp)
         if blob and "overall" in blob:
+            metadata = blob.get("metadata", {})
+            recorded_city = blob.get("data") or blob.get("dataset")
+            if isinstance(metadata, dict):
+                recorded_city = recorded_city or metadata.get("data") or metadata.get("dataset")
+            if recorded_city is not None and str(recorded_city).lower() != data:
+                logger.warning("  Ignoring cross-city seed file %s (%s)", fp.name, recorded_city)
+                continue
+            # Unqualified, metadata-free legacy files caused the NYC/Chicago
+            # duplication bug.  They remain acceptable only for Chicago, where
+            # those historical filenames originated.
+            if not qualified and recorded_city is None and data != "chicago":
+                logger.warning("  Ignoring ambiguous seed file for %s: %s", data, fp.name)
+                continue
             o = dict(blob["overall"])
             o["_file"] = fp.name
             runs.append(o)
     if not runs:
-        # Fall back to the single canonical evaluation.
+        # The post-training conformal artifact is the authoritative source for
+        # the completed five-seed ensemble.  Its per-seed test CRPS values are
+        # persisted under ``ensemble.per_seed_test_crps`` and are already
+        # selected using validation-only raw/EMA decisions.  Use these values
+        # instead of accidentally mixing another city's legacy ablation files.
+        fp = PROJECT_ROOT / "outputs" / "conformal_evaluation" / f"{data}_conformal_results.json"
+        blob = _load(fp)
+        per_seed = (
+            blob.get("ensemble", {}).get("per_seed_test_crps")
+            if isinstance(blob, dict) and isinstance(blob.get("ensemble"), dict)
+            else None
+        )
+        if isinstance(per_seed, list) and per_seed:
+            for index, value in enumerate(per_seed):
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if np.isfinite(number):
+                    runs.append({"crps": number, "_file": fp.name, "_seed": index})
+            if runs:
+                logger.info("  Loaded %d CIVIC-SAFE seed scores from %s", len(runs), fp.name)
+
+    if not runs:
+        # Last-resort legacy single-run evaluation.  This path is intentionally
+        # explicit because it is not a seed-matched comparison.
         fp = PROJECT_ROOT / "outputs" / "evaluation" / f"{data}_test_results.json"
         blob = _load(fp)
         if blob and "overall" in blob:

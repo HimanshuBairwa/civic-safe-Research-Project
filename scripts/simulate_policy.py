@@ -262,12 +262,16 @@ def _write_latex(rows: list[PolicyMetrics], path: Path) -> None:
         r"City & Policy & $B$ & Hit rate (\%) & Over-allocation ratio & Idle ratio (\%) \\",
         r"\midrule",
     ]
-    for row in rows:
-        lines.append(
-            f"{row.city.title()} & {row.policy.replace('_', ' ')} & {row.budget} & "
-            f"{100 * row.violent_hit_rate:.2f} & {row.demographic_overallocation_ratio:.3f} & "
-            f"{100 * row.idle_wasted_resource_ratio:.2f} " + r"\\"
-        )
+    for city in sorted({row.city for row in rows}):
+        city_label = "NYC" if city.lower() == "nyc" else city.title()
+        lines.append(rf"\multicolumn{{6}}{{l}}{{\textit{{{city_label}}}}} \\")
+        lines.append(r"\midrule")
+        for row in (item for item in rows if item.city == city):
+            lines.append(
+                f"{city_label} & {row.policy.replace('_', ' ')} & {row.budget} & "
+                f"{100 * row.violent_hit_rate:.2f} & {row.demographic_overallocation_ratio:.3f} & "
+                f"{100 * row.idle_wasted_resource_ratio:.2f} " + r"\\"
+            )
     lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
