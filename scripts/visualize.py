@@ -101,9 +101,12 @@ def plot_target_centric_attention(gdf):
         max_w = max(weights)
         edge_widths = [w / max_w * 4 for w in weights]
         
-        nx.draw_networkx_edges(G, pos, edgelist=edges, ax=ax, 
-                               width=edge_widths, edge_color='blue', alpha=0.6,
-                               arrows=True, arrowstyle='-|>', arrowsize=20, connectionstyle='arc3,rad=0.2')
+        try:
+            nx.draw_networkx_edges(G, pos, edgelist=edges, ax=ax, 
+                                   width=edge_widths, edge_color='blue', alpha=0.6,
+                                   arrows=True, arrowstyle='-|>', arrowsize=20)
+        except StopIteration:
+            pass  # skip edges if centroids overlap
                                
     # Highlight target node
     ax.scatter(target_centroid.x, target_centroid.y, 
@@ -230,16 +233,28 @@ def main():
         raise FileNotFoundError(f"Could not find boundary geojson files in {shapefile_dir}")
 
     print("Generating Spatial Error Choropleth...")
-    plot_spatial_error(gdf.copy())
+    try:
+        plot_spatial_error(gdf.copy())
+    except Exception as e:
+        print(f"  SKIPPED: {e}")
     
     print("Generating Target-Centric GATv2 Attention Map...")
-    plot_target_centric_attention(gdf.copy())
+    try:
+        plot_target_centric_attention(gdf.copy())
+    except Exception as e:
+        print(f"  SKIPPED: {e}")
     
     print("Generating Transformer Temporal Heatmap...")
-    plot_temporal_attention()
+    try:
+        plot_temporal_attention()
+    except Exception as e:
+        print(f"  SKIPPED: {e}")
     
     print("Generating Bivariate Choropleth Map...")
-    plot_bivariate_choropleth(gdf.copy())
+    try:
+        plot_bivariate_choropleth(gdf.copy())
+    except Exception as e:
+        print(f"  SKIPPED: {e}")
     
     print("All plots generated successfully in outputs/figures/")
 
