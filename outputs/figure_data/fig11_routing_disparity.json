@@ -1,0 +1,32 @@
+[
+  {
+    "kappa": 0.0,
+    "biased_disparity": 0.2873567260294477,
+    "corrected_disparity": 0.2873567260294477,
+    "reduction": 0.0
+  },
+  {
+    "kappa": 0.3,
+    "biased_disparity": 0.2907789301172718,
+    "corrected_disparity": 0.20572603139695547,
+    "reduction": 0.08505289872031636
+  },
+  {
+    "kappa": 0.5,
+    "biased_disparity": 0.27952881463448326,
+    "corrected_disparity": 0.147904771613422,
+    "reduction": 0.1316240430210612
+  },
+  {
+    "kappa": 0.7,
+    "biased_disparity": 0.27041889878004105,
+    "corrected_disparity": 0.08887995590074438,
+    "reduction": 0.18153894287929662
+  },
+  {
+    "kappa": 0.85,
+    "biased_disparity": 0.18196771324813799,
+    "corrected_disparity": 0.044443187199990526,
+    "reduction": 0.1375245260481475
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "city": "Chicago",
+    "units": 77,
+    "biased_exposure_disparity": 0.3900816883192124,
+    "corrected_exposure_disparity": 0.16348387064919256,
+    "reduction": 0.22659781767001985
+  },
+  {
+    "city": "NYC",
+    "units": 78,
+    "biased_exposure_disparity": 0.3112297673639466,
+    "corrected_exposure_disparity": 0.1221162243123235,
+    "reduction": 0.1891135430516231
+  }
+]

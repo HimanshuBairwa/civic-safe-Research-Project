@@ -1,0 +1,42 @@
+[
+  {
+    "kappa": 0.0,
+    "delta": 0.6,
+    "naive_latent_cov": 0.9500625000000001,
+    "kappa_hat": 0.2591666666666667,
+    "corrected_latent_cov": 0.9491666666666667,
+    "kept_frac": 0.75
+  },
+  {
+    "kappa": 0.3,
+    "delta": 0.6,
+    "naive_latent_cov": 0.9034166666666666,
+    "kappa_hat": 0.3,
+    "corrected_latent_cov": 0.9519583333333334,
+    "kept_frac": 1.0
+  },
+  {
+    "kappa": 0.5,
+    "delta": 0.6,
+    "naive_latent_cov": 0.7804166666666666,
+    "kappa_hat": 0.5,
+    "corrected_latent_cov": 0.9476084851629863,
+    "kept_frac": 0.9460208333333333
+  },
+  {
+    "kappa": 0.7,
+    "delta": 0.2857142857142858,
+    "naive_latent_cov": 0.501875,
+    "kappa_hat": 0.7133333333333334,
+    "corrected_latent_cov": 0.9370376659199312,
+    "kept_frac": 0.5595833333333333
+  },
+  {
+    "kappa": 0.85,
+    "delta": 0.05882352941176472,
+    "naive_latent_cov": 0.16168749999999998,
+    "kappa_hat": 0.85,
+    "corrected_latent_cov": 0.9298488935532551,
+    "kept_frac": 0.14831249999999999
+  }
+]
