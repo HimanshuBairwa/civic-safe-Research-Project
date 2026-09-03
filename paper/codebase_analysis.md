@@ -8,6 +8,13 @@ is given.
 Verification date: 2026-09-03. Test-set year: 2023 (out-of-sample, rolling
 one-step-ahead). Repository HEAD: `6c19150`.
 
+Note on a stale finding: earlier in this review, at HEAD `e247dd4`,
+`tests/test_ablation_study.py` failed collection because it imported
+`_significance_stars` and `generate_uncertainty_table` before either existed,
+which took the whole suite to zero collected tests. Commits `2d60755` through
+`6c19150` implemented both. At current HEAD that file passes 8/8. The finding is
+recorded here only so the earlier note is not mistaken for a live defect.
+
 ---
 
 ## 1. What the system actually is
@@ -25,10 +32,15 @@ Five components, in the order data flows through them.
    CP, three Mondrian variants, equalized coverage, variance-scaled split CP,
    ECRC, and a rolling adaptive-temporal ECRC (§8).
 5. **Latent-correction layer** (§0) — the part that is actually new. Records are
-   a biased view of true crime because policing responds to records. The
-   feedback gain `kappa` is point-identified by a difference-in-differences
-   design on a detection-sensitivity shock, then intervals are computed for the
-   *latent* rate rather than the recorded one.
+   a biased view of true crime because policing responds to records. A
+   difference-in-differences design on a detection-sensitivity shock estimates
+   the recording elasticity, and intervals are then computed for the *latent*
+   rate rather than the recorded one. Note that `MATHEMATICS.md` §0.2 is
+   explicit that this does **not** point-identify the loop gain `kappa = beta *
+   rho`: the DiD carries an uncancelled latent-level term and `beta` must be
+   assumed, so `kappa` belongs in a sensitivity table. On real data the DiD is a
+   null. The paper follows the spec here, not the looser "point-identified"
+   phrasing that appears in the task brief.
 
 The fifth item is the contribution. Items 1-4 are competent engineering on
 known methods; a referee will read them as such.
@@ -365,7 +377,7 @@ invention.
 ## 9. What I would tell a referee, unprompted
 
 The strongest thing here is §7.1: a measurement-error problem stated precisely,
-a feedback gain that is *point-identified* rather than assumed, and a correction
+a feedback gain estimated from a detection shock rather than simply assumed, and a correction
 that restores latent coverage from 16% to 93%. That is a real contribution and
 it is the paper's spine.
 
