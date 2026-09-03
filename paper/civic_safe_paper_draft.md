@@ -10,18 +10,16 @@ distribution of weekly crime counts per community area, and we pair it with a
 correction for this measurement problem. Two contributions. First, the applied
 system: a dual-graph GATv2 spatiotemporal transformer with a five-seed
 entropy-regularized EMOS ensemble reaches CRPS 2.8267 on Chicago and 3.1401 on
-New York for 2023, beating four deep spatiotemporal baselines in all eight
-head-to-head Diebold-Mariano tests at p < 1e-6, with post-hoc conformal
-intervals achieving 90.75% and 90.02% coverage under a pre-registered 3%
-demographic disparity ceiling. Second, and the reason for the paper: we deflate
+New York for 2023, beating four deep baselines in all eight head-to-head
+Diebold-Mariano tests at p < 1e-6, with conformal intervals achieving 90.75% and
+90.02% coverage under a pre-registered 3% disparity ceiling. Second, and the reason for the paper: we deflate
 the recorded rate by a feedback multiplier and issue intervals for the latent
 process. In simulation at feedback gain 0.85, intervals calibrated on the record
 retain only 16.2% coverage of true incidence while our corrected intervals hold
 93.0% — though they abstain on 85% of cells to do it, a cost we quantify rather
-than hide. On both cities' real records, correction cuts exposure disparity by
-58% and 61%. We report what fails too: Chicago's probability integral transform
-is non-uniform at p = 5e-47, 65 of its 77 areas are under-predicted, and a
-single model seed loses to the strongest baseline.
+than hide. On real records from both cities, correction cuts exposure disparity
+by 58% and 61%. We report what fails too: Chicago's probability integral
+transform is non-uniform at p = 5e-47, and 65 of its 77 areas come in low.
 
 **Index Terms** — conformal prediction, crime forecasting, algorithmic fairness,
 feedback loops, measurement error, zero-inflated models, graph neural networks
