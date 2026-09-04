@@ -1,12 +1,22 @@
 # CIVIC-SAFE Mathematical Specification
 
+> **Notation.** Symbols here match Table I of `paper/civic_safe_ieee.tex`. Four
+> that used to collide are now disambiguated, and the reasons are worth stating so
+> they do not drift back. The allocation policy is $\varphi$, never $\pi$, because
+> $\pi$ is the ZINB zero-inflation probability of §1. GATv2 attention weights are
+> $\gamma_{ij}$, never $\alpha_{ij}$, because $\alpha$ is the conformal
+> miscoverage level of §8. Non-conformity scores are $V_i$, never $s_i$, because
+> $s$ indexes spatial units throughout. The abstention bound on the recording
+> multiplier is $\bar{m}$, never $B$, because $B$ is the patrol budget in the
+> allocation simulation.
+
 This document provides the formal mathematical specification for the CIVIC-SAFE architecture, including the distributional loss functions, spatial attention mechanisms, bias-mitigation regularisation, and evaluation metrics.
 
 > **Contribution note.** The distributional/GNN/conformal machinery below (§§1–13) is *applied* — it builds on published methods (ZINB-GNN: Zhuang et al. KDD 2022, STZINB-GNN; Wang et al. 2024, STMGNN-ZINB; conformal: Gibbs & Candès 2021; CQR: Romano et al. 2019; EMOS: Gneiting et al. 2005). **The genuinely novel contribution is §0 below**: the Feedback Amplification Law, the passive/active identification duality, and — the part no prior work provides — a *feedback-corrected conformal predictor* that recovers coverage of the true latent process from a biased record. Positioning against the nearest prior art (Ensign 2018; Glaeser–Sacerdote–Scheinkman 2003; Algometrics 2026; van Amsterdam 2025) is in `docs/NOVELTY_AND_POSITIONING.md`; formal proofs in `docs/PROOFS_feedback_law.md`.
 
 ## 0. The Contribution: Feedback Amplification and Latent-Coverage Correction
 
-**Model (Allocation under Observation-Biased Feedback).** Latent incidence $\lambda_s>0$ (unobserved); a policy allocates attention $a_s=\pi(\mu_s)$ from the recorded-rate estimate $\mu_s$; recording is observation-biased, $y_s\sim\mathrm{Poisson}(\lambda_s\, g(a_s))$ with $g$ increasing; a consistent learner reaches the fixed point $\mu_s=\lambda_s\,g(\pi(\mu_s))$. Define the feedback gain $\kappa=\bigl(\tfrac{d\log a}{d\log\mu}\bigr)\bigl(\tfrac{d\log g}{d\log a}\bigr)$.
+**Model (Allocation under Observation-Biased Feedback).** Latent incidence $\lambda_s>0$ (unobserved); a policy allocates attention $a_s=\varphi(\mu_s)$ from the recorded-rate estimate $\mu_s$; recording is observation-biased, $y_s\sim\mathrm{Poisson}(\lambda_s\, g(a_s))$ with $g$ increasing; a consistent learner reaches the fixed point $\mu_s=\lambda_s\,g(\varphi(\mu_s))$. Define the feedback gain $\kappa=\bigl(\tfrac{d\log a}{d\log\mu}\bigr)\bigl(\tfrac{d\log g}{d\log a}\bigr)$.
 
 **§0.1 Amplification elasticity (Thm 1).** $\dfrac{d\log\mu_s}{d\log\lambda_s}=\dfrac{1}{1-\kappa}$, so recorded disparity $=$ true disparity$^{1/(1-\kappa)}$, with a pole at $\kappa^\*=1$. *This closed form is the social multiplier (Glaeser–Sacerdote–Scheinkman 2003) / control-theoretic loop gain; our contribution is the coordinate-free elasticity decomposition and the disparity power-law corollary, a quantitative sharpening of Ensign et al. (2018).* Verified: `tests/test_feedback_law.py`.
 
@@ -50,10 +60,10 @@ To capture spatial diffusion, we use a Graph Attention Network v2 (Brody et al.,
 ### 2.1 Dynamic Attention
 For any edge $(j \to i)$ in the combined graph, the attention coefficient is computed dynamically:
 $$e_{ij} = \mathbf{a}^\top \cdot \text{LeakyReLU}\left(\mathbf{W} \cdot [\mathbf{h}_i \| \mathbf{h}_j]\right)$$
-$$\alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}$$
+$$\gamma_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}$$
 
 The updated node representation is the sum over both the Queen and KNN neighborhoods:
-$$\mathbf{h}_i' = \sigma\left(\sum_{j \in \mathcal{N}_{\text{queen}}(i) \cup \mathcal{N}_{\text{knn}}(i)} \alpha_{ij} \mathbf{W}\mathbf{h}_j\right)$$
+$$\mathbf{h}_i' = \sigma\left(\sum_{j \in \mathcal{N}_{\text{queen}}(i) \cup \mathcal{N}_{\text{knn}}(i)} \gamma_{ij} \mathbf{W}\mathbf{h}_j\right)$$
 
 ## 3. Bias Mitigation: Multi-Factor Feature Mixer (MFFM)
 
@@ -156,8 +166,8 @@ $$M[(s_1, t_1), (s_2, t_2)] = \begin{cases} 0 & \text{if } s_1 = s_2 \text{ and 
 
 ### 8.1 Conformal Prediction Background
 
-Given a calibration set $\{(X_i, Y_i)\}_{i=1}^n$ and non-conformity scores $s_i = \max(q_{\alpha/2}^{(i)} - Y_i, Y_i - q_{1-\alpha/2}^{(i)})$ (CQR scores from the ZINB quantile function), the conformal threshold is:
-$$\hat{q} = \text{Quantile}\left(\frac{\lceil(n+1)(1-\alpha)\rceil}{n}, \{s_1, \ldots, s_n\}\right)$$
+Given a calibration set $\{(X_i, Y_i)\}_{i=1}^n$ and non-conformity scores $V_i = \max(q_{\alpha/2}^{(i)} - Y_i, Y_i - q_{1-\alpha/2}^{(i)})$ (CQR scores from the ZINB quantile function), the conformal threshold is:
+$$\hat{q} = \text{Quantile}\left(\frac{\lceil(n+1)(1-\alpha)\rceil}{n}, \{V_1, \ldots, V_n\}\right)$$
 
 ### 8.2 Equalized Conditional Risk Control (ECRC)
 

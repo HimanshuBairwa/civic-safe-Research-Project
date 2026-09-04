@@ -10,7 +10,7 @@ The project's headline math — the amplification exponent `1/(1−κ)` — is *
 
 **Therefore the paper must NOT claim any of those as its contribution.** What is genuinely unclaimed — and what the paper must be built around — is the **conjunction plus the constructive correction**:
 
-> A coordinate-free amplification elasticity tying an *observation-biased Poisson recording fixed point* to a group-disparity power law, whose gain κ is *point-identified by a detection-sensitivity difference-in-differences*, and — the part no prior work has — a **deployable conformal correction that recovers valid coverage of the latent target**, with principled abstention. Prior work stops at diagnosis; this delivers a fix with a guarantee.
+> A coordinate-free amplification elasticity tying an *observation-biased Poisson recording fixed point* to a group-disparity power law, whose recording elasticity is *estimated by a detection-sensitivity difference-in-differences* (the loop gain κ itself is **not** point-identified — see [C3]), and — the part no prior work has — a **deployable conformal correction that recovers valid coverage of the latent target**, with principled abstention. Prior work stops at diagnosis; this delivers a fix with a guarantee.
 
 Positioned that way, this is a defensible paper at a good venue. Positioned as "a new universal law / paradigm shift," it is a one-sentence reject.
 
@@ -37,7 +37,7 @@ Positioned that way, this is a defensible paper at a good venue. Positioned as "
 **Do claim (the surviving delta):**
 1. **[C1] Feedback-corrected latent conformal prediction** *(the headline — genuinely unclaimed).* A deployable procedure that deflates the observation-biased record by the identified κ and issues intervals with restored coverage of the *latent* process, with abstention near the runaway threshold. **No prior work corrects; they only diagnose.** *(Implemented: `theory/latent_correction.py`; experiment: `scripts/latent_correction_experiment.py`.)*
 2. **[C2] Coordinate-free amplification elasticity** with κ = product of two log-elasticities, and the disparity power law `b^{1/(1−κ)}` — a *quantitative sharpening* of Ensign, explicitly citing the social multiplier as the gain's origin.
-3. **[C3] DiD point-identification of κ** from a detection-sensitivity natural experiment — a novel *application* of a known identification template to a recording-loop elasticity.
+3. **[C3] DiD estimation of the recording elasticity ρ** from a detection-sensitivity natural experiment — a novel *application* of a known identification template to a recording-loop elasticity. **Do NOT write “point-identifies κ”.** The DiD identifies ρ; the loop gain is κ = βρ and the DiD carries an un-cancelled term in the unobserved latent level, so β must be assumed separately and κ belongs in a sensitivity table. On real data the DiD is a null. See `docs/AUDIT_2026-07.md` §1 and `MATHEMATICS.md` §0.2; the manuscript states it this way in Section III and in Limitations. The earlier “point-identified” phrasing survived in this document after the audit corrected it elsewhere — it was the single most rejection-prone claim in the project and is retracted here.
 4. **[C4] The AOBF benchmark** — an open closed-loop simulator (already runs; exhibits the phase transition through the project's own calibrator).
 
 **Do NOT claim:** a "universal law," a "new impossibility theorem," a "paradigm shift," or `1/(1−κ)` as a discovery. Each is scooped and each is a rejection trigger.

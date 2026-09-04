@@ -4,7 +4,7 @@
 
 ### Honest Uncertainty Under Observation Bias: Online Conformal Prediction for Count Forecasting with Closed-Loop Feedback Evaluation
 
-[![Tests](https://img.shields.io/badge/tests-387%20passed-brightgreen?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-406%20collected-brightgreen?style=for-the-badge)](tests/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![PyTorch 2.2+](https://img.shields.io/badge/pytorch-2.2%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
@@ -14,47 +14,80 @@
 
 **Uncertainty-aware spatiotemporal forecasting with conformal prediction intervals, audited equity guarantees, and advisory safe-route routing.**
 
-[Paper Outline](docs/PAPER_OUTLINE.md) · [Math Formulation](docs/METHODOLOGY.md) · [Reproducibility](REPRODUCIBILITY.md)
+[IEEE Manuscript](paper/civic_safe_ieee.tex) · [Submission Bundle](paper/submission_bundle/) · [Reviewer Defense](docs/REVIEWER_DEFENSE_DOSSIER.md) · [Equations](MATHEMATICS.md) · [Reproducibility](REPRODUCIBILITY.md)
 
 </div>
 
 ---
 
-> ## 📌 What this repository actually contributes (read first)
+> ## 📌 What this repository contains (read first)
 >
-> The research contribution is **OICC — Over-Identification-Calibrated Conformal
-> Deconvolution** (`src/oicc/`): honest latent-rate estimation from ≥3 biased
-> measurement channels, with a **proved impossibility theorem** and an honest
-> negative-control escape. See **[`RESEARCH_ROADMAP.md`](RESEARCH_ROADMAP.md)**
-> (full story + honest ceiling), **[`OICC.md`](OICC.md)**, and
-> **[`paper/oicc_paper.tex`](paper/oicc_paper.tex)**.
+> **Two separable research contributions live here.** Read this before anything
+> else, because they are evaluated differently and claimed differently.
 >
-> The **CIVIC-SAFE ZINB-GNN forecaster** described below is **applied prior art /
-> a baseline** (building on STZINB-GNN, Zhuang KDD'22; STMGNN-ZINB, Wang'24). It
-> is **not** claimed as a forecasting contribution: on these data it does **not**
-> beat a seasonal-naive baseline (CRPSS vs seasonal-naive is not positive). Treat
-> the sections below as documentation of the applied pipeline, not the headline.
+> ### 1. CIVIC-SAFE — feedback-corrected conformal prediction (`src/civicsafe/`)
 >
-> **Honest ratings:** novelty ~6.5, publication ~7.5 (KDD-ADS / FAccT). Not
-> "beyond NeurIPS" — and that ceiling is a *theorem*, not a to-do (see roadmap §3).
+> The submitted IEEE manuscript. Records of crime are produced by a loop: past
+> records direct patrols, patrols produce records. A forecaster fit on such records
+> can be well calibrated against the record and badly wrong about reality, and no
+> validation on records will reveal it. We deflate the recorded rate by an estimated
+> feedback multiplier and issue intervals for the **latent** process, with principled
+> abstention where the correction stops being trustworthy.
+>
+> - **Manuscript:** [`paper/civic_safe_ieee.tex`](paper/civic_safe_ieee.tex) (IEEEtran, two-column)
+> - **Ready-to-compile archive:** [`paper/civic_safe_submission_bundle.zip`](paper/civic_safe_submission_bundle.zip) — upload straight to Overleaf
+> - **Reviewer defense:** [`docs/REVIEWER_DEFENSE_DOSSIER.md`](docs/REVIEWER_DEFENSE_DOSSIER.md)
+> - **Equations:** [`MATHEMATICS.md`](MATHEMATICS.md) — source of truth; the paper's Table I matches its notation
+>
+> ### 2. OICC — over-identification-calibrated conformal deconvolution (`src/oicc/`)
+>
+> A separate line: honest latent-rate estimation from ≥3 biased measurement
+> channels, with a proved impossibility theorem and an honest negative control. See
+> [`RESEARCH_ROADMAP.md`](RESEARCH_ROADMAP.md), [`OICC.md`](OICC.md) and
+> [`paper/oicc_paper.tex`](paper/oicc_paper.tex).
+>
+> ### A correction to earlier versions of this banner
+>
+> This section previously stated that the CIVIC-SAFE forecaster "does **not** beat a
+> seasonal-naive baseline (CRPSS vs seasonal-naive is not positive)" and was
+> therefore "**not** claimed as a forecasting contribution". **Both statements are
+> now false and are retracted.** They were written before level anchoring landed.
+> Current results on the 2023 test set: CRPSS vs seasonal naive **+0.3577**
+> (Chicago) and **+0.3362** (NYC); against the *rolling* historical average, which
+> the evaluation code marks as the binding baseline, **+0.0360** and **+0.0494**.
+>
+> The forecaster is presented in the manuscript as competitive, with the caveats
+> stated plainly there and summarised below. It builds on STZINB-GNN (Zhuang,
+> KDD'22) and STMGNN-ZINB (Wang, 2024) and claims no architectural novelty; the
+> contribution is the feedback correction.
+>
+> ### What the manuscript concedes, up front
+>
+> - The **rolling historical average beats all four deep spatiotemporal baselines on both cities**, eight comparisons out of eight. CIVIC-SAFE is the only method in the study that improves on a trailing mean.
+> - A **single seed loses** to TFT-ZINB; the win requires five-seed EMOS ensembling.
+> - **Chicago's PIT fails** uniformity at p = 5.25×10⁻⁴⁷, and 65 of its 77 areas are under-predicted. NYC passes cleanly.
+> - The latent-coverage result is **simulation-only** by construction — the true rate is unobservable on real data — and at feedback gain 0.85 the corrector **abstains on 85% of cells**.
+> - κ is **not point-identified**; real-data results are sensitivity analyses at an assumed gain, and the real-data DiD is a null.
 
 ---
 
-## 🔑 Applied Pipeline Components (the CIVIC-SAFE baseline; standard methods, cited)
+## 🔑 Pipeline Components
 
-*These are correct implementations of **established** methods, not novel
-contributions. The novelty of this repository is OICC (see banner above).*
+*Items 1 and 3-8 are correct implementations of **established** methods and are
+not claimed as novel. The contribution is the feedback correction (item 9), which
+is what the IEEE manuscript is about.*
 
 | # | Component | Method (prior art) | Role |
 |---|-----------|--------|---------------|
-| 1 | **ZINB Distributional Forecaster** | GATv2 → Causal Transformer → MFFM → ZINB Head (688K params); cf. STZINB-GNN Zhuang KDD'22 | Full count distributions (baseline; does not beat seasonal-naive) |
-| 2 | **6 Conformal Calibrators** | Split CP, Weighted CP (Barber 2023), Mondrian, Equalized (Romano 2020), ECRC, Rolling Adaptive ECRC (= per-group ACI, Gibbs–Candès 2021) | Distribution-free coverage + per-group audit |
+| 1 | **ZINB Distributional Forecaster** | GATv2 → Causal Transformer → MFFM → ZINB Head (688K params); cf. STZINB-GNN Zhuang KDD'22 | Full count distributions; CRPS 2.8267 (Chicago) / 3.1401 (NYC) on 2023 |
+| 2 | **10 Conformal Calibrators** | Split CP, randomized-PIT split CP, recency-weighted CP (Barber 2023), Mondrian ×{group, category, group×category}, Equalized coverage (Romano 2020), variance-scaled split CP, ECRC, rolling adaptive ECRC (per-group ACI, Gibbs–Candès 2021) | Distribution-free coverage + per-group audit; selected under a pre-registered 0.03 disparity ceiling |
 | 3 | **EMOS Learned Ensemble** | CRPS-minimized weights (Gneiting et al., 2005) | Optimal combination vs equal-weight |
 | 4 | **Post-Hoc Recalibration** | Affine ZINB correction minimizing CRPS | CRPS improvement with zero retraining |
 | 5 | **CRPS Decomposition** | Reliability–Resolution–Uncertainty (Hersbach, 2000) | Where forecast skill comes from |
 | 6 | **Statistical Significance** | Diebold-Mariano + temporal block bootstrap | Formal p-values under temporal dependence |
 | 7 | **Anomaly Skill Coefficient** | ASC diagnostic per demographic group | A skill diagnostic (not a fairness guarantee) |
 | 8 | **Advisory Safe Routing** | Exact Dijkstra over conformal edge-costs + abstention protocol | Refuses to route when uncertainty is too high |
+| 9 | **Feedback-Corrected Latent Intervals** | Deflation by the recording multiplier + Rosenbaum-style Γ sensitivity envelope | **The contribution.** Restores coverage of the latent process; simulation-validated, abstains near runaway |
 
 ---
 
@@ -71,7 +104,7 @@ contributions. The novelty of this repository is OICC (see banner above).*
             ║   ┌──────────────────────────────────────┐                           ║
             ║   │  ① GATv2 Spatial Encoder              │  2 layers, 4 heads       ║
             ║   │     Dual adjacency (queen + 8-NN)     │  LayerNorm + ELU         ║
-            ║   │     α_ij = softmax(a^T·LeakyReLU(W·   │  Per-timestep            ║
+            ║   │     γ_ij = softmax(z^T·LeakyReLU(W·   │  Per-timestep            ║
             ║   │              [h_i ∥ h_j]))             │                          ║
             ║   └──────────────┬───────────────────────┘                           ║
             ║                  │  Stack over T timesteps                            ║
@@ -125,18 +158,45 @@ contributions. The novelty of this repository is OICC (see banner above).*
 
 ## 📊 Results
 
-### Preliminary Results (NYC, Seed 42)
+### Headline Results (2023 test set, 5-seed EMOS ensemble)
 
-| Metric | Value |
-|--------|-------|
-| **CRPS** (↓) | 16.90 |
+Every figure below is read from `outputs/conformal_evaluation/*_conformal_results.json`.
 
-> ⚠️ **Honest disclosure:** this CRPS is not a skill claim. The ZINB-GNN's
-> **CRPSS vs seasonal-naive is not positive** — it does not beat a seasonal-naive
-> baseline. This forecaster is applied prior art, not the contribution (see
-> `docs/ANALYSIS_LOG_2026-06-13.md` and the banner above). The contribution is OICC.
-| **MAE** (↓) | 22.17 |
-| **RMSE** (↓) | 36.00 |
+| Metric | Chicago | NYC |
+|--------|--------:|----:|
+| **CRPS** (↓) | **2.8267** | **3.1401** |
+| MAE (↓) | 3.9017 | 4.3675 |
+| RMSE (↓) | 7.0983 | 7.6126 |
+| Brier, zero event (↓) | 0.0592 | 0.0493 |
+| CRPSS vs rolling HA (↑) | +0.0360 | +0.0494 |
+| CRPSS vs seasonal naive (↑) | +0.3577 | +0.3362 |
+| Selected calibrator | equalized coverage | variance-scaled split CP |
+| Marginal coverage (target 90%) | 90.75% | 90.02% |
+| Demographic disparity (ceiling 0.03) | 0.0238 | 0.0286 |
+
+All eight head-to-head Diebold–Mariano comparisons against the four deep
+spatiotemporal baselines favour CIVIC-SAFE at p < 2×10⁻⁶ (largest 1.671×10⁻⁶).
+Against the rolling historical average the margins are smaller and both tests
+agree: DM p = 0.0338 / 0.0036, block bootstrap p = 0.0053 / 0.0003.
+
+> ⚠️ **Read the concessions in the banner above before quoting any of these.** In
+> particular, the rolling historical average beats every deep baseline in this
+> table's comparison set, and a single CIVIC-SAFE seed loses to TFT-ZINB. An
+> earlier version of this section reported CRPS 16.90 for NYC from a single
+> pre-anchoring seed, alongside a claim that the forecaster does not beat
+> seasonal-naive. Both are superseded and retracted.
+
+### Feedback correction (simulation, target coverage 90%)
+
+| κ | naive latent coverage | corrected | cells retained |
+|---:|---:|---:|---:|
+| 0.00 | 0.950 | 0.949 | 75% |
+| 0.50 | 0.780 | 0.948 | 95% |
+| 0.85 | **0.162** | **0.930** | **15%** |
+
+Corrected coverage is measured only on retained cells; naive coverage on all
+cells. The two do not share a denominator, which is why the retained fraction is
+reported everywhere the corrected number appears.
 
 ### Datasets
 
@@ -150,6 +210,63 @@ contributions. The novelty of this repository is OICC (see banner above).*
 | **Splits** | Train 2018–2021 / Val 2022H1 / Cal 2022H2 / Test 2023 | Same |
 
 > Full 5-seed results (mean ± std) will be published upon paper submission.
+
+---
+
+## 📦 IEEE Submission Package
+
+Everything needed to compile the manuscript, with no dependence on the rest of the
+repository.
+
+```
+paper/
+├── civic_safe_ieee.tex               # IEEEtran two-column manuscript (in-repo copy)
+├── references.bib                    # 21 verified BibTeX entries
+├── tables/                           # 7 table floats, generated
+├── submission_bundle/                # SELF-CONTAINED: tex + bib + figures/ + tables/
+│   └── README.md                     #   how to obtain IEEEtran.cls
+└── civic_safe_submission_bundle.zip  # the same bundle, zipped for upload
+```
+
+**To compile:** upload `civic_safe_submission_bundle.zip` to Overleaf and build with
+pdfLaTeX. Overleaf and the IEEE portals both provide `IEEEtran.cls`, which is
+deliberately **not** vendored here — a hand-rolled substitute would silently
+typeset the paper in something that is not IEEE format. For a local build, install
+it from CTAN first (`tlmgr install ieeetran`), then:
+
+```bash
+cd paper/submission_bundle
+pdflatex civic_safe_ieee && bibtex civic_safe_ieee && pdflatex civic_safe_ieee && pdflatex civic_safe_ieee
+```
+
+**Regenerating the package.** Never edit `paper/submission_bundle/` or
+`paper/tables/` by hand — both are build artifacts, and the zip is rebuilt with the
+bundle so it cannot go stale:
+
+```bash
+python scripts/build_paper_tables.py       # outputs/tables/ -> paper/tables/
+python scripts/build_submission_bundle.py  # -> submission_bundle/ + .zip
+python scripts/validate_latex.py paper/civic_safe_ieee.tex
+python scripts/validate_latex.py paper/submission_bundle/civic_safe_ieee.tex
+```
+
+`validate_latex.py` checks that every `\cite` resolves to a bib entry, every
+`
+ef` resolves to a `\label`, and every `\includegraphics` target exists on
+disk. It is static analysis and **does not replace compiling** — it cannot see
+overfull boxes or float placement.
+
+### Regenerating figures and evidence
+
+```bash
+python scripts/make_paper_figures.py            # figs 10-12 from live experiments
+python scripts/misspecification_sensitivity.py  # Γ sensitivity table (Section III-C)
+python scripts/measure_calibration_latency.py   # calibration latency (dossier Q7)
+python scripts/visualize.py                     # spatial residual + bivariate maps
+```
+
+Figure scripts write the values they plotted to `outputs/figure_data/*.json`, so any
+figure can be checked against the numbers behind it.
 
 ---
 
@@ -211,7 +328,7 @@ wandb sync --sync-all
 civic-safe-Research-Project/
 ├── configs/                          # Hydra YAML configurations
 │   ├── audit/default.yaml            #   Equity audit settings
-│   ├── calibration/                  #   5 conformal calibration configs
+│   ├── calibration/                  #   conformal calibration configs
 │   │   ├── split_cp.yaml
 │   │   ├── weighted_cp.yaml
 │   │   ├── mondrian.yaml
@@ -239,7 +356,7 @@ civic-safe-Research-Project/
 │   │   ├── adversarial_head.py       # Adversarial GRL for invariance
 │   │   └── civicsafe_model.py        # Full model composition
 │   ├── calibration/
-│   │   ├── conformal.py              # 5 conformal prediction calibrators
+│   │   ├── conformal.py              # 10 conformal calibration variants
 │   │   ├── zinb_distribution.py      # ZINB CDF/PPF for conformal scores
 │   │   └── metrics.py               # Coverage, AIW, calibration metrics
 │   ├── audit/
@@ -252,8 +369,8 @@ civic-safe-Research-Project/
 │   ├── training/                     # Trainer, scheduler, early stopping
 │   ├── synthetic/                    # ZINB/Poisson data generators
 │   └── utils/                        # Seeding, numerics, checkpointing
-├── tests/                            # 387 tests (civicsafe + OICC)
-├── MATHEMATICS.md                    # Legacy math spec
+├── tests/                            # 406 tests (civicsafe + OICC)
+├── MATHEMATICS.md                    # Equation source of truth (matches paper Table I)
 ├── REPRODUCIBILITY.md                # NeurIPS reproducibility checklist
 ├── pyproject.toml                    # Project metadata + tool configs
 └── README.md                         # This file
@@ -263,7 +380,7 @@ civic-safe-Research-Project/
 
 ## 🧪 Test Suite
 
-387 tests (civicsafe + OICC) — **no GPU required**.
+406 tests collected (civicsafe + OICC) — **no GPU required**. Two `test_data.py::TestACS` cases require a demographics file absent from a fresh clone and fail on environment, not logic; the rest pass.
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -278,10 +395,10 @@ civic-safe-Research-Project/
 | `test_smoke.py` | 1 | Full pipeline smoke test |
 | `test_synthetic.py` | 10 | ZINB/Poisson sampling, panel generation |
 | `test_training.py` | 46 | CRPS, point metrics, PIT, early stopping, scheduler, trainer |
-| **Total** | **387** | **unit tests across all core modules** |
+| **Total** | **406** | **collected across all core modules** |
 
 ```bash
-pytest -v                         # Run all 387 tests
+pytest -v                         # Run all 406 tests
 pytest tests/test_routing.py -v   # Run routing tests only
 pytest tests/test_audit.py -v     # Run audit tests only
 mypy src/civicsafe/               # Type checking (strict mode)

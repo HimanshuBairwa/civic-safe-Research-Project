@@ -11,10 +11,28 @@ defensible top-tier claim.
 ## 0. One-line status
 
 **The forecast wins, on both cities, significantly.** Chicago CRPSS vs
-seasonal-naive **+0.2662**, NYC **+0.2459**, both clearing the pre-registered
-0.10 gate, both with Diebold-Mariano p < 1e-6 against Historical Average. The
-remaining work is not "make the model win" -- it is **completing the comparison
-table** so a reviewer cannot dismiss the win.
+seasonal-naive **+0.3577**, NYC **+0.3362**, both clearing the pre-registered
+0.10 gate. Against the *rolling* Historical Average -- which the evaluation code
+marks as the binding baseline -- the gains are **+0.0360** and **+0.0494**, with
+Diebold-Mariano p = 0.0338 and 0.0036 and block-bootstrap p = 0.0053 and 0.0003.
+
+### Correction, 2026-09-04
+
+The previous version of this paragraph stated CRPSS vs seasonal-naive as +0.2662
+and +0.2459, and claimed "Diebold-Mariano p < 1e-6 against Historical Average".
+Both were wrong. The skill scores are stale relative to the current
+`outputs/conformal_evaluation/*_conformal_results.json`. The p-value claim
+conflated two different comparisons: the sub-1e-6 figures are against the four
+*deep* baselines (largest 1.671e-6, so even there "p < 1e-6" is false and the
+tight bound is p < 2e-6), while the Historical Average comparison is p = 0.0338
+and 0.0036. The manuscript uses the correct figures throughout.
+
+A harder fact belongs next to them, and it is now in the paper's Section V-A: the
+rolling Historical Average beats **all four** deep spatiotemporal baselines on
+**both** cities, eight comparisons out of eight. So "completing the comparison
+table" was the right instinct, but the conclusion it supports is narrower than
+this document originally implied -- of everything in the study, CIVIC-SAFE is the
+only method that improves on a trailing mean.
 
 ### Correction to the previous version of this document
 
