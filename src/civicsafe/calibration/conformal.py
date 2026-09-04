@@ -659,8 +659,15 @@ class WeightedConformalCalibrator(_BaseCalibrator):
     more influence to recent observations. Produces tighter intervals when
     the data distribution shifts over time (e.g., seasonal crime patterns).
 
-    Reference: Tibshirani et al. (2019), "Conformal Prediction Under
-    Covariate Shift."
+    Reference: Barber, Candes, Ramdas & Tibshirani (2023), "Conformal
+    prediction beyond exchangeability", Annals of Statistics -- fixed
+    non-uniform weights on calibration points, which is what recency decay
+    is. NOT Tibshirani et al. (2019), "Conformal Prediction Under Covariate
+    Shift", which this docstring previously cited: that construction weights
+    by a covariate likelihood ratio dQ_X/dP_X to correct a shift in the
+    covariate marginal under an invariant P(Y|X). The two are different
+    estimators with different assumptions, and citing the covariate-shift
+    paper for a temporal-decay method is a misattribution.
     """
 
     def __init__(

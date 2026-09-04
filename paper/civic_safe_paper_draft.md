@@ -129,6 +129,28 @@ are applied here as published. What conformal prediction guarantees, though, is
 coverage of the variable you calibrated against — which is the record. That is
 the gap this paper addresses.
 
+The nearest-looking remedy is weighted conformal prediction under covariate shift
+[21], and it is worth saying precisely why it does not close that gap. Weighted
+CP reweights the calibration scores by a covariate likelihood ratio
+w(x) = dQ_X/dP_X(x), and its validity rests on the conditional outcome law being
+invariant, P(Y|X) = Q(Y|X): the covariate marginal may move, the outcome
+mechanism may not. Our distortion is the opposite kind. The covariates do not
+shift. The *outcome* does, because attention multiplies the recording intensity,
+so P(Y|X) is exactly what the feedback loop bends — and the quantity we want to
+cover, λ, is never observed in any sample. There is no pair of covariate
+distributions here and so no density ratio to estimate; the object that needs
+inverting is the multiplicative recording factor m_s.
+
+Stated more generally, the covariate-shift line of work extends *which*
+exchangeability condition a calibration set must satisfy — plain exchangeability,
+then weighted exchangeability under covariate shift, then online adaptation under
+drift — while holding the target variable fixed. We move along a different axis:
+the target variable itself changes, from the recorded y to the latent λ. The two
+compose rather than compete, since weighted CP could be applied to the deflated
+rate if covariates shifted too. Section III-D makes the structural version of
+this argument, which turns out to cover the whole reweighting family rather than
+only its covariate-shift member.
+
 **Feedback loops in predictive policing.** Ensign et al. [1] formalized the
 runaway loop with attention-dependent recording and showed that a Pólya-urn
 model drives allocation to a degenerate winner-take-all fixed point. We differ
@@ -246,6 +268,27 @@ floor, demographic disparity at or below 0.03, abstention at or below 1%, and
 finite metrics. The ceiling was fixed before we looked at results. Section V-B
 shows the constraint doing real work — it rejects the narrowest method in both
 cities.
+
+Two of the ten deserve a word, because between them they cover the reweighting
+family a reader may reasonably expect to solve the problem outright. Our weighted
+variant assigns exponentially decaying weights to calibration points by recency
+and takes a weighted quantile of the scores, which targets non-stationarity:
+recent weeks count for more when the panel drifts. Weighted CP in the
+covariate-shift sense [21] instead weights by a covariate likelihood ratio w(x).
+Neither addresses the feedback problem, and for the same structural reason:
+reweighting changes *which calibration points count*, never *what the score
+measures*. Every score is a function of the recorded y, so any weighted quantile
+of them — uniform, recency-decayed, density-ratio, or adaptively updated —
+certifies coverage of y and says nothing about λ. The family is closed under the
+wrong target. Leaving it means changing the target variable, which is what the
+deflation does.
+
+The conformal table bears this out without embarrassing the method. Our weighted
+variant clears the coverage floor in both cities (0.9075 Chicago, 0.9326 NYC). On
+NYC it is numerically indistinguishable from split CP, where the integer score
+lattice leaves the weights nothing to move; on Chicago it does shift the interval,
+to 0.9075 against split CP's 0.9405. So the weights act. They act on the right
+variable for drift and the wrong one for feedback.
 
 Two smaller decisions worth recording. Ensemble weights come from
 entropy-regularized EMOS learned on calibration data, with a fallback to uniform
@@ -736,3 +779,5 @@ input rather than drawing something misleading.
 [19] T. Gneiting, A. E. Raftery, A. H. Westveld III, and T. Goldman, "Calibrated probabilistic forecasting using ensemble model output statistics and minimum CRPS estimation," *Monthly Weather Review*, vol. 133, no. 5, pp. 1098-1118, 2005.
 
 [20] F. X. Diebold and R. S. Mariano, "Comparing predictive accuracy," *J. Business & Economic Statistics*, vol. 13, no. 3, pp. 253-263, 1995.
+
+[21] R. J. Tibshirani, R. F. Barber, E. J. Candès, and A. Ramdas, "Conformal prediction under covariate shift," in *Advances in Neural Information Processing Systems (NeurIPS)*, vol. 32, 2019.

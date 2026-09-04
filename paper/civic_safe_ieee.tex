@@ -191,6 +191,30 @@ concentration bounds. All are applied here as published. What conformal
 prediction guarantees, though, is coverage of the variable you calibrated
 against --- the record. That is the gap this paper addresses.
 
+The nearest-looking remedy is weighted conformal prediction under covariate
+shift~\cite{tibshirani2019conformal}, and it is worth saying precisely why it does
+not close that gap. Weighted CP reweights the calibration scores by a covariate
+likelihood ratio $w(x) = dQ_X/dP_X(x)$, and its validity rests on the conditional
+outcome law being invariant, $P(Y \mid X) = Q(Y \mid X)$: the covariate marginal
+is allowed to move, the outcome mechanism is not. Our distortion is the opposite
+kind. The covariates do not shift. The \emph{outcome} does, because attention
+multiplies the recording intensity, so $P(Y \mid X)$ is exactly what the feedback
+loop bends --- and the quantity we want to cover, $\lambda$, is never observed in
+any sample. There is no pair of covariate distributions here and therefore no
+density ratio to estimate; the object that needs inverting is the multiplicative
+recording factor $m_s$ of \eqref{eq:deflation}.
+
+Stated more generally, the covariate-shift line of work extends \emph{which}
+exchangeability condition a calibration set must satisfy --- from plain
+exchangeability, to weighted exchangeability under covariate shift, to online
+adaptation under drift --- while holding the target variable fixed. We move along
+a different axis: the target variable itself changes, from the recorded $y$ to the
+latent $\lambda$. The two are composable rather than competing, since weighted CP
+could be applied to the deflated rate if the covariates shifted as well.
+Section~\ref{sec:calibration} makes the structural version of this argument, which
+turns out to cover the whole reweighting family and not just the covariate-shift
+member of it.
+
 \textbf{Feedback loops in predictive policing.} Ensign
 \emph{et al.}~\cite{ensign2018runaway} formalized the runaway loop with
 attention-dependent recording and showed a P\'olya-urn model drives allocation to
@@ -586,6 +610,28 @@ narrowest mean width subject to marginal coverage at or above the floor,
 demographic disparity at or below 0.03, abstention at or below 1\%, and finite
 metrics. The ceiling was fixed before we looked. Section~\ref{sec:conformal}
 shows the constraint doing real work.
+
+Two of the ten deserve a word here, because between them they cover the
+reweighting family a reader may reasonably expect to solve the problem outright.
+Our weighted variant assigns exponentially decaying weights to calibration points
+by recency and takes a weighted quantile of the scores, which targets
+non-stationarity: recent weeks count for more when the panel drifts. Weighted CP
+in the covariate-shift sense~\cite{tibshirani2019conformal} instead weights by a
+covariate likelihood ratio $w(x)$. Neither addresses the problem of
+Section~\ref{sec:theory}, and for the same structural reason: reweighting changes
+\emph{which calibration points count}, never \emph{what the score measures}. Every
+$V_i$ in \eqref{eq:cqr} is a function of the recorded $y_i$, so any weighted
+quantile of $\{V_i\}$ --- uniform, recency-decayed, density-ratio, or adaptively
+updated --- certifies coverage of $y$ and is silent about $\lambda$. The family is
+closed under the wrong target. Leaving it requires changing the target variable,
+which is what Theorem~\ref{thm:deflation} does.
+
+Table~\ref{tab:conformal_fairness} bears this out without embarrassing the method.
+Our weighted variant clears the coverage floor in both cities (0.9075 Chicago,
+0.9326 NYC). On NYC it is numerically indistinguishable from split CP, where the
+integer score lattice leaves the weights nothing to move; on Chicago it does shift
+the interval, to 0.9075 against split CP's 0.9405. So the weights act. They act on
+the right variable for drift and the wrong one for feedback.
 
 Two smaller decisions worth recording. Ensemble weights come from
 entropy-regularized EMOS~\cite{gneiting2005calibrated} learned on calibration
