@@ -1,0 +1,20 @@
+% AUTO-GENERATED from outputs/tables/table5_loss_ablation.tex
+% by scripts/build_paper_tables.py -- do not edit by hand.
+% Regenerate tables with scripts/ablation_study.py, then re-run that script.
+\begin{table}[!t]
+  \centering
+  \caption{Loss function ablation: comparison of training objectives.}
+  \label{tab:loss_ablation}
+  \footnotesize
+  \resizebox{\ifdim\width>\linewidth\linewidth\else\width\fi}{!}{%
+  \begin{tabular}{l r r r r}
+    \toprule
+     & \textbf{CRPS} & \textbf{MAE} & \textbf{RMSE} & \textbf{Brier} \\
+    \midrule
+    NLL (Negative Log-Likelihood) & 2.9116 $\pm$ 0.0125 & 3.9869 $\pm$ 0.0069 & 7.3166 $\pm$ 0.0203 & 0.1889 $\pm$ 0.0007 \\
+    CRPS (Direct) & 3.3622 $\pm$ 0.1195 & 4.6996 $\pm$ 0.1785 & 8.5534 $\pm$ 0.3141 & \textbf{0.1381 $\pm$ 0.0405} \\
+    SAC (Sharpness-Aware Calibration) & \textbf{2.8619 $\pm$ 0.0429} & \textbf{3.9387 $\pm$ 0.0460} & \textbf{7.1819 $\pm$ 0.0610} & 0.1927 $\pm$ 0.0001 \\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}

@@ -83,8 +83,12 @@ def expand_inputs(path: Path, seen: set[Path] | None = None) -> list[tuple[Path,
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "paper/civic_safe_ieee.tex")
-    if not root.is_absolute():
+    # Resolve against the caller's working directory first, so the script works on
+    # a bundle copied outside the repository, and only fall back to the project
+    # root for the convenience of bare in-repo invocations.
+    if not root.is_absolute() and not root.exists():
         root = PROJECT_ROOT / root
+    root = root.resolve()
     if not root.exists():
         print(f"No such file: {root}")
         return 2
@@ -94,7 +98,11 @@ def main() -> int:
     all_text = "\n".join(b for _, b in units)
 
     print("=" * 74)
-    print(f"Static LaTeX validation - {root.relative_to(PROJECT_ROOT)}")
+    try:
+        shown = root.relative_to(PROJECT_ROOT)
+    except ValueError:
+        shown = root  # outside the repo, e.g. a bundle copied elsewhere
+    print(f"Static LaTeX validation - {shown}")
     print("=" * 74)
     print(f"files parsed: {len(units)}  ({', '.join(p.name for p, _ in units)})")
 
