@@ -212,11 +212,24 @@ computed dynamically over the union of both neighbourhoods,
 
 and node states update as the attention-weighted sum over both neighbourhoods.
 
-Then time. A spatiotemporal transformer over unified space-time tokens with a
-structured attention mask carries temporal context. Between the two, a
-multi-factor feature mixer with a Jensen-Shannon diversity penalty discourages
-the network from routing predictions through demographic covariates — a partial
-guard against proxy discrimination, not a solution to it.
+Then time. A causal Transformer consumes the GATv2 node states in sequence, so
+space and time are encoded in stages rather than jointly. We implemented a unified
+variant that attends over space-time tokens with a structured mask too, but every
+number here comes from the staged configuration, and we describe the system we
+actually evaluated.
+
+Between the two sits a multi-factor feature mixer: soft-attention heads over the
+fused embedding, regularized by a Jensen-Shannon penalty between head pairs. We
+want to be exact about what that penalty does, because it is easy to overstate. It
+prevents *head collapse* — it fires when two heads' attention distributions grow
+too similar, keeping the factor decomposition non-degenerate. It is not a fairness
+mechanism and it does not decorrelate representations from protected attributes.
+The architecture does contain a gradient-reversal adversarial discriminator for
+demographic invariance in the manner of Ganin et al., but it is disabled in the
+configuration reported here, so the trained predictor carries *no*
+representation-level guard against proxy discrimination. What fairness we can
+demonstrate is downstream and post hoc: the coverage-disparity ceiling, audited in
+Section V-C.
 
 We anchor *μ* to a trailing mean rather than predicting it free. This was not a
 design preference; without anchoring, conformal interval widths blow up past
@@ -414,6 +427,19 @@ Ensembling is doing heavy lifting, and it would be dishonest to imply otherwise.
 A single model averages CRPS 3.3622, worse than TFT-ZINB's 2.9456 on Chicago.
 Five-seed EMOS takes it to 2.8267, a 16% improvement. The architecture alone
 does not win.
+
+There is a harder fact in the benchmark that we want to put in front of the reader
+rather than leave to be discovered. The rolling historical average beats *every*
+deep spatiotemporal baseline we ran, in both cities: 2.9322 against LSTM-NB's
+3.1037, TFT-ZINB's 2.9456, GraphWaveNet's 3.1189 and STZINB-GNN's 3.3222 on
+Chicago, and 3.3034 against 3.3426, 3.4244, 3.8857 and 3.6921 on NYC. Eight
+comparisons, eight wins for the trailing mean. So the eight-of-eight
+Diebold-Mariano result above, impressive as the p-values look, establishes that we
+beat a set of models a four-week moving average also beats. The claim worth making
+is the narrower one: of everything in this study, CIVIC-SAFE is the only method
+that improves on the trailing mean, by 3.6% and 4.9%. Weekly area-level crime
+counts are strongly mean-reverting, and any paper in this area that does not report
+a rolling-average baseline should be read with that in mind.
 
 The Hersbach decomposition says something useful about where the remaining error
 lives:
@@ -672,10 +698,17 @@ on hit rate as well.
 rolling HA. The 27-32% figures are against a frozen baseline that no deployment
 would use.
 
-**Fairness here is coverage-based.** Equal coverage across groups is one notion
-among many, computed on area-level demographic composition rather than
-individual attributes, and it says nothing about whether the underlying
-allocation is just.
+**Fairness here is coverage-based, and only post hoc.** Equal coverage across
+groups is one notion among many, computed on area-level demographic composition
+rather than individual attributes, and it says nothing about whether the
+underlying allocation is just. It is also the *only* fairness mechanism active in
+the reported configuration: the gradient-reversal adversarial discriminator that
+would enforce demographic invariance at the representation level is implemented
+but switched off, so nothing prevents the encoder from routing predictions through
+demographic proxies. The Jensen-Shannon penalty does not serve this purpose — it
+prevents attention-head collapse. Enabling the adversarial head and measuring
+whether it buys anything beyond the coverage constraint is the obvious next
+experiment, and we have not run it.
 
 **The simulation is a simulation.** The coverage-restoration result assumes our
 own generative model of the feedback loop. It is the only setting where latent

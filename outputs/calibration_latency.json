@@ -1,0 +1,18 @@
+{
+  "n_cal": 6006,
+  "n_test": 4081,
+  "n_seeds": 5,
+  "repeats": 7,
+  "device": "cpu",
+  "median_ms": {
+    "EMOS weight learning (offline, once)": 8298.56199999631,
+    "EMOS weight application (per batch)": 0.35069999285042286,
+    "split_cp: fit on 6006 cal cells (offline)": 119.0101000102004,
+    "split_cp: predict 4081 intervals (online)": 82.32719999796245,
+    "randomized_split_cp: fit on 6006 cal cells (offline)": 77.26980000734329,
+    "randomized_split_cp: predict 4081 intervals (online)": 88.37530000892002,
+    "ecrc: fit on 6006 cal cells (offline)": 163.20989999803714,
+    "ecrc: predict 4081 intervals (online)": 84.5526999910362
+  },
+  "forward_pass_measured": false
+}

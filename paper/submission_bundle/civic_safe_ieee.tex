@@ -484,6 +484,38 @@ design alone, and on our real municipal data the DiD is a null. We validate the
 correction where the truth is available --- in simulation --- and treat real-data
 results as a sensitivity analysis at an assumed gain.
 
+\subsection{When the recording model is wrong}
+\label{sec:sensitivity}
+Theorem~\ref{thm:deflation}(i) is exact, but it is exact \emph{given} the
+power-law fixed point. The sharpest objection to the whole construction is
+therefore that the true recording mechanism may not be that power law, and
+Theorem~\ref{thm:deflation}(iii) bounds only the error from a wrong $\kappa$, not
+from a wrong functional form. We answer this with a marginal sensitivity model in
+the manner of Rosenbaum. Suppose the true multiplier lies within a factor
+$\Gamma \ge 1$ of the assumed one for every cell,
+\begin{equation}
+\label{eq:gamma_band}
+m^{\mathrm{true}}_s / m_s \in [\Gamma^{-1},\, \Gamma]
+\quad\text{for all } s,
+\end{equation}
+which implies $\lambda_s / \hat{\lambda}_s \in [\Gamma^{-1}, \Gamma]$ directly. A
+$\Gamma$-inflated interval, taking its lower endpoint at $\hat{\lambda}_s/\Gamma$
+and its upper at $\hat{\lambda}_s\Gamma$, then covers a
+$\mathrm{Poisson}(\lambda_s)$ draw for \emph{every} recording model admitted by
+\eqref{eq:gamma_band}, and $\Gamma = 1$ recovers the plain corrected interval.
+
+The point of stating it this way is that it is measurable. Building worlds whose
+true multiplier deviates from the assumed one by a bounded per-cell factor, at
+$\kappa = 0.6$ and target $0.90$, the plain corrected interval loses latent
+coverage as the deviation grows --- $0.942$, $0.922$, $0.878$, $0.810$, $0.679$
+across deviation factors $1.0$ to $3.0$, dropping below target once the factor
+reaches $1.6$ --- while the $\Gamma$-inflated interval holds $0.942$ to $0.998$
+throughout, at a width cost rising smoothly from $1.00\times$ to $3.05\times$.
+So the assumption is not load-bearing in the sense of being unfalsifiable: it
+converts into a stated envelope, and the price of widening that envelope is
+known. What the plain interval cannot do is survive misspecification silently,
+which is the failure mode this paper exists to remove.
+
 % =====================================================================
 \section{Method}
 % =====================================================================
@@ -542,11 +574,25 @@ with $\mathcal{N}_i = \mathcal{N}^{\mathrm{queen}}_i \cup
 \mathcal{N}^{\mathrm{knn}}_i$ in \eqref{eq:gat}, and node states update as the
 attention-weighted sum over that union.
 
-Then time. A spatiotemporal transformer over unified space--time tokens with a
-structured attention mask carries temporal context. Between the two, a
-multi-factor feature mixer with a Jensen--Shannon diversity penalty discourages
-routing predictions through demographic covariates --- a partial guard against
-proxy discrimination, not a solution to it.
+Then time. A causal Transformer consumes the GATv2 node states in sequence, so
+space and time are encoded in stages rather than jointly. We implemented a
+unified variant that attends over space--time tokens with a structured mask as
+well, but every number in this paper comes from the staged configuration, and we
+describe the system we actually evaluated.
+
+Between the two sits a multi-factor feature mixer: soft-attention heads over the
+fused embedding, regularized by a Jensen--Shannon penalty between head pairs. We
+want to be exact about what that penalty does, because it is easy to overstate. It
+prevents \emph{head collapse} --- it fires when two heads' attention
+distributions grow too similar, keeping the factor decomposition non-degenerate.
+It is not a fairness mechanism and it does not decorrelate representations from
+protected attributes. The architecture does contain a gradient-reversal
+adversarial discriminator for demographic invariance in the manner of Ganin
+\emph{et al.}, but it is disabled in the configuration reported here, so the
+trained predictor carries \emph{no} representation-level guard against proxy
+discrimination. What fairness we can demonstrate is downstream and post hoc: the
+coverage-disparity ceiling of Section~\ref{sec:calibration}, audited in
+Section~\ref{sec:conformal}. Section~\ref{sec:limitations} states the consequence.
 
 We anchor $\mu$ to a trailing mean rather than predicting it free. This was not a
 preference: without anchoring, conformal interval widths exceed 1000 and skill
@@ -749,6 +795,20 @@ Five-seed EMOS takes it to 2.8267, a 16\% improvement. The architecture alone
 does not win. Table~\ref{tab:ensemble} gives the ensemble-size sweep,
 Table~\ref{tab:ablation} the component ablation, and
 Table~\ref{tab:loss_ablation} the loss-function ablation.
+
+There is a harder fact in Table~\ref{tab:main_results} that we want to put in
+front of the reader rather than leave to be discovered. The rolling historical
+average beats \emph{every} deep spatiotemporal baseline we ran, in both cities:
+2.9322 against LSTM-NB's 3.1037, TFT-ZINB's 2.9456, GraphWaveNet's 3.1189 and
+STZINB-GNN's 3.3222 on Chicago, and 3.3034 against 3.3426, 3.4244, 3.8857 and
+3.6921 on NYC. Eight comparisons, eight wins for the trailing mean. So the
+eight-of-eight Diebold--Mariano result above, impressive as the $p$-values look,
+establishes that we beat a set of models that a four-week moving average also
+beats. The claim worth making is the narrower one: of everything in this study,
+CIVIC-SAFE is the only method that improves on the trailing mean, and it does so
+by 3.6\% and 4.9\%. Weekly area-level crime counts are strongly mean-reverting,
+and any paper in this area that does not report a rolling-average baseline should
+be read with that in mind.
 
 \input{tables/table4_ablation}
 \input{tables/table5_loss_ablation}
@@ -1109,6 +1169,8 @@ city. That is honest behaviour and it is also a limited product.
 $\rho$; the loop gain $\kappa = \beta\rho$ needs an assumed policy elasticity
 $\beta$, and the DiD carries an uncancelled latent-level term. Real-data results
 are sensitivity analyses at assumed $\kappa$. On real data our DiD is a null.
+Section~\ref{sec:sensitivity} converts the functional-form assumption into a
+measurable $\Gamma$-envelope, but the gain itself remains assumed.
 
 \textbf{The architecture does not win on its own.} Single-seed CRPS around 3.3622
 loses to TFT-ZINB's 2.9456 on Chicago. Five-seed EMOS is doing the work.
@@ -1121,10 +1183,18 @@ on hit rate as well.
 the rolling HA. The 27--32\% figures are against a frozen baseline that no
 deployment would use.
 
-\textbf{Fairness here is coverage-based.} Equal coverage across groups is one
-notion among many, computed on area-level demographic composition rather than
-individual attributes, and it says nothing about whether the underlying
-allocation is just.
+\textbf{Fairness here is coverage-based, and only post hoc.} Equal coverage
+across groups is one notion among many, computed on area-level demographic
+composition rather than individual attributes, and it says nothing about whether
+the underlying allocation is just. It is also the \emph{only} fairness mechanism
+active in the reported configuration: the gradient-reversal adversarial
+discriminator that would enforce demographic invariance at the representation
+level is implemented but switched off, so nothing prevents the encoder from
+routing predictions through demographic proxies. The Jensen--Shannon penalty in
+the feature mixer does not serve this purpose --- it prevents attention-head
+collapse. Enabling the adversarial head and measuring whether representation-level
+invariance buys anything beyond the coverage constraint is the obvious next
+experiment, and we have not run it.
 
 \textbf{The simulation is a simulation.} The coverage-restoration result assumes
 our own generative model of the feedback loop. It is the only setting where latent
