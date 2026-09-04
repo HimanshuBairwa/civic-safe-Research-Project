@@ -17,9 +17,9 @@ socrata_endpoint: data.cityofchicago.org   # Base domain for SODA API
 socrata_dataset_id: ijzp-q8t2             # "Crimes — 2001 to Present" 4-char ID
 
 # --- Temporal scope ---
-# [start_year, end_year] inclusive. 7 full calendar years give enough data
-# for a 4-year training window, 1-year validation/calibration, and 2 test years.
-year_range: [2017, 2023]
+# [start_year, end_year] inclusive. 6 full calendar years (2018–2023, 313 weeks)
+# give 4-year training window, 1-year validation/calibration, and 2023 test set.
+year_range: [2018, 2023]
 
 # --- Spatial unit ---
 # Chicago has 77 officially defined community areas, stable over time.
@@ -55,15 +55,14 @@ taxonomy:
     - "OTHER NARCOTIC VIOLATION"
 
 # --- Chronological splits ---
-# Strict temporal ordering prevents data leakage.
-#   train      → fit model parameters
-#   val        → tune hyperparameters, early stopping
-#   cal        → calibration set for conformal prediction (never seen during training)
-#   test       → primary evaluation
-#   zero_shot  → cross-city transfer evaluation period (aligned with NYC test window)
+# Strict temporal ordering prevents data leakage (T = 313 total weeks).
+#   train      → [0, 208)   = 2018–2021 (4 years ≈ 208 weeks × 77 units)
+#   val        → [208, 234) = 2022 H1 (Jan–Jun 2022 ≈ 26 weeks)
+#   cal        → [234, 260) = 2022 H2 (Jul–Dec 2022 ≈ 26 weeks, held out for CP)
+#   test       → [260, 313) = 2023 (Full year test set = 53 weeks)
 splits:
-  train_years: [2017, 2018, 2019, 2020]    # 4 years ≈ 208 weeks × 77 units
-  val_year_half: [2021, first]              # Jan–Jun 2021 ≈ 26 weeks
-  cal_year_half: [2021, second]             # Jul–Dec 2021 ≈ 26 weeks (held out for CP)
-  test_year: 2022                           # Full year ≈ 52 weeks
-  zero_shot_year: 2023                      # NYC zero-shot evaluation alignment
+  train_years: [2018, 2019, 2020, 2021]    # 4 years = 208 weeks × 77 units
+  val_year_half: [2022, first]              # Jan–Jun 2022 = 26 weeks
+  cal_year_half: [2022, second]             # Jul–Dec 2022 = 26 weeks (held out for CP)
+  test_year: 2023                           # Full year = 53 weeks
+  zero_shot_year: 2023                      # Cross-city zero-shot evaluation alignment

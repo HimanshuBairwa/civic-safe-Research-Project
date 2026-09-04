@@ -17,8 +17,8 @@ socrata_endpoint: data.cityofnewyork.us   # Base domain for SODA API
 socrata_dataset_id: qgea-i56i             # "NYPD Complaint Data Historic" 4-char ID
 
 # --- Temporal scope ---
-# Aligned with Chicago for cross-city transfer experiments.
-year_range: [2017, 2023]
+# Aligned with Chicago for cross-city transfer experiments (2018–2023, 313 weeks).
+year_range: [2018, 2023]
 
 # --- Spatial unit ---
 # NYC has 77 police precincts — conveniently matches Chicago's 77 community
@@ -66,10 +66,14 @@ taxonomy_ky_cd:
   drug: [230, 231, 232]                # Dangerous Drugs, CS Possession, CS Intent
 
 # --- Chronological splits ---
-# Mirror Chicago's split structure for comparability.
+# Mirror Chicago's split structure for comparability (T = 313 total weeks).
+#   train      → [0, 208)   = 2018–2021 (4 years = 208 weeks × 77 precincts)
+#   val        → [208, 234) = 2022 H1 (Jan–Jun 2022 = 26 weeks)
+#   cal        → [234, 260) = 2022 H2 (Jul–Dec 2022 = 26 weeks, held out for CP)
+#   test       → [260, 313) = 2023 (Full year test set = 53 weeks)
 splits:
-  train_years: [2017, 2018, 2019, 2020]    # 4 years ≈ 208 weeks × 77 precincts
-  val_year_half: [2021, first]              # Jan–Jun 2021
-  cal_year_half: [2021, second]             # Jul–Dec 2021 (held out for CP)
-  test_year: 2022                           # Full year
-  zero_shot_year: 2023                      # Zero-shot transfer FROM Chicago model
+  train_years: [2018, 2019, 2020, 2021]    # 4 years = 208 weeks × 77 precincts
+  val_year_half: [2022, first]              # Jan–Jun 2022 = 26 weeks
+  cal_year_half: [2022, second]             # Jul–Dec 2022 = 26 weeks (held out for CP)
+  test_year: 2023                           # Full year = 53 weeks
+  zero_shot_year: 2023                      # Zero-shot transfer evaluation window
