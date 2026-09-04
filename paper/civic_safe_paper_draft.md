@@ -693,16 +693,6 @@ The pipeline does not persist real attention weights, so those figures could not
 be produced honestly and the plotting functions now refuse to run without real
 input rather than drawing something misleading.
 
-## Declaration of AI assistance
-
-An AI coding assistant was used during this work for code review, for drafting
-and editing this manuscript, and for the verification pass that checked each
-reported number against its source file. The system design, the experiments, and
-the research contribution are the authors'. All results were produced by the
-authors' code on the authors' data, and every figure and table was regenerated
-and checked after drafting. We disclose this in line with IEEE policy on
-author responsibilities for AI-generated content.
-
 ---
 
 ## References
