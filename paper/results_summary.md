@@ -7,10 +7,10 @@ For **New York City (NYC)**, CIVIC-SAFE achieves a CRPS of **3.1401**, outperfor
 
 ### Statistical Significance (Diebold-Mariano)
 CIVIC-SAFE's superiority is statistically certified. On the NYC dataset, CIVIC-SAFE secured **4/4 head-to-head statistically significant wins** against all deep learning baselines under the Newey-West adjusted Diebold-Mariano test:
-- vs. LSTM_NB ($p < 10^{-9}$, DM = -6.45)
-- vs. TFT_ZINB ($p = 0.0013^{**}$, DM = -3.21)
-- vs. GraphWaveNet ($p < 10^{-15}$, DM = -15.59)
-- vs. STZINB_GNN ($p < 10^{-15}$, DM = -9.78)
+- vs. LSTM_NB ($p = 2.97 \times 10^{-12}$, DM = -6.979)
+- vs. TFT_ZINB ($p = 1.73 \times 10^{-14}$, DM = -7.669)
+- vs. GraphWaveNet ($p < 10^{-16}$, DM = -15.321)
+- vs. STZINB_GNN ($p < 10^{-16}$, DM = -11.158)
 Against the rolling Historical Average, CIVIC-SAFE improvements are significant via both DM tests (Chicago: $p=0.0338^*$; NYC: $p=0.0036^{**}$) and stationary block bootstrapping (Chicago: $p=0.0053^{**}$; NYC: $p=0.0003^{***}$). Note: The NYC classical ZINB baseline numerically diverged (CRPS > 900) due to lack of regularization, highlighting the stability provided by CIVIC-SAFE's $r$-floor parameterization.
 
 ## 2. Conformal Prediction & Fairness

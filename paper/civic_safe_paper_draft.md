@@ -723,11 +723,11 @@ author responsibilities for AI-generated content.
 
 [13] J. C. Perdomo, "Revisiting the predictability of performative, social events," 2025.
 
-[14] Anonymous, "Performative risk control," 2025. [CITATION NEEDED — verify authors and venue before submission]
+[14] V. Li, B. Chen, Y. Mao, Q. Lei, and Z. Deng, "Performative risk control: calibrating models for reliable deployment under performativity," in *Adv. Neural Inf. Process. Syst. (NeurIPS)*, 2025.
 
 [15] C. Mendler-Dünner, J. Ding, and Y. Wang, "Anticipating performativity by predicting from predictions," in *Adv. Neural Inf. Process. Syst. (NeurIPS)*, 2022.
 
-[16] N. Topper, "The effect of acoustic gunshot detection technology on police response and crime outcomes," *J. Experimental Criminology*, 2024. [CITATION NEEDED — verify exact title, volume, pages]
+[16] N. T. Connealy, E. L. Piza, R. A. Arietti, G. O. Mohler, and J. G. Carter, "Staggered deployment of gunshot detection technology in Chicago, IL: a matched quasi-experiment of gun violence outcomes," *J. Experimental Criminology*, vol. 20, no. 1, pp. 1-26, 2024.
 
 [17] A. N. Angelopoulos, E. J. Candès, and R. J. Tibshirani, "Conformal PID control for time series prediction," in *Adv. Neural Inf. Process. Syst. (NeurIPS)*, 2023.
 
