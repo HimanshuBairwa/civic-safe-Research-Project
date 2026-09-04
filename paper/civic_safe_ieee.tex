@@ -68,7 +68,7 @@ correction for this measurement problem. Two contributions. First, the applied
 system: a dual-graph GATv2 spatiotemporal transformer with a five-seed
 entropy-regularized EMOS ensemble reaches CRPS 2.8267 on Chicago and 3.1401 on
 New York for 2023, beating four deep baselines in all eight head-to-head
-Diebold--Mariano tests at $p < 10^{-6}$, with conformal intervals achieving
+Diebold--Mariano tests at $p < 2\times10^{-6}$, with conformal intervals achieving
 90.75\% and 90.02\% coverage under a pre-registered 3\% disparity ceiling.
 Second, and the reason for the paper: we deflate the recorded rate by a feedback
 multiplier and issue intervals for the latent process. In simulation at feedback
@@ -134,7 +134,7 @@ The empirical picture, in brief. CIVIC-SAFE forecasts a full Zero-Inflated
 Negative Binomial (ZINB) distribution per area--week--category and reaches CRPS
 2.8267 (Chicago) and 3.1401 (NYC) on 2023, ahead of every baseline we tried, with
 all eight head-to-head Diebold--Mariano comparisons against deep baselines
-significant at $p < 10^{-6}$. Post-hoc conformal calibration lands at 90.75\% and
+significant at $p < 2\times10^{-6}$. Post-hoc conformal calibration lands at 90.75\% and
 90.02\% coverage against a 90\% target while holding demographic coverage
 disparity at 0.0238 and 0.0286, both under a ceiling fixed at 0.03 before we
 looked. Then the correction: at $\kappa = 0.85$ in a closed-loop simulation,
@@ -165,7 +165,7 @@ different denominators. Section~\ref{sec:limitations} collects these.
   \item An exactness result for the deflation (Theorem~\ref{thm:deflation}),
   together with the sensitivity bound that motivates the abstention rule and the
   conditional nature of the resulting guarantee.
-  \item A competitive applied forecaster with honest calibration: nine conformal
+  \item A competitive applied forecaster with honest calibration: ten conformal
   variants compared under constraint-based selection against a pre-registered
   fairness ceiling, plus a full accounting of failure modes.
 \end{enumerate}
@@ -230,38 +230,47 @@ elasticities are evaluated at an interior fixed point.
 
 \begin{definition}[Closed-loop feedback gain]
 \label{def:kappa}
-The feedback gain \eqref{eq:kappa} of the recording loop is the product of the
-allocation elasticity and the detection elasticity,
+The feedback gain of the recording loop is the product of the allocation
+elasticity and the detection elasticity,
 \begin{equation}
 \label{eq:kappa}
 \kappa \;=\; \left(\frac{d \log a}{d \log \mu}\right)
              \left(\frac{d \log g}{d \log a}\right),
 \end{equation}
 that is, how strongly allocation responds to the record times how strongly
-recording responds to allocation. The loop is stable for $\kappa < 1$.
+recording responds to allocation.
 \end{definition}
 
-Writing $\pi(\mu) = (\mu/M)^{\beta}$ and $g(a) = a^{\rho}$ gives the constant
-elasticity case $\kappa = \beta\rho$, which is the parameterization we simulate.
+Writing $\pi(\mu) = (\mu/M)^{\beta}$ and $g(a) = a^{\rho}$ makes both
+elasticities in \eqref{eq:kappa} constant and gives $\kappa = \beta\rho$, which
+is the parameterization we simulate.
 
-\begin{theorem}[Feedback amplification power law]
+\begin{theorem}[Feedback amplification]
 \label{thm:amplification}
-At an interior fixed point of \eqref{eq:fixedpoint} with $\kappa < 1$,
-\begin{equation}
-\label{eq:elasticity}
-\frac{d \log \mu_s}{d \log \lambda_s} \;=\; \frac{1}{1 - \kappa}.
-\end{equation}
-Consequently, for two groups with true incidence ratio
-$\Delta_{\lambda} = \lambda_1 / \lambda_2$, the recorded ratio is
-\begin{equation}
-\label{eq:powerlaw}
-\Delta_y \;=\; \left(\Delta_{\lambda}\right)^{1/(1-\kappa)},
-\end{equation}
-a power law with a pole at $\kappa^{*} = 1$.
+Let $\pi$ and $g$ be smooth and increasing, and let $\mu$ be an interior fixed
+point of \eqref{eq:fixedpoint} at which $\kappa < 1$.
+\begin{enumerate}
+  \item[(i)] \emph{(Local elasticity.)} The recorded rate responds to the latent
+  rate with elasticity
+  \begin{equation}
+  \label{eq:elasticity}
+  \frac{d \log \mu_s}{d \log \lambda_s} \;=\; \frac{1}{1 - \kappa}.
+  \end{equation}
+  \item[(ii)] \emph{(Global power law.)} If in addition $\kappa$ does not vary
+  with $\mu$ --- as under $\pi(\mu) = (\mu/M)^{\beta}$ and $g(a) = a^{\rho}$,
+  which give $\kappa = \beta\rho$ --- then $\mu \propto \lambda^{1/(1-\kappa)}$,
+  so for two groups with true incidence ratio
+  $\Delta_{\lambda} = \lambda_1 / \lambda_2$ the recorded ratio is
+  \begin{equation}
+  \label{eq:powerlaw}
+  \Delta_y \;=\; \left(\Delta_{\lambda}\right)^{1/(1-\kappa)},
+  \end{equation}
+  a power law with a pole at $\kappa^{*} = 1$.
+\end{enumerate}
 \end{theorem}
 
 \begin{IEEEproof}
-Take logarithms of \eqref{eq:fixedpoint}:
+(i) Take logarithms of \eqref{eq:fixedpoint}:
 $\log \mu_s = \log \lambda_s + \log g(\pi(\mu_s))$. Write
 $E = d \log \mu_s / d \log \lambda_s$ for the elasticity of interest.
 Differentiating with respect to $\log \lambda_s$ and applying the chain rule to
@@ -271,16 +280,36 @@ E = 1 + \left(\frac{d \log g}{d \log a}\right)
         \left(\frac{d \log a}{d \log \mu}\right) E
   = 1 + \kappa E,
 \end{equation}
-where the bracketed product is $\kappa$ by Definition~\ref{def:kappa}. Solving,
-$(1-\kappa)E = 1$, which is \eqref{eq:elasticity}. Because the elasticity is
-constant in $\lambda$, integrating gives $\mu \propto \lambda^{1/(1-\kappa)}$,
-and taking the ratio for two groups yields \eqref{eq:powerlaw}.
+where the bracketed product is $\kappa$ by Definition~\ref{def:kappa}. Since
+$\kappa \neq 1$, solving gives $(1-\kappa)E = 1$, which is
+\eqref{eq:elasticity}.
+(ii) If $\kappa$ is constant, \eqref{eq:elasticity} is a constant-elasticity
+relation whose integral is $\log\mu = \log\lambda/(1-\kappa) + c$. The additive
+constant cancels on taking the ratio of two groups, giving \eqref{eq:powerlaw}.
 \end{IEEEproof}
 
-Two remarks. The exponent is finite for every $\kappa < 1$, so amplification is
-smooth rather than the winner-take-all collapse of~\cite{ensign2018runaway}; and
-because $\kappa$ is a product of two elasticities, it is coordinate-free ---
-any smooth increasing $\pi, g$ with the same product give the same law.
+Three remarks. The exponent is finite for every $\kappa < 1$, so amplification is
+smooth rather than the winner-take-all collapse of~\cite{ensign2018runaway}.
+
+Part (i) holds for any smooth increasing $\pi, g$ and depends on them only
+through the product $\kappa$, which is the sense in which the elasticity is
+coordinate-free. Part (ii) is the stronger statement and genuinely needs
+$\kappa$ constant: for general $\pi, g$ the gain varies with $\mu$, and hence
+with $\lambda$, so no single global exponent exists. We therefore treat $\kappa$
+as a \emph{local} elasticity at the fixed point rather than a universal
+constant, and read \eqref{eq:powerlaw} as the constant-gain idealization that our
+simulations instantiate.
+
+Stability is immediate in logarithms. Under the power-law parameterization the
+fixed-point iteration is
+$\log\mu \leftarrow \log\lambda + \kappa(\log\mu - \log M)$ with $M$ the current
+mean, so in log coordinates its Jacobian is
+$\kappa\left(I - \mathbf{1}w^{\!\top}\right)$ with
+$w_j = \mu_j / (S M)$ summing to one. That matrix is $\kappa$ times a rank-one
+perturbation of the identity whose eigenvalues are $1$ with multiplicity $S-1$
+and $0$, so the spectral radius is exactly $\kappa$ and the iteration contracts
+precisely when $\kappa < 1$ --- the same threshold that produces the pole in
+\eqref{eq:powerlaw}.
 
 \subsection{Deflation recovers the latent rate exactly}
 Under the constant-elasticity parameterization, \eqref{eq:fixedpoint} becomes
@@ -323,10 +352,10 @@ $M$ the mean of the same $\mu$. Then
   $\mathcal{R} = \{s : \hat\kappa < \kappa_{\mathrm{run}},\;
    m_s \in [B^{-1}, B]\}$ the log-error is bounded by
   $|\kappa - \hat\kappa|\,(\log B)/\hat\kappa$.
-  \item[(iv)] \emph{(Conditionality.)} $\mathcal{R}$ is measurable with respect
-  to $\mu$ alone and does not depend on any outcome, so applying the same rule to
-  calibration and test cells leaves the guarantee valid \emph{conditional on
-  retention}. It says nothing about the cells where the system abstains.
+  \item[(iv)] \emph{(Conditionality.)} $\mathcal{R}$ is determined by $\mu$ alone
+  and by no outcome, so applying the same rule to calibration and test cells
+  leaves the guarantee valid \emph{conditional on retention}. It says nothing
+  about the cells where the system abstains.
 \end{enumerate}
 \end{theorem}
 
@@ -346,11 +375,26 @@ $\log\lambda_s = \log\mu_s - \kappa\log(\mu_s/M)$; subtracting yields
 \eqref{eq:sensitivity}. On $\mathcal{R}$, $m_s \in [B^{-1},B]$ means
 $|\hat\kappa \log(\mu_s/M)| \le \log B$, hence
 $|\log(\mu_s/M)| \le (\log B)/\hat\kappa$, and the bound follows.
-(iv) Split conformal and the parametric interval both remain valid on a
-subpopulation defined by a selection rule that is a function of the covariates
-and predictions only; restricting calibration to the same subpopulation gives
-coverage conditional on the selection event.
+(iv) $\mathcal{R}$ is a function of $\mu$ and carries no information about any
+outcome, so restricting both the calibration and the test cells to $\mathcal{R}$
+gives coverage conditional on the selection event.
 \end{IEEEproof}
+
+One dependence deserves stating, because it is the place a careful reader will
+push. $M$ is the mean of the same $\mu$ vector being deflated, so
+$\hat{\lambda}_s$ is not a function of cell $s$ alone: every cell enters through
+$M$. Two consequences. The marginal statement (ii) should be read conditional on
+$M$, which costs nothing asymptotically --- $M$ concentrates at rate
+$S^{-1/2}$, and $S = 4000$ in our simulation --- but is not exactly
+finite-sample. And the selection rule in (iv) is likewise not a per-cell function
+of covariates, which is what a textbook split-conformal argument would want.
+Exchangeability survives regardless: $M$ is a symmetric function of the cells, so
+permuting cells permutes $(\hat{\lambda}_s)$ and the retention indicators
+together, leaving the joint law invariant. That is all conformal validity
+requires. Estimating $M$ on the calibration split alone would remove the
+dependence entirely at the cost of a noisier normalizer, and we flag it as the
+cleaner choice for a deployment where exact finite-sample validity matters more
+than efficiency.
 
 Part (iv) is the honest content of the empirical result in
 Section~\ref{sec:feedback}: coverage is restored \emph{on the cells the system is
@@ -475,7 +519,7 @@ $1-\delta_g$. An adaptive temporal variant updates the per-group miscoverage
 target online with a PID rule~\cite{angelopoulos2023conformal}; it gives a
 long-run average guarantee, not a per-step one, and we report it as such.
 
-We evaluate nine variants and select among them by constraint rather than by eye:
+We evaluate ten variants and select among them by constraint rather than by eye:
 narrowest mean width subject to marginal coverage at or above the floor,
 demographic disparity at or below 0.03, abstention at or below 1\%, and finite
 metrics. The ceiling was fixed before we looked. Section~\ref{sec:conformal}
@@ -517,14 +561,21 @@ Section~\ref{sec:feedback} measures rather than leaves implicit.
 \section{Experimental Setup}
 % =====================================================================
 \textbf{Data.} Chicago (77 community areas) and New York (78 units), weekly
-counts in three categories, split chronologically with 2023 held out. Chicago
-test tensors are $53$ weeks $\times\, 77$ areas. Demographic groups for the
-fairness audit come from area-level composition and are fixed before evaluation.
+counts in three categories over 2018--2023, giving $T = 313$ weeks. The split is
+strictly chronological, by week index: train $[0, 208)$ = 2018--2021, validation
+$[208, 234)$ = 2022 H1 (early stopping and per-seed EMA-versus-raw selection),
+calibration $[234, 260)$ = 2022 H2 (conformal thresholds and EMOS weights), test
+$[260, 313)$ = 2023, the 53 weeks on which every number in this paper is
+computed. Nothing from a later block informs an earlier one. Chicago test tensors
+are $53 \times 77$. Demographic groups for the fairness audit come from
+area-level composition and are fixed before evaluation.
 
-\textbf{Baselines.} Six classical: historical average (rolling and frozen),
-seasonal naive, lag-1 persistence, STARIMA, plain ZINB, XGBoost. Four deep
-spatiotemporal: LSTM-NB, TFT-ZINB, GraphWaveNet, STZINB-GNN. Deep baselines run
-three seeds ($42, 137, 256$), reported as mean $\pm$ standard deviation.
+\textbf{Baselines.} Six classical model families --- historical average, seasonal
+naive, lag-1 persistence, STARIMA, plain ZINB and XGBoost --- with the historical
+average evaluated in both a rolling and a frozen variant. Four deep
+spatiotemporal models: LSTM-NB, TFT-ZINB, GraphWaveNet, STZINB-GNN. Deep
+baselines run three seeds ($42, 137, 256$), reported as mean $\pm$ standard
+deviation.
 
 \textbf{Metrics.} CRPS is primary, being a strictly proper scoring rule for
 distributional forecasts. We also report MAE, RMSE and Brier score on the zero
@@ -559,7 +610,7 @@ nominal level from above as the calibration set grows, which is what the integer
 score lattice of \eqref{eq:cqr} predicts.
 
 The Diebold--Mariano results are clean. Against all four deep baselines in both
-cities --- eight comparisons --- CIVIC-SAFE wins every one at $p < 10^{-6}$:
+cities --- eight comparisons --- CIVIC-SAFE wins every one at $p < 2\times10^{-6}$:
 GraphWaveNet ($-9.319$, $-15.321$), LSTM-NB ($-7.482$ at
 $7.33\!\times\!10^{-14}$, $-6.979$ at $2.97\!\times\!10^{-12}$), STZINB-GNN
 ($-10.186$, $-11.158$) and TFT-ZINB ($-4.790$ at $1.67\!\times\!10^{-6}$,
@@ -571,9 +622,13 @@ is what we required. Fig.~\ref{fig:crpss} plots the skill scores.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig1_coverage_convergence.pdf}
-  \caption{Empirical coverage against calibration-set size. Coverage converges to
-  the nominal $1-\alpha = 0.90$ from above, as split conformal's finite-sample
-  bound predicts on a discrete score lattice.}
+  \caption{Empirical coverage against calibration-set size. The horizontal axis
+  is the number of calibration points $n$; the vertical axis is realized marginal
+  coverage on held-out data, with the dashed line at the nominal
+  $1-\alpha = 0.90$. Coverage approaches the target from above, consistent with
+  split conformal's finite-sample band $[1-\alpha,\, 1-\alpha + 1/(n+1)]$; the
+  residual excess persisting at large $n$ is the lattice effect, since integer CQR
+  scores cannot realize an arbitrary quantile level exactly.}
   \label{fig:coverage_convergence}
 \end{figure}
 
@@ -591,17 +646,38 @@ Table~\ref{tab:loss_ablation} the loss-function ablation.
 \input{tables/table3_uncertainty}
 
 The Hersbach decomposition (Table~\ref{tab:uncertainty}, Fig.~\ref{fig:hersbach})
-says something useful about where the remaining error lives: reliability is four
-orders of magnitude below resolution, so nearly all the CRPS is irreducible
-spread in the data rather than miscalibration. Worth knowing before anyone tries
-to close the gap with a better model.
+locates the remaining error, but it needs reading carefully and we would rather
+set out the caveat than let the numbers flatter us. Resolution and climatological
+uncertainty are on the count scale, in CRPS units. The reliability term as we
+compute it is a Cram\'er--von Mises-type statistic on the cumulative PIT, so it
+is a squared probability and \emph{not} commensurable with the other two; the
+ratio $\mathrm{REL}/\mathrm{RES}$ is therefore not a fraction of forecast loss
+and we do not report it as one. Our resolution is also obtained by residual from
+the identity $\mathrm{CRPS} = \mathrm{REL} - \mathrm{RES} + \mathrm{UNC}$, which
+makes the decomposition an accounting identity rather than an independent check:
+the reconstructed CRPS agrees with the measured CRPS by construction and cannot
+fail to.
+
+What the term does carry is a comparison. Chicago's reliability is $0.00124$
+against NYC's $0.00006$, a factor of $20.6$, and Chicago's cumulative PIT
+deviation reaches $4.95$ percentage points with every bin deviating in the same
+direction. That is a systematic miscalibration, not noise, and it agrees with the
+independent $\chi^2$ PIT test (ratio $22.5$, Section~\ref{sec:limitations}). So
+the honest reading is the relative one: Chicago is roughly twenty times worse
+calibrated than NYC, and the CRPSS against climatology ($0.7693$, $0.7732$) is
+the well-posed absolute statement --- both cities extract about $77\%$ of the
+available skill over a climatological forecast.
 
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig4_crps_decomposition.pdf}
-  \caption{Hersbach decomposition of CRPS into reliability, resolution and
-  climatological uncertainty for both cities. Reliability is negligible against
-  resolution.}
+  \caption{Hersbach decomposition of CRPS for both cities. Bars give reliability
+  (REL), resolution (RES) and climatological uncertainty (UNC); lower REL and
+  higher RES are better. RES and UNC are on the count scale; REL is a squared
+  cumulative-PIT statistic and so is not commensurable with them, which is why we
+  compare REL only across cities (Chicago $20.6\times$ NYC) and not as a share of
+  CRPS. RES is obtained by residual from
+  $\mathrm{CRPS} = \mathrm{REL} - \mathrm{RES} + \mathrm{UNC}$.}
   \label{fig:hersbach}
 \end{figure}
 
@@ -630,10 +706,15 @@ areas.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=0.86\linewidth]{spatial_error_map.png}
-  \caption{Mean signed residual (predicted minus actual) per Chicago community
-  area over the 53-week 2023 test set, violent crime. Blue indicates
-  under-prediction. The shortfall is spatially clustered on the West Side rather
-  than diffuse, and 65 of 77 areas are negative.}
+  \caption{Mean signed residual per Chicago community area, violent crime, over
+  the 53-week 2023 test set. Each area is shaded by
+  $\overline{\hat{y} - y}$, the time-averaged prediction minus observation, on a
+  diverging scale centred at zero: blue is under-prediction, red over-prediction,
+  white unbiased. $65$ of $77$ areas are negative, the mean residual is $-1.03$
+  incidents per area-week, and the correlation between an area's mean count and its
+  residual is $-0.66$, so the shortfall concentrates in the busiest areas. The
+  clustering on the West Side is spatial structure, not diffuse noise, and it
+  corroborates the PIT failure in Fig.~ef{fig:pit} by an independent route.}
   \label{fig:spatial_error}
 \end{figure}
 
@@ -655,9 +736,13 @@ comfortable.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig5_conformal_comparison.pdf}
-  \caption{Coverage against mean interval width for the nine conformal variants.
-  The 90\% floor and the 0.03 disparity ceiling are pre-registered; methods below
-  the floor are rejected by policy regardless of how narrow they are.}
+  \caption{Coverage against mean interval width for the ten conformal variants.
+  Each marker is one calibration method; the horizontal axis is mean interval
+  width in counts (lower is better) and the vertical axis is marginal coverage on
+  the 2023 test set. The dashed horizontal line is the pre-registered $90\%$
+  coverage floor. Methods below that line are rejected by policy however narrow
+  they are, which is what excludes rolling adaptive ECRC despite its being the
+  narrowest and least disparate variant in both cities.}
   \label{fig:conformal_comparison}
 \end{figure}
 
@@ -685,9 +770,16 @@ distributional version of the same story.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig2_pit_histogram.pdf}
-  \caption{PIT histograms. NYC is uniform ($\chi^2 = 10.75$, $p = 0.293$).
-  Chicago is not ($\chi^2 = 241.84$, $p = 5.25\times10^{-47}$): mass rises
-  monotonically across the upper bins, the signature of a compressed right tail.}
+  \caption{PIT histograms for both cities. The horizontal axis is the randomized
+  probability integral transform value on $[0,1]$, binned into ten equal
+  intervals; the vertical axis is the relative frequency of test cells falling in
+  each bin. A correctly specified predictive distribution gives a flat histogram
+  at $0.10$ per bin, marked by the dashed line. NYC is indistinguishable from
+  uniform ($\chi^2 = 10.75$ on nine degrees of freedom, $p = 0.293$). Chicago is
+  not ($\chi^2 = 241.84$, $p = 5.25\times10^{-47}$): mass rises monotonically
+  across the upper bins, reaching $13.68\%$ in the top bin against the expected
+  $10\%$. Excess mass at high PIT values means observations land further into the
+  right tail than the model expects, i.e. a compressed upper tail.}
   \label{fig:pit}
 \end{figure}
 
@@ -716,10 +808,16 @@ larger budgets.
 \begin{figure*}[!t]
   \centering
   \includegraphics[width=0.92\textwidth]{fig9_policy_tradeoff.pdf}
-  \caption{Hit rate against allocation disparity for four patrol-allocation
-  policies at budgets $B \in \{20, 50, 100\}$. OICC attains the best hit rate at
-  $B=100$ in both cities and the worst allocation disparity; the two fairness
-  criteria move in opposite directions.}
+  \caption{Violent-incident hit rate against allocation disparity for four
+  patrol-allocation policies at budgets $B \in \{20, 50, 100\}$, both cities. The
+  horizontal axis is allocation disparity across demographic groups (lower is more
+  even); the vertical axis is the fraction of violent incidents falling inside
+  allocated units (higher is better). Up-and-left is better on both criteria at
+  once. OICC attains the best hit rate at $B = 100$ in both cities
+  ($96.36\%$, $98.97\%$) and simultaneously the \emph{worst} allocation disparity
+  ($0.1448$, $0.0421$), so no policy dominates: the two fairness criteria move in
+  opposite directions, and OICC's gain on over-allocation ratio is bought with
+  concentration that allocation disparity penalizes.}
   \label{fig:policy}
 \end{figure*}
 
@@ -780,11 +878,19 @@ high-gain regime and overpays at low gain.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig10_latent_correction.pdf}
-  \caption{Coverage of the latent process against feedback gain. Naive intervals
-  calibrated on the record collapse to 16.2\% at $\kappa = 0.85$; corrected
-  intervals hold 93.0\%. The lower panel is the retained fraction: corrected
-  coverage is measured only on those cells, so the two curves do not share a
-  denominator.}
+  \caption{Coverage of the latent process under observation-biased feedback.
+  \emph{Upper panel}: the horizontal axis is the true feedback gain $\kappa$; the
+  vertical axis is the fraction of cells whose realized latent count falls inside
+  the issued interval. The red circles are intervals calibrated on the record
+  (naive) and the blue squares are feedback-corrected intervals; the dashed line
+  is the $90\%$ target. Naive coverage collapses from $95.0\%$ to $16.2\%$ as the
+  gain rises, while corrected coverage holds between $93.0\%$ and $95.2\%$.
+  \emph{Lower panel}: the fraction of cells retained, that is, not abstained on.
+  This panel is essential to reading the upper one --- corrected coverage is
+  computed only over retained cells, whereas naive coverage is computed over all
+  cells, so at $\kappa = 0.85$ the $93.0\%$ is measured on the $15\%$ of cells the
+  corrector was willing to speak about. The two curves do not share a
+  denominator, and Theorem~\ref{thm:deflation}(iv) is why.}
   \label{fig:latent}
 \end{figure}
 
@@ -796,12 +902,30 @@ systematically steering around over-recorded areas
 to 0.182 between $\kappa = 0.70$ and $0.85$, so the worst biased case is not the
 highest gain, and we do not describe the trend as monotone.
 
+There is a check on Theorem~\ref{thm:amplification} hiding in this experiment,
+and it passes. The theorem says amplification grows with the gain, so the
+\emph{fraction} of disparity attributable to feedback --- and therefore the
+fraction a correct deflation should remove --- ought to increase in $\kappa$ even
+where the raw disparity does not. The relative reductions are $0\%$, $29.3\%$,
+$47.1\%$, $67.1\%$ and $75.6\%$ across the grid: monotone in $\kappa$, including
+across the $0.70 \to 0.85$ step where the absolute disparity falls. The
+non-monotone absolute curve and the monotone relative curve are both what
+\eqref{eq:powerlaw} predicts, which is a modest but genuine piece of evidence
+that the amplification law describes the simulated mechanism rather than merely
+labelling it.
+
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig11_routing_disparity.pdf}
-  \caption{Worst-group exposure disparity for routes planned on the raw record
-  against routes planned on the corrected field. At $\kappa = 0.85$ disparity
-  falls from 0.182 to 0.044.}
+  \caption{Worst-group exposure disparity under advisory routing. The horizontal
+  axis is the feedback gain $\kappa$; the vertical axis is realized exposure
+  disparity for the worst-off group, where $0$ denotes parity. Red circles route on
+  the raw recorded field, blue squares on the feedback-corrected field, and the
+  shaded band between them is the disparity attributable to routing on biased
+  records. Group-1 structural over-recording factor is $1.8$. The biased curve is
+  \emph{not} monotone (it falls from $0.270$ to $0.182$ over the last step), but
+  the relative reduction is: $0\%$, $29.3\%$, $47.1\%$, $67.1\%$, $75.6\%$, as
+  Theorem~ef{thm:amplification} predicts.}
   \label{fig:routing}
 \end{figure}
 
@@ -819,17 +943,28 @@ allocation in the predicted direction under a plausible gain.
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig12_cross_city_disparity.pdf}
-  \caption{Exposure disparity for the higher-minority stratum on real records,
-  before and after correction at an assumed $\kappa = 0.6$. Latent coverage is
-  not verifiable on real data; this is a sensitivity analysis.}
+  \caption{Exposure disparity for the higher-minority stratum on real municipal
+  records. Bars give disparity relative to population share, red for allocation on
+  the raw recorded rate and blue after feedback correction; $0$ denotes parity, and
+  the annotation is the relative reduction. Chicago ($77$ community areas) falls
+  from $0.390$ to $0.163$ and NYC ($78$ units) from $0.311$ to $0.122$. The gain is
+  \emph{assumed} at $\kappa = 0.6$ rather than identified --- the real-data
+  difference-in-differences is a null --- so this is a sensitivity analysis. Latent
+  coverage cannot be evaluated here at all, because the true rate is unobservable
+  on real records; Fig.~ef{fig:latent} carries the coverage guarantee.}
   \label{fig:crosscity}
 \end{figure}
 
 \begin{figure}[!t]
   \centering
   \includegraphics[width=\linewidth]{fig3_crpss_comparison.pdf}
-  \caption{CRPS skill score against the rolling historical average, by city and
-  crime category. The binding baseline is the rolling average, not a frozen one.}
+  \caption{CRPS skill score by city and crime category. Bars give
+  $\mathrm{CRPSS} = 1 - \mathrm{CRPS}_{\mathrm{model}} /
+  \mathrm{CRPS}_{\mathrm{baseline}}$ against the \emph{rolling} historical
+  average, which the evaluation code marks as the binding baseline; positive is
+  better and $0$ means parity with the baseline. Skill against a frozen historical
+  average would be far larger ($0.2713$, $0.3165$) but is not the honest
+  comparison, since a deployed baseline would update as weeks arrive.}
   \label{fig:crpss}
 \end{figure}
 
@@ -891,7 +1026,7 @@ $d = 0.8$.
 Records are not reality, and a forecaster validated only against records cannot
 tell the difference. We built a spatiotemporal ZINB forecaster that is
 competitive on ordinary terms --- CRPS 2.8267 and 3.1401, eight of eight
-Diebold--Mariano wins over deep baselines at $p < 10^{-6}$, conformal coverage of
+Diebold--Mariano wins over deep baselines at $p < 2\times10^{-6}$, conformal coverage of
 90.75\% and 90.02\% under a pre-registered 3\% disparity ceiling --- and then
 asked the question those terms cannot answer: is the model right about crime, or
 only about crime records?

@@ -11,7 +11,7 @@ correction for this measurement problem. Two contributions. First, the applied
 system: a dual-graph GATv2 spatiotemporal transformer with a five-seed
 entropy-regularized EMOS ensemble reaches CRPS 2.8267 on Chicago and 3.1401 on
 New York for 2023, beating four deep baselines in all eight head-to-head
-Diebold-Mariano tests at p < 1e-6, with conformal intervals achieving 90.75% and
+Diebold-Mariano tests at p < 2e-6, with conformal intervals achieving 90.75% and
 90.02% coverage under a pre-registered 3% disparity ceiling. Second, and the reason for the paper: we deflate
 the recorded rate by a feedback multiplier and issue intervals for the latent
 process. In simulation at feedback gain 0.85, intervals calibrated on the record
@@ -76,7 +76,7 @@ The empirical picture, in one paragraph. CIVIC-SAFE forecasts a full ZINB
 distribution per area-week-category and achieves CRPS 2.8267 (Chicago) and
 3.1401 (NYC) on 2023, ahead of every baseline we tried, with all eight
 head-to-head Diebold-Mariano comparisons against deep baselines significant at
-p < 1e-6. Post-hoc conformal calibration lands at 90.75% and 90.02% coverage
+p < 2e-6. Post-hoc conformal calibration lands at 90.75% and 90.02% coverage
 against a 90% target while keeping demographic coverage disparity at 0.0238 and
 0.0286, both under a ceiling we fixed at 0.03 before looking. Then the
 correction: in a closed-loop simulation at κ = 0.85, intervals calibrated on the
@@ -102,7 +102,7 @@ Contributions:
    of two log-elasticities, plus the disparity power law — a sharpening of [1]
    that cites [3] for the gain itself.
 3. A competitive applied forecaster with honest calibration: full distributional
-   forecasts, nine conformal variants compared, and constraint-based method
+   forecasts, ten conformal variants compared, and constraint-based method
    selection that refuses methods violating a pre-registered fairness ceiling
    (Sections III-D, V-C).
 4. An accounting of what the system cannot do, including a misspecification
@@ -240,7 +240,7 @@ the per-group miscoverage target online with a PID rule to handle drift; it
 gives a long-run average guarantee, not a per-step one, and we say so in the
 results rather than implying otherwise.
 
-We evaluate nine variants and select among them by constraint rather than by
+We evaluate ten variants and select among them by constraint rather than by
 eyeball: narrowest mean width subject to marginal coverage at or above the
 floor, demographic disparity at or below 0.03, abstention at or below 1%, and
 finite metrics. The ceiling was fixed before we looked at results. Section V-B
@@ -354,7 +354,7 @@ CRPS 2.8267 and 3.1401, best in both cities. MAE 3.9017 and 4.3675, RMSE 7.0983
 and 7.6126, Brier on the zero event 0.0592 and 0.0493.
 
 The Diebold-Mariano results are clean. Against all four deep baselines in both
-cities — eight comparisons — CIVIC-SAFE wins every one at p < 1e-6:
+cities — eight comparisons — CIVIC-SAFE wins every one at p < 2e-6:
 
 | Baseline | Chicago DM (p) | NYC DM (p) |
 |---|---|---|
@@ -382,9 +382,19 @@ lives:
 | Uncertainty | 12.2534 | 13.8448 |
 | CRPSS vs climatology | 0.7693 | 0.7732 |
 
-Reliability is four orders of magnitude below resolution. Nearly all of the CRPS
-is irreducible spread in the data, not miscalibration — which is worth knowing
-before anyone tries to close the gap with a better model.
+Read this table carefully, because two of its columns are not commensurable.
+Resolution and uncertainty are on the count scale, in CRPS units, but reliability
+as computed here is a Cramer-von Mises statistic on the cumulative PIT — a
+squared probability. So REL/RES is not a fraction of forecast loss and we do not
+report it as one. Resolution is also obtained by residual from
+CRPS = REL - RES + UNC, so the reconstruction agrees with the measured CRPS by
+construction and cannot fail. What the reliability term does support is a
+comparison: Chicago's 0.00124 against NYC's 0.00006 is a factor of 20.6, and
+Chicago's cumulative PIT deviation reaches 4.95 points with every bin deviating
+the same way. That agrees with the independent chi-square PIT test (ratio 22.5)
+and says Chicago is about twenty times worse calibrated than NYC. The
+well-posed absolute statement is the skill score against climatology, 0.7693 and
+0.7732: both cities extract roughly 77% of the available skill.
 
 ### B. Where the errors live in space
 
@@ -410,7 +420,7 @@ areas.
 
 ### C. Conformal calibration and the constraint that bites
 
-Nine variants, target 90%, disparity ceiling 0.03 fixed in advance.
+Ten variants, target 90%, disparity ceiling 0.03 fixed in advance.
 
 **Chicago** (selected: equalized coverage)
 
@@ -638,7 +648,7 @@ seeds would be needed for paired t-tests at power 0.80 with d = 0.8.
 Records are not reality, and a forecaster validated only against records cannot
 tell the difference. We built a spatiotemporal ZINB forecaster that is
 competitive on ordinary terms — CRPS 2.8267 and 3.1401, eight of eight
-Diebold-Mariano wins over deep baselines at p < 1e-6, conformal coverage of
+Diebold-Mariano wins over deep baselines at p < 2e-6, conformal coverage of
 90.75% and 90.02% under a pre-registered 3% disparity ceiling — and then asked
 the question that the ordinary terms cannot answer: is the model right about
 crime, or only about crime records?

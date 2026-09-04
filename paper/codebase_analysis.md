@@ -92,8 +92,12 @@ Source: `outputs/significance/{city}_deep_significance.json`.
 | STZINB_GNN | −10.186 | < 1e−16 | −11.158 | < 1e−16 |
 | TFT_ZINB | −4.790 | 1.67e−06 | −7.669 | 1.73e−14 |
 
-All 8 comparisons favour CIVIC-SAFE (DM negative = our loss is lower), and all
-8 clear p < 1e−6. **The prompt's "8/8 wins at p < 1e−6" is correct.**
+All 8 comparisons favour CIVIC-SAFE (DM negative = our loss is lower). **The
+"8/8 wins at p < 1e-6" claim is WRONG, and this note previously repeated it.**
+The largest of the eight is Chicago/TFT_ZINB at p = 1.671454e-06, which is
+*greater* than 1e-6. The tight true bound is p < 2e-6. Every occurrence in the
+manuscript has been corrected; a referee checking Table I against the abstract
+would have caught this immediately.
 
 Two cautions. These 8 are against *deep* baselines only — the rolling-HA
 comparison lives in a different file and is much weaker (Chicago p = 0.0338,

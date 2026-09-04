@@ -19,7 +19,7 @@ Applying adaptive split conformal prediction successfully bounds uncertainty. At
 - **NYC (Variance-Scaled CP):** Achieved **90.02%** marginal coverage with a width of **16.45**, achieving a demographic disparity of $\Delta_{\mathrm{dem}}\alpha = 0.0286$.
 
 ### Uncertainty Attribution (Hersbach Decomposition)
-The Hersbach (2000) decomposition confirms that miscalibration error contributes negligibly to the total loss.
+The Hersbach (2000) decomposition is reported with a caveat: the reliability term as computed is a squared cumulative-PIT statistic, not a count-scale CRPS component, so it is not comparable to resolution as a share of loss. It supports a relative comparison only (Chicago 20.6x NYC), which agrees with the chi-square PIT test.
 - **Chicago:** Reliability = **0.0013**, Resolution = 9.4280.
 - **NYC:** Reliability = **0.0001**, Resolution = 10.7048.
 In both cities, over **95%** of predictive variance is fundamentally *aleatoric* (irreducible environmental noise), with epistemic variance accounting for only 2.61% (Chicago) and 4.32% (NYC).
