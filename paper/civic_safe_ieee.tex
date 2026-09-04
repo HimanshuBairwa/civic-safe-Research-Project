@@ -57,27 +57,28 @@
 \maketitle
 
 \begin{abstract}
-Crime records are not crime. Police records are produced by a loop: past records
-direct patrols, patrols produce records, and the loop amplifies whatever
-disparity it started with. A forecaster fit on such records can be well
-calibrated against the record and badly wrong about reality, and no amount of
-held-out validation on records will reveal it. We build CIVIC-SAFE, a
-spatiotemporal forecaster that predicts a full zero-inflated negative binomial
-distribution of weekly crime counts per community area, and we pair it with a
-correction for this measurement problem. Two contributions. First, the applied
-system: a dual-graph GATv2 spatiotemporal transformer with a five-seed
-entropy-regularized EMOS ensemble reaches CRPS 2.8267 on Chicago and 3.1401 on
-New York for 2023, beating four deep baselines in all eight head-to-head
-Diebold--Mariano tests at $p < 2\times10^{-6}$, with conformal intervals achieving
-90.75\% and 90.02\% coverage under a pre-registered 3\% disparity ceiling.
-Second, and the reason for the paper: we deflate the recorded rate by a feedback
-multiplier and issue intervals for the latent process. In simulation at feedback
-gain 0.85, intervals calibrated on the record retain only 16.2\% coverage of true
-incidence while our corrected intervals hold 93.0\% --- though they abstain on
-85\% of cells to do it, a cost we quantify rather than hide. On real records from
-both cities, correction cuts exposure disparity by 58\% and 61\%. We report what
-fails too: Chicago's probability integral transform is non-uniform at
-$p = 5.25 \times 10^{-47}$, and 65 of its 77 areas come in low.
+Crime records are not crime. Records are produced by a loop: records direct
+patrols, patrols determine where crime is looked for, and the loop amplifies
+whatever disparity it began with. A forecaster fit on such records can be
+exactly calibrated against the record and badly wrong about reality, and no
+validation on records distinguishes the two cases. We formalize the loop as a
+fixed point, derive the elasticity with which it amplifies latent disparity, and
+invert it. The inversion is exact: deflating the recorded rate by the fitted
+recording multiplier recovers the latent rate identically, and the intervals are
+valid conditional on a retention rule we state and measure. In simulation at
+feedback gain $0.85$, intervals calibrated on the record cover latent incidence
+$16.2\%$ of the time against a $90\%$ target; the corrected intervals hold
+$93.0\%$, on the $15\%$ of cells they do not abstain on. Under bounded
+misspecification a $\Gamma$-inflated interval retains nominal coverage at a
+tabulated width cost.
+The forecaster is a dual-graph GATv2 model with a zero-inflated negative binomial
+head and a five-seed ensemble: CRPS $2.8267$ (Chicago) and $3.1401$ (New York) on
+2023, ahead of four deep baselines in all eight Diebold--Mariano comparisons at
+$p < 2\times10^{-6}$, with $90.75\%$ and $90.02\%$ conformal coverage under a
+pre-registered $3\%$ disparity ceiling. Three limits: a rolling historical average
+beats every deep baseline we ran; Chicago's probability integral transform is
+non-uniform at $p = 5.25\times10^{-47}$; and the feedback gain is not
+point-identified, so real-data results are sensitivity analyses.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -88,69 +89,71 @@ measurement error, zero-inflated models, graph neural networks.
 % =====================================================================
 \section{Introduction}
 % =====================================================================
-\IEEEPARstart{S}{tart} with the thing that makes this problem different from
-ordinary forecasting. When a weather model predicts rain, the prediction does not
-change whether it rains. When a crime model predicts crime, the prediction sends
-officers, and officers find crime. Not because they manufacture it, but because
-crime that nobody looks for goes unrecorded. Send more patrols to a block and the
-recorded rate there rises even if the underlying rate held perfectly still.
+\IEEEPARstart{A}{crime} forecast is also an instrument for producing the data that
+will train its successor. Weather forecasts do not change the weather. Crime
+forecasts direct patrols, patrols determine where crime is looked for, and crime
+that nobody looks for goes unrecorded. Send officers to a block and its recorded
+rate rises even if the underlying rate holds perfectly still. The training data is
+an artifact of past decisions by the system one is trying to improve.
 
-So the training data is an artifact of past decisions by the system you are
-trying to improve.
+The consequence is a blind spot in validation, and it is structural rather than a
+matter of insufficient care. Hold out a year, compute the Continuous Ranked
+Probability Score (CRPS), check interval coverage: passing every such test
+establishes that the model predicts \emph{records} well and settles nothing about
+whether it predicts \emph{crime} well. The two quantities diverge precisely where
+the stakes are highest, in the neighbourhoods that were over-policed to begin
+with. Ensign \emph{et al.}~\cite{ensign2018runaway} named the loop and showed it
+runs away. van Amsterdam \emph{et al.}~\cite{vanamsterdam2025when} characterized
+the general pattern: a model accurate and harmful at once, undetectable by passive
+validation. Neither supplies a correction.
 
-This has an uncomfortable consequence. Take a forecaster and validate it the
-normal way --- hold out 2023, compute the Continuous Ranked Probability Score
-(CRPS), check the coverage of your prediction intervals. Suppose everything
-passes. You have learned that the model predicts \emph{records} well. You have
-learned nothing about whether it predicts \emph{crime} well, and the two come
-apart exactly where it matters most: in the neighbourhoods that were over-policed
-to begin with. Ensign \emph{et al.}~\cite{ensign2018runaway} named this loop and
-showed it runs away. van Amsterdam \emph{et al.}~\cite{vanamsterdam2025when}
-showed the general pattern of a model that is accurate and harmful at once,
-invisible to passive validation. What nobody has offered is a fix.
+This paper supplies one, and states the conditions under which it holds.
 
-That is what we build here.
-
-Our starting point is a fixed-point model. Latent incidence $\lambda_s$ in area
-$s$ is unobserved. A policy allocates attention $a_s = \varphi(\mu_s)$ from the
-recorded-rate estimate $\mu_s$. Recording is attention-dependent,
-$y_s \sim \mathrm{Poisson}(\lambda_s\, g(a_s))$ with $g$ increasing, and a
-learner that fits the records converges to the self-consistent equilibrium
+Let latent incidence $\lambda_s$ in area $s$ be unobserved. A policy allocates
+attention $a_s = \varphi(\mu_s)$ from the recorded-rate estimate $\mu_s$;
+recording is attention-dependent, $y_s \sim \mathrm{Poisson}(\lambda_s\, g(a_s))$
+with $g$ increasing; and a learner that fits the records converges to the
+self-consistent equilibrium
 \begin{equation}
 \label{eq:fixedpoint}
 \mu_s = \lambda_s\, g\!\left(\varphi(\mu_s)\right).
 \end{equation}
-Section~\ref{sec:theory} develops what follows from \eqref{eq:fixedpoint}: a
-feedback gain $\kappa$, an amplification law with a pole at $\kappa = 1$, and the
-deflation that inverts it. We want to be careful about credit, because the
-amplification form $1/(1-\kappa)$ is classic --- it is the closed-loop gain of a
-feedback amplifier, and in economics the social multiplier of Glaeser, Sacerdote
-and Scheinkman~\cite{glaeser2003social}. We claim neither. What we contribute is
-the constructive step: given an estimate of $\kappa$, deflate the record and
-issue prediction intervals valid for $\lambda$ rather than for $y$, abstaining
-where the correction stops being trustworthy.
+Section~\ref{sec:theory} develops three consequences of \eqref{eq:fixedpoint}: a
+feedback gain $\kappa$ that is the product of two log-elasticities, an
+amplification law with a pole at $\kappa = 1$, and an exact inversion of the
+recording map. On credit, we are deliberately narrow. The amplification form
+$1/(1-\kappa)$ is classical --- the closed-loop gain of a feedback amplifier, and
+in economics the social multiplier of Glaeser, Sacerdote and
+Scheinkman~\cite{glaeser2003social} --- and we claim neither. The contribution is
+the constructive step: deflate the record by the fitted recording multiplier and
+issue intervals valid for $\lambda$ rather than for $y$, abstaining where the
+correction ceases to be trustworthy.
 
-The empirical picture, in brief. CIVIC-SAFE forecasts a full Zero-Inflated
-Negative Binomial (ZINB) distribution per area--week--category and reaches CRPS
-2.8267 (Chicago) and 3.1401 (NYC) on 2023, ahead of every baseline we tried, with
+The empirical picture is as follows. CIVIC-SAFE predicts a full Zero-Inflated
+Negative Binomial (ZINB) distribution per area--week--category and attains CRPS
+2.8267 (Chicago) and 3.1401 (NYC) on 2023, ahead of every baseline we ran, with
 all eight head-to-head Diebold--Mariano comparisons against deep baselines
-significant at $p < 2\times10^{-6}$. Post-hoc conformal calibration lands at 90.75\% and
-90.02\% coverage against a 90\% target while holding demographic coverage
-disparity at 0.0238 and 0.0286, both under a ceiling fixed at 0.03 before we
-looked. Then the correction: at $\kappa = 0.85$ in a closed-loop simulation,
-intervals calibrated on the record cover the latent process 16.2\% of the time
-while corrected intervals hold 93.0\%. On real Chicago and NYC records,
-correction reduces recorded-exposure disparity for the higher-minority stratum by
-58\% and 61\%.
+significant at $p < 2\times10^{-6}$. Post-hoc conformal calibration attains
+90.75\% and 90.02\% coverage against a 90\% target while holding demographic
+coverage disparity at 0.0238 and 0.0286, both under a ceiling fixed at 0.03 in
+advance. The correction then does what record-level calibration cannot: at
+$\kappa = 0.85$ in a closed-loop simulation, intervals calibrated on the record
+cover the latent process 16.2\% of the time while corrected intervals hold
+93.0\%. On real Chicago and NYC records the correction reduces
+recorded-exposure disparity for the higher-minority stratum by 58\% and 61\%.
 
-We also found things that do not work, and we would rather say them here than
-have a referee say them. Chicago's PIT histogram is not uniform
-($\chi^2 = 241.84$ on nine degrees of freedom, $p = 5.25 \times 10^{-47}$), so
-the ZINB is misspecified in Chicago's right tail; the spatial residuals agree,
-with 65 of 77 areas coming in low. A single CIVIC-SAFE seed loses to TFT-ZINB, so
-the win rests on ensembling. And the corrected intervals at $\kappa = 0.85$
-abstain on 85\% of cells, which means the headline $16\% \to 93\%$ compares two
-different denominators. Section~\ref{sec:limitations} collects these.
+Four results cut against us, and we state them here rather than in a footnote.
+A rolling historical average beats every deep spatiotemporal baseline in our
+comparison set, in both cities, so the eight Diebold--Mariano wins are wins over
+models a moving average also beats; CIVIC-SAFE is the only method in the study
+that improves on the trailing mean, and by 3.6\% and 4.9\%. Chicago's PIT
+histogram is not uniform ($\chi^2 = 241.84$ on nine degrees of freedom,
+$p = 5.25 \times 10^{-47}$), so the ZINB is misspecified in Chicago's right tail,
+and the spatial residuals concur with 65 of 77 areas low. A single seed loses to
+TFT-ZINB, so the win rests on ensembling. And the corrected intervals at
+$\kappa = 0.85$ abstain on 85\% of cells, so the headline $16\% \to 93\%$ compares
+two different denominators --- a fact Theorem~\ref{thm:deflation}(iv) formalizes
+rather than excuses. Section~\ref{sec:limitations} collects these.
 
 \subsection{Contributions}
 \begin{enumerate}
@@ -351,11 +354,22 @@ E = 1 + \left(\frac{d \log g}{d \log a}\right)
   = 1 + \kappa E,
 \end{equation}
 where the bracketed product is $\kappa$ by Definition~\ref{def:kappa}. Since
-$\kappa \neq 1$, solving gives $(1-\kappa)E = 1$, which is
-\eqref{eq:elasticity}.
-(ii) If $\kappa$ is constant, \eqref{eq:elasticity} is a constant-elasticity
-relation whose integral is $\log\mu = \log\lambda/(1-\kappa) + c$. The additive
-constant cancels on taking the ratio of two groups, giving \eqref{eq:powerlaw}.
+$\kappa < 1$, solving gives $(1-\kappa)E = 1$, which is \eqref{eq:elasticity}.
+
+(ii) Under the constant-elasticity parameterization the conclusion follows by
+algebra rather than by integrating \eqref{eq:elasticity}, which is worth doing
+because it exhibits the proportionality constant explicitly. The fixed point
+$\mu_s = \lambda_s(\mu_s/M)^{\kappa}$ in logarithms is
+$\log\mu_s = \log\lambda_s + \kappa(\log\mu_s - \log M)$, so
+\begin{equation}
+\label{eq:closedform}
+\log \mu_s = \frac{\log \lambda_s - \kappa \log M}{1 - \kappa},
+\qquad\text{i.e.}\qquad
+\mu_s = \lambda_s^{1/(1-\kappa)}\, M^{-\kappa/(1-\kappa)}.
+\end{equation}
+The factor $M^{-\kappa/(1-\kappa)}$ is a single scalar shared by every cell,
+because $M$ is one mean for the whole panel. It therefore cancels on taking the
+ratio of two groups, and \eqref{eq:powerlaw} follows with no residual constant.
 \end{IEEEproof}
 
 Three remarks. The exponent is finite for every $\kappa < 1$, so amplification is
@@ -369,6 +383,12 @@ with $\lambda$, so no single global exponent exists. We therefore treat $\kappa$
 as a \emph{local} elasticity at the fixed point rather than a universal
 constant, and read \eqref{eq:powerlaw} as the constant-gain idealization that our
 simulations instantiate.
+
+That the constant in \eqref{eq:closedform} is common across cells is not a
+convenience of the algebra; it is the same fact that makes
+Theorem~\ref{thm:deflation}(i) exact. Both statements are rearrangements of one
+identity, read in opposite directions --- forward from $\lambda$ to $\mu$ here,
+backward from $\mu$ to $\lambda$ there.
 
 Stability is immediate in logarithms. Under the power-law parameterization the
 fixed-point iteration is
@@ -1205,32 +1225,40 @@ $d = 0.8$.
 \section{Conclusion}
 % =====================================================================
 Records are not reality, and a forecaster validated only against records cannot
-tell the difference. We built a spatiotemporal ZINB forecaster that is
-competitive on ordinary terms --- CRPS 2.8267 and 3.1401, eight of eight
-Diebold--Mariano wins over deep baselines at $p < 2\times10^{-6}$, conformal coverage of
-90.75\% and 90.02\% under a pre-registered 3\% disparity ceiling --- and then
-asked the question those terms cannot answer: is the model right about crime, or
-only about crime records?
+tell the difference. We built a spatiotemporal ZINB forecaster that is competitive
+on conventional terms --- CRPS 2.8267 and 3.1401, eight of eight
+Diebold--Mariano wins over deep baselines at $p < 2\times10^{-6}$, conformal
+coverage of 90.75\% and 90.02\% under a pre-registered 3\% disparity ceiling ---
+and then asked the question those terms cannot settle: is the model right about
+crime, or only about crime records?
 
-In simulation the answer is stark. At feedback gain 0.85, intervals that look
-well calibrated against the record cover the latent process 16.2\% of the time.
-Deflating the record by the estimated feedback multiplier restores that to
-93.0\%, on the 15\% of cells where the correction is trustworthy enough to issue
-an interval at all. On real records from two cities, the same correction cuts
-exposure disparity for higher-minority areas by 58\% and 61\% under an assumed
-gain.
+The simulation answers it sharply. At feedback gain 0.85 intervals that look well
+calibrated against the record cover the latent process 16.2\% of the time.
+Deflating the record by the fitted recording multiplier restores that to 93.0\%,
+on the 15\% of cells where the correction is trustworthy enough to issue an
+interval at all. Under bounded misspecification of the recording model a
+$\Gamma$-inflated interval holds nominal coverage throughout, at a width cost that
+grows smoothly and is tabulated. On real records from two cities the same
+correction cuts exposure disparity for higher-minority areas by 58\% and 61\%
+at an assumed gain.
 
-What we would want a reader to take away is narrower than the numbers might
-suggest. The correction works, in a regime we can measure, at a cost we can
-quantify. It abstains heavily when the feedback gain approaches runaway, and its
-gain parameter is not point-identified on real data. Chicago's PIT failure says
-our own predictor is misspecified on one of the two cities we tested.
+The right reading of this is narrower than the numbers invite. Three conditions
+carry the guarantee, and each is stated rather than assumed away: the recording
+map is a power law, or else within a factor $\Gamma$ of one; validity is
+conditional on retention, which at high gain means declining to answer for most
+of the city; and the gain is not point-identified, so on real data we report
+sensitivity rather than identification. Chicago's PIT failure is a further
+reminder that the predictor underneath is misspecified on one of the two cities we
+tested.
 
-The obvious next step is the natural experiment: run the detection-shock DiD on a
-real staggered rollout with enough power to move the estimate off null. Until
-then, the honest claim is that we have shown a correctable failure is correctable
-in a setting where correctness is checkable --- and that the abstention rate, not
-the coverage number, is the thing to watch.
+What survives those conditions is worth saying plainly. A failure that no
+record-level validation can detect --- an interval that keeps its nominal coverage
+of the record while losing five sixths of its coverage of reality --- is
+correctable, by a map with an exact inverse, at a cost that can be measured
+rather than hoped about. The natural next step is empirical, not theoretical: run
+the detection-shock difference-in-differences on a real staggered rollout with
+enough power to move the gain estimate off null. Until then the abstention rate,
+not the coverage number, is the quantity to watch.
 
 % =====================================================================
 \section*{Reproducibility}

@@ -8,7 +8,8 @@
 > miscoverage level of §8. Non-conformity scores are $V_i$, never $s_i$, because
 > $s$ indexes spatial units throughout. The abstention bound on the recording
 > multiplier is $\bar{m}$, never $B$, because $B$ is the patrol budget in the
-> allocation simulation.
+> allocation simulation. The GATv2 attention vector is $\mathbf{z}$, never
+> $\mathbf{a}$, because $a_s$ is the attention *allocated* to unit $s$ in §0.
 
 This document provides the formal mathematical specification for the CIVIC-SAFE architecture, including the distributional loss functions, spatial attention mechanisms, bias-mitigation regularisation, and evaluation metrics.
 
@@ -19,6 +20,20 @@ This document provides the formal mathematical specification for the CIVIC-SAFE 
 **Model (Allocation under Observation-Biased Feedback).** Latent incidence $\lambda_s>0$ (unobserved); a policy allocates attention $a_s=\varphi(\mu_s)$ from the recorded-rate estimate $\mu_s$; recording is observation-biased, $y_s\sim\mathrm{Poisson}(\lambda_s\, g(a_s))$ with $g$ increasing; a consistent learner reaches the fixed point $\mu_s=\lambda_s\,g(\varphi(\mu_s))$. Define the feedback gain $\kappa=\bigl(\tfrac{d\log a}{d\log\mu}\bigr)\bigl(\tfrac{d\log g}{d\log a}\bigr)$.
 
 **§0.1 Amplification elasticity (Thm 1).** $\dfrac{d\log\mu_s}{d\log\lambda_s}=\dfrac{1}{1-\kappa}$, so recorded disparity $=$ true disparity$^{1/(1-\kappa)}$, with a pole at $\kappa^\*=1$. *This closed form is the social multiplier (Glaeser–Sacerdote–Scheinkman 2003) / control-theoretic loop gain; our contribution is the coordinate-free elasticity decomposition and the disparity power-law corollary, a quantitative sharpening of Ensign et al. (2018).* Verified: `tests/test_feedback_law.py`.
+
+Under the constant-elasticity parameterization the power law follows by algebra
+rather than by integrating the elasticity, and this is the form the paper proves
+because it exhibits the constant explicitly. Writing the fixed point in
+logarithms, $\log\mu_s = \log\lambda_s + \kappa(\log\mu_s - \log M)$, gives
+
+$$\log \mu_s = \frac{\log \lambda_s - \kappa \log M}{1 - \kappa} \qquad \Longleftrightarrow \qquad \mu_s = \lambda_s^{1/(1-\kappa)}\, M^{-\kappa/(1-\kappa)}.$$
+
+The factor $M^{-\kappa/(1-\kappa)}$ is one scalar shared by every cell,
+since $M$ is a single panel mean, so it cancels in any group ratio and the
+disparity power law carries no residual constant. This is the same identity that
+makes the deflation of §0.3 exact --- read forward from $\lambda$ to
+$\mu$ here, backward there. Verified numerically to $10^{-13}$ relative error
+at $\kappa \in \{0.3, 0.5, 0.7, 0.85\}$.
 
 **§0.2 Passive/active duality (Thms 2–3).** The "confidently wrong" state — observed coverage maintained while latent coverage collapses — is **not identifiable from passive data** (biased and honest worlds are observationally identical). A detection-sensitivity shock (staggered ShotSpotter/patrol rollout) identifies the **recording response** $\tau$ (the detection elasticity $\rho$) via difference-in-differences **under a parallel-trends assumption** — but it does **NOT** point-identify the loop gain $\kappa=\beta\rho$: the DiD carries an un-cancelled term in the unobserved latent level $\log\lambda$ (see the correction in `docs/PROOFS_feedback_law.md`), and $\kappa$ requires a separately assumed policy elasticity $\beta$, reported only as a sensitivity table. On real data the DiD is a **null**. *The duality principle is known (Mendler-Dünner 2022); our honest contribution is the recording-response estimator + the OICC impossibility result, not a point-identified $\kappa$.*
 
@@ -59,7 +74,7 @@ To capture spatial diffusion, we use a Graph Attention Network v2 (Brody et al.,
 
 ### 2.1 Dynamic Attention
 For any edge $(j \to i)$ in the combined graph, the attention coefficient is computed dynamically:
-$$e_{ij} = \mathbf{a}^\top \cdot \text{LeakyReLU}\left(\mathbf{W} \cdot [\mathbf{h}_i \| \mathbf{h}_j]\right)$$
+$$e_{ij} = \mathbf{z}^\top \cdot \text{LeakyReLU}\left(\mathbf{W} \cdot [\mathbf{h}_i \| \mathbf{h}_j]\right)$$
 $$\gamma_{ij} = \frac{\exp(e_{ij})}{\sum_{k \in \mathcal{N}(i)} \exp(e_{ik})}$$
 
 The updated node representation is the sum over both the Queen and KNN neighborhoods:
