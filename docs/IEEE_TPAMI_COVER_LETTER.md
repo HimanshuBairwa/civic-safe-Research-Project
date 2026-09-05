@@ -17,7 +17,7 @@ Forecasting* for consideration as a Regular Paper.
 | **Submission type** | Regular Paper |
 | **Primary subject** | Machine learning for societal systems; distribution-free uncertainty quantification |
 | **Secondary subject** | Spatiotemporal analytics; algorithmic fairness |
-| **Main manuscript** | `paper/civic_safe_ieee.tex` — IEEEtran, two-column, 21 floats |
+| **Main manuscript** | `paper/civic_safe_ieee.tex` — IEEEtran, two-column, 22 floats (12 figures, 9 tables, 1 algorithm) |
 | **Supplementary** | `paper/civic_safe_supplementary.tex` — separate compilation unit |
 | **Submission archive** | `paper/civic_safe_submission_bundle.zip` — self-contained, pure ASCII |
 | **Code and data** | Public repository; every table and figure regenerable without retraining |

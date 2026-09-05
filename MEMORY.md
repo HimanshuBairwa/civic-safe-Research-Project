@@ -3,7 +3,7 @@
 Durable project memory. Written to survive session boundaries: architecture,
 mathematics, verified numbers, corrected errors, and the one task that remains.
 
-**Anchor commit: `4f560c4`** on `origin/main`, working tree clean.
+**Anchor commit: `be53911`** on `origin/main`, working tree clean.
 Every number below was read from a file under `outputs/` or reproduced by a script
 under `scripts/`. Nothing here is recalled from conversation.
 
@@ -307,12 +307,14 @@ evaluated on a criterion it was not trained for.
 
 ---
 
-## 7. Verification state at `4f560c4`
+## 7. Verification state at `be53911`
 
 | Check | Result |
 |---|---|
 | `pytest tests/test_calibration.py tests/test_feedback_law.py` | **67 passed** |
 | `scripts/validate_latex.py` (4 documents, no args) | **0 errors, 0 warnings** |
+| Tabular row terminators, all 18 LaTeX sources | **0 lone trailing backslashes** (see below) |
+| Table I row parse | 27 data rows, **exactly 2 cells each** against its `ll` colspec |
 | Main manuscript | 21/21 citations, 51/51 refs, 12/12 figures |
 | Supplementary | 28/28 refs, 6 tables (S1-S6), 0 citations by design |
 | Zip vs on-disk bundle | 23 files, **0 SHA-256 mismatches** |
@@ -334,6 +336,33 @@ IX = latent coverage. Fig. 1 = architecture, 2 = feedback loop,
 **Two pre-existing test failures** in `tests/test_data.py::TestACS` resolve
 demographics to `C:\Users\kamle\civic-safe-Research-Project\` — the server's path,
 not this working copy. Environmental, unrelated to any of this work.
+
+### What the green checks above do NOT cover
+
+Learned the hard way at `be53911`. Two rows of **Table I** ended in a single
+backslash instead of `\\`. TeX reads backslash-newline as a control space, so each
+row merged with the one below it, producing three `&`-separated cells in an `ll`
+tabular and a hard abort: `! Extra alignment tab has been changed to \cr`. The
+manuscript would not have compiled at all, and **every check in the table above
+passed while it was broken**:
+
+- **`validate_latex.py` does not parse tabular column specifications.** It
+  verifies that citations resolve to bib entries, `\ref`s to `\label`s, and
+  `\includegraphics` targets to files on disk. Row structure, cell counts and
+  column specs are outside its model. "0 errors, 0 warnings" is a statement about
+  those three things only.
+- **A SHA-256 match confirms transport, not syntactic validity.** The zip/on-disk
+  audit passed *because* both copies carried the identical defect. Hash equality
+  proves the bundle faithfully reproduces the source — including its bugs. It is
+  not evidence the source is correct.
+- **The 67 tests exercise Python, never LaTeX.**
+- **Table I is hand-maintained** — no `tab:notation` in `scripts/` — so no
+  generator would have normalised it.
+
+Generalisation worth keeping: a check certifies exactly what it parses. Four green
+checks coexisted with a dead build. Anything only a compiler can see — row
+structure, float placement, column fit, typography — stays unverified until
+something compiles the document. See section 8.
 
 ---
 
@@ -400,6 +429,18 @@ in a non-IEEE format. For local builds: `tlmgr install ieeetran`.
 - **Beware the `\ref` shell hazard.** Heredocs can eat the backslash in `\ref`,
   leaving a literal CR followed by `ef{`. A legitimate CRLF is CR+LF, so CR+`e`
   is unambiguously the bug. Prefer the Edit tool for LaTeX strings.
+- **The same hazard eats row terminators, and that one is fatal.** A `\\` written
+  through a shell can arrive as a lone `\`, which TeX reads as a control space —
+  the row merges with the next, the cell count breaks, and the build aborts with
+  `Extra alignment tab has been changed to \cr`. It bit Table I at `be53911`.
+  To sweep for it, flag any non-comment line whose trailing backslash run has
+  **odd** length; correct row endings are `\\`+CR (even), the bug is `\`+CR (odd).
+  Then check each tabular body row has `colspec` cells, i.e. `&` count + 1.
+- **A check certifies only what it parses.** `validate_latex.py` covers citations,
+  refs and graphics paths — not row structure. A zip/disk hash match proves
+  transport, not correctness: identical defects on both sides pass happily. When
+  reporting verification state, say which of these a green result actually
+  establishes. See section 7, "What the green checks above do NOT cover".
 - **Report the binding baseline.** Skill is against **rolling** HA (3.6%/4.9%),
   never frozen HA (27%/32%).
 - **Every claim about the model must be checked against the code**, not the
