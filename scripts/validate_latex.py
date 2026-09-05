@@ -81,8 +81,41 @@ def expand_inputs(path: Path, seen: set[Path] | None = None) -> list[tuple[Path,
     return result
 
 
+DEFAULT_TARGETS = (
+    "paper/civic_safe_ieee.tex",
+    "paper/civic_safe_supplementary.tex",
+    "paper/submission_bundle/civic_safe_ieee.tex",
+    "paper/submission_bundle/civic_safe_supplementary.tex",
+)
+
+
+def validate_one(root: Path) -> int:
+    """Validate a single document. Returns 0 on success, nonzero on failure."""
+    global errors, warnings
+    errors, warnings = [], []
+    return _validate(root)
+
+
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "paper/civic_safe_ieee.tex")
+    args = sys.argv[1:]
+    targets = args if args else [t for t in DEFAULT_TARGETS
+                                 if (PROJECT_ROOT / t).exists()]
+    if not targets:
+        print("No LaTeX documents found to validate.")
+        return 2
+    rc = 0
+    for i, target in enumerate(targets):
+        if i:
+            print()
+        rc |= validate_one(Path(target))
+    if len(targets) > 1:
+        print()
+        print(f"{len(targets)} document(s) validated; "
+              f"overall {'PASS' if rc == 0 else 'FAIL'}.")
+    return rc
+
+
+def _validate(root: Path) -> int:
     # Resolve against the caller's working directory first, so the script works on
     # a bundle copied outside the repository, and only fall back to the project
     # root for the convenience of bare in-repo invocations.

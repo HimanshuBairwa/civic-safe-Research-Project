@@ -1,0 +1,739 @@
+%% ====================================================================
+%% CIVIC-SAFE -- Supplementary Material
+%%
+%% Companion to paper/civic_safe_ieee.tex. Section numbers are prefixed S
+%% and cross-references to the main text are given by name, not by number,
+%% because the two documents are compiled separately.
+%%
+%% Compile:  pdflatex civic_safe_supplementary -> bibtex -> pdflatex x2
+%%
+%% Deliberately pure ASCII. Accented names use LaTeX escapes (Cand\`es,
+%% P\'olya) so it compiles without inputenc on any distribution.
+%% ====================================================================
+\documentclass[journal,10pt,onecolumn]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../outputs/figures/}{figures/}{./}}
+
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+
+% Number everything with an S prefix so nothing collides with the main text.
+\renewcommand{\thesection}{S\arabic{section}}
+\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\thetable}{S\arabic{table}}
+\renewcommand{\thefigure}{S\arabic{figure}}
+\renewcommand{\thelemma}{S\arabic{lemma}}
+\renewcommand{\theproposition}{S\arabic{proposition}}
+
+\extrafloats{32}
+
+\begin{document}
+
+\title{Supplementary Material for\\
+``Feedback-Corrected Conformal Prediction for Spatiotemporal Crime
+Forecasting''}
+
+\author{Himanshu~Bairwa%
+\thanks{H. Bairwa is with the Department of Computer Science. Corresponding
+author e-mail: bairwahimanshu29@gmail.com.}%
+}
+
+\maketitle
+
+\begin{abstract}
+This document supplies the derivations, protocols and audits that the main
+manuscript states without proof or in summary. Section~\ref{sec:s1} gives the
+full spectral argument for the log-linearized Jacobian, a complete proof of the
+attribution corollary including sign preservation, a treatment of why integer
+conformity scores make coverage conservative, and the sensitivity bound for a
+mismeasured feedback gain. Section~\ref{sec:s2} tabulates the full
+$\Gamma$-sensitivity frontier. Section~\ref{sec:s3} specifies every baseline
+architecture and the training protocol, read from the released code rather than
+recalled. Section~\ref{sec:s4} audits the demographic covariates and the two
+spatial graphs, including a connectivity defect in one city that motivates the
+dual-graph design. Section~\ref{sec:s5} reports the diagnostics we can compute
+from the persisted artifacts, and states precisely which requested diagnostic we
+cannot, and why.
+\end{abstract}
+
+% =====================================================================
+\section{Extended Derivations}
+\label{sec:s1}
+% =====================================================================
+
+Throughout, $s \in \{1,\dots,S\}$ indexes spatial units, $\lambda_s > 0$ is the
+unobserved latent incidence rate, $\mu_s > 0$ the recorded-rate estimate,
+$M = S^{-1}\sum_s \mu_s$ the panel mean, $\kappa \in [0,1)$ the closed-loop
+feedback gain, $\varphi$ the allocation policy, and $g$ the recording response.
+Notation follows Table~I of the main text exactly. Section~\ref{sec:s1-jacobian}
+proves the spectral claim behind the stability threshold,
+Section~\ref{sec:s1-attribution} the attribution corollary and its sign
+preservation, Section~\ref{sec:s1-lattice} the lattice effect that makes discrete
+coverage conservative, and Section~\ref{sec:s1-sensitivity} the error bound for a
+mismeasured gain.
+
+\subsection{The log-linearized Jacobian and exact spectral radius}
+\label{sec:s1-jacobian}
+
+The main text asserts that the fixed-point iteration contracts precisely when
+$\kappa < 1$, with spectral radius exactly $\kappa$ irrespective of how
+heterogeneous the cells are. That claim is proved here, because the ``exactly''
+is doing real work: a bound of the form $\rho \le \kappa$ would leave open the
+possibility that some configurations contract faster and others not at all.
+
+Under the constant-elasticity parameterization the iteration map
+$T : \mathbb{R}^S_{>0} \to \mathbb{R}^S_{>0}$ is
+\begin{equation}
+\label{eq:s-map}
+T(\mu)_s \;=\; \lambda_s \left(\frac{\mu_s}{\bar{\mu}}\right)^{\!\kappa},
+\qquad \bar{\mu} = S^{-1}\textstyle\sum_j \mu_j .
+\end{equation}
+Work in logarithmic coordinates $u_s = \log \mu_s$, which is natural here because
+the map is a power law and because positivity is then automatic. Writing
+$\bar{\mu}(u) = S^{-1}\sum_j e^{u_j}$,
+\begin{equation}
+\label{eq:s-logmap}
+\widetilde{T}(u)_s = \log \lambda_s + \kappa\left(u_s - \log \bar{\mu}(u)\right).
+\end{equation}
+
+\begin{lemma}[Exact spectral radius]
+\label{lem:spectral}
+The Jacobian of \eqref{eq:s-logmap} at any $u$ is
+\begin{equation}
+\label{eq:s-jacobian}
+J \;=\; \kappa\left(I - \mathbf{1}w^{\!\top}\right),
+\qquad
+w_j \;=\; \frac{e^{u_j}}{\textstyle\sum_k e^{u_k}} \;=\; \frac{\mu_j}{S\,M},
+\end{equation}
+where $\mathbf{1} \in \mathbb{R}^S$ is the all-ones vector and $w$ lies in the
+probability simplex. Its spectrum is $\{\kappa$ with multiplicity $S-1$, and
+$0\}$, so $\rho(J) = \kappa$ for every $u$ and every distribution of $\mu$.
+\end{lemma}
+
+\begin{IEEEproof}
+Differentiating \eqref{eq:s-logmap},
+\begin{equation}
+\frac{\partial \widetilde{T}(u)_s}{\partial u_j}
+= \kappa\left(\delta_{sj} - \frac{\partial \log \bar{\mu}}{\partial u_j}\right)
+= \kappa\left(\delta_{sj} - w_j\right),
+\end{equation}
+since $\partial \bar{\mu}/\partial u_j = S^{-1}e^{u_j}$ and hence
+$\partial \log\bar{\mu}/\partial u_j = e^{u_j}/\sum_k e^{u_k} = w_j$. In matrix
+form this is \eqref{eq:s-jacobian}, and $w^{\!\top}\mathbf{1} = 1$ by
+construction.
+
+For the spectrum, note $P = \mathbf{1}w^{\!\top}$ is rank one, so it has
+eigenvalue $w^{\!\top}\mathbf{1} = 1$ with eigenvector $\mathbf{1}$, and
+eigenvalue $0$ with multiplicity $S-1$ on the hyperplane
+$\{v : w^{\!\top}v = 0\}$. Indeed $P\mathbf{1} = \mathbf{1}(w^{\!\top}\mathbf{1})
+= \mathbf{1}$ and $Pv = \mathbf{1}(w^{\!\top}v) = 0$ for such $v$. Therefore
+$I - P$ has eigenvalue $0$ on $\mathrm{span}\{\mathbf{1}\}$ and eigenvalue $1$ on
+the complementary hyperplane, and $J = \kappa(I-P)$ has spectrum
+$\{0\} \cup \{\kappa\}^{S-1}$. Since $\kappa \ge 0$, $\rho(J) = \kappa$.
+\end{IEEEproof}
+
+Three remarks. The zero eigenvalue is not an accident of the algebra: it lies
+along $\mathbf{1}$, the direction in which every cell is scaled by a common
+factor, and the map is invariant to exactly that rescaling because $\mu$ enters
+only through $\mu_s/\bar{\mu}$. The iteration therefore has no contraction to
+perform on the overall level and contracts at rate $\kappa$ on every
+disparity-carrying direction. Second, $\rho(J)$ does not depend on $w$, so no
+distribution of recorded rates -- however skewed -- moves the stability
+threshold. Third, $\rho(J) < 1 \iff \kappa < 1$, which is the same threshold at
+which the amplification exponent $1/(1-\kappa)$ of Theorem~1 has its pole; the
+pole and the loss of contraction are one phenomenon.
+
+We verified Lemma~\ref{lem:spectral} numerically by forming $J$ at the converged
+fixed point and computing $\max_i|\lambda_i(J)|$ for
+$\kappa \in \{0.30, 0.50, 0.70, 0.85, 0.95\}$ with $S = 400$ and
+$\lambda \sim \mathrm{Gamma}(2,2) + 0.3$. The computed radii were
+$0.300000$, $0.500000$, $0.700000$, $0.850000$, $0.950000$, matching $\kappa$ to
+machine precision in every case.
+
+\subsection{Attribution corollary: full proof and sign preservation}
+\label{sec:s1-attribution}
+
+Theorem~1(ii) of the main text gives the recorded-to-latent disparity map. We
+restate the inverse and prove the two properties that determine how it may
+honestly be used.
+
+\begin{proposition}[Attribution and sign preservation]
+\label{prop:attribution}
+Let $\kappa \in [0,1)$ and let $\Delta_{\lambda} = \lambda_1/\lambda_2 > 0$ be a
+between-group latent ratio with recorded counterpart $\Delta_y = \mu_1/\mu_2$
+under the fixed point \eqref{eq:s-map}. Then
+\begin{enumerate}
+  \item[(i)] $\Delta_{\lambda} = \Delta_y^{\,1-\kappa}$, and the map
+  $\Delta_y \mapsto \Delta_{\lambda}$ is a strictly increasing bijection of
+  $(0,\infty)$ onto itself;
+  \item[(ii)] the share of recorded log-disparity attributable to the loop is
+  exactly $\kappa$, that is
+  $\bigl(\log\Delta_y - \log\Delta_{\lambda}\bigr)/\log\Delta_y = \kappa$ for
+  every $\Delta_y \ne 1$;
+  \item[(iii)] $\Delta_{\lambda} > 1 \iff \Delta_y > 1$ and
+  $\Delta_{\lambda} = 1 \iff \Delta_y = 1$.
+\end{enumerate}
+\end{proposition}
+
+\begin{IEEEproof}
+From the closed form derived in the main text,
+$\mu_s = \lambda_s^{1/(1-\kappa)}M^{-\kappa/(1-\kappa)}$, the common factor
+$M^{-\kappa/(1-\kappa)}$ cancels in the ratio, giving
+$\Delta_y = \Delta_{\lambda}^{1/(1-\kappa)}$. Since $1-\kappa \in (0,1]$, the map
+$x \mapsto x^{1/(1-\kappa)}$ is a strictly increasing bijection of $(0,\infty)$,
+and its inverse is $x \mapsto x^{1-\kappa}$, which is (i). Taking logarithms in
+(i) gives $\log\Delta_{\lambda} = (1-\kappa)\log\Delta_y$, hence
+$\log\Delta_y - \log\Delta_{\lambda} = \kappa\log\Delta_y$; dividing by
+$\log\Delta_y \ne 0$ gives (ii). For (iii), $x^{1-\kappa} > 1 \iff x > 1$ for any
+positive exponent $1-\kappa > 0$, and equality transfers likewise.
+\end{IEEEproof}
+
+Part (iii) is the part we most want a reader to hold onto, because it is the
+guard against a misuse the corollary otherwise invites. The loop inflates the
+\emph{magnitude} of a disparity and can inflate it without bound as
+$\kappa \to 1$, since $1-\kappa \to 0$ drives $\Delta_{\lambda} \to 1$ for any
+fixed $\Delta_y$. It cannot create a disparity from nothing: a recorded gap
+implies a real gap of the same direction, always. Any reading of
+Proposition~\ref{prop:attribution} that concludes ``the observed disparity is an
+artifact'' is a misreading; the correct conclusion is ``the observed disparity
+overstates a real one by a factor the gain determines''.
+
+Table~\ref{tab:s-attribution} gives the arithmetic. Each row was checked against
+the numerically converged fixed point; agreement was within $10^{-12}$ relative
+error at $\kappa \in \{0.3, 0.5, 0.6, 0.85\}$.
+
+\begin{table}[!t]
+  \centering
+  \caption{Attribution map $\Delta_{\lambda} = \Delta_y^{1-\kappa}$. A recorded
+  ratio on the left corresponds to the true ratio on the right at each gain. The
+  final column is the share of recorded log-disparity attributable to feedback,
+  which Proposition~\ref{prop:attribution}(ii) shows equals $\kappa$ exactly and
+  is therefore independent of $\Delta_y$.}
+  \label{tab:s-attribution}
+  \begin{tabular}{r rrrr c}
+    \toprule
+    & \multicolumn{4}{c}{\textbf{true ratio $\Delta_{\lambda}$ at gain $\kappa$}}
+    & \\
+    \cmidrule(lr){2-5}
+    \textbf{recorded $\Delta_y$} & $\kappa=0.3$ & $\kappa=0.5$ & $\kappa=0.6$
+    & $\kappa=0.85$ & \textbf{loop share} \\
+    \midrule
+    $2{:}1$ & 1.63 & 1.41 & 1.32 & 1.11 & $\kappa$ \\
+    $3{:}1$ & 2.16 & 1.73 & 1.55 & 1.18 & $\kappa$ \\
+    $5{:}1$ & 3.09 & 2.24 & 1.90 & 1.27 & $\kappa$ \\
+    $10{:}1$ & 5.01 & 3.16 & 2.51 & 1.41 & $\kappa$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Why integer conformity scores make coverage conservative}
+\label{sec:s1-lattice}
+
+The main text reports that coverage converges to the nominal level from above and
+attributes the residual excess to the integer lattice. That attribution is worth
+making precise, because it explains a systematic feature of every coverage number
+in the paper and it is the reason the randomized-PIT variant exists.
+
+Two distinct discretizations are in play and they must not be conflated. First,
+the target is a count: $y \in \mathbb{N}_0$. For any distribution $F$ on
+$\mathbb{N}_0$ and any $p$, define the quantile
+$Q_p = \min\{k \in \mathbb{N}_0 : F(k) \ge p\}$. Then
+\begin{align}
+\Pr\!\left(Q_{\alpha/2} \le y \le Q_{1-\alpha/2}\right)
+&= F(Q_{1-\alpha/2}) - F(Q_{\alpha/2}-1) \notag\\
+&\ge (1-\alpha/2) - \alpha/2 = 1-\alpha,
+\label{eq:s-lattice1}
+\end{align}
+where the first inequality uses $F(Q_{1-\alpha/2}) \ge 1-\alpha/2$ by definition
+of the quantile, and the second uses $F(Q_{\alpha/2}-1) < \alpha/2$, which holds
+because $Q_{\alpha/2}$ is the \emph{smallest} integer whose CDF reaches
+$\alpha/2$. The inequality in \eqref{eq:s-lattice1} is strict unless $F$ happens
+to hit $\alpha/2$ and $1-\alpha/2$ exactly at lattice points, which for a Poisson
+or ZINB law occurs on a measure-zero set of rates. So a discrete quantile
+interval over-covers, and the excess is the probability mass of the two boundary
+atoms.
+
+Second, the CQR score inherits the lattice. With $q_{\alpha/2}, q_{1-\alpha/2}$
+integer-valued and $y_i$ integer, the score
+$V_i = \max(q_{\alpha/2}(x_i) - y_i,\, y_i - q_{1-\alpha/2}(x_i))$ takes values in
+$\mathbb{Z}$. The split-conformal threshold is an order statistic of
+$\{V_i\}$, hence also an integer, so the achievable coverage levels form a
+discrete set: as the threshold steps from $t$ to $t+1$ the interval widens by two
+counts and coverage jumps. There is in general \emph{no} integer threshold
+attaining $1-\alpha$ exactly, and the split-conformal rule selects the smallest
+integer whose empirical coverage is at least $1-\alpha$. Combining the two
+effects, the finite-sample guarantee
+\begin{equation}
+\label{eq:s-lattice2}
+1-\alpha \;\le\;
+\Pr\!\left(y_{n+1} \in \widehat{C}_{n+1}\right)
+\;\le\; 1-\alpha + \frac{1}{n+1}
+\end{equation}
+holds as usual, but the realized coverage in \eqref{eq:s-lattice2} sits near the
+\emph{upper} end rather than at the nominal value, and the gap does not vanish as
+$n \to \infty$: the $1/(n+1)$ term does, while the lattice term does not.
+
+This is visible in our results in two independent ways. Nine of the ten
+calibrators in the main text over-cover relative to the $90\%$ target, by between
+$0.02$ and $4.05$ percentage points; the tenth, rolling adaptive ECRC, under-covers
+in both cities ($0.8930$, $0.8918$) and is rejected by the selection policy for
+precisely that reason, despite having the best disparity and the narrowest
+intervals. And on NYC, four calibrators -- split CP, recency-weighted CP,
+Mondrian and equalized coverage -- return numerically identical coverage, width
+and disparity ($0.9326$, $18.57$, $0.0201$), because their differing quantile
+rules select the same integer. Methods that differ only in \emph{how} they choose
+a quantile level cannot differ in output when the level maps to the same lattice
+point. The randomized-PIT variant restores a continuous scale by construction and
+is the correct object on which to check exactness; the integer intervals it
+delivers still over-cover, and the main text reports both numbers.
+
+\subsection{Sensitivity to a mismeasured feedback gain}
+\label{sec:s1-sensitivity}
+
+Theorem~2(iii) of the main text states the log-error of the deflation under an
+estimated gain. The derivation is short and we give it in full, together with the
+step that turns an unbounded error into a bounded one on the retained set.
+
+The deflation at gain $\hat{\kappa}$ is
+$\hat{\lambda}_s = \hat{\mu}_s / (\hat{\mu}_s/M)^{\hat\kappa}$, so
+\begin{equation}
+\label{eq:s-sens1}
+\log\hat{\lambda}_s = \log\hat{\mu}_s - \hat\kappa\,\log(\hat{\mu}_s/M).
+\end{equation}
+By Theorem~2(i), at the true gain the same expression \eqref{eq:s-sens1} returns
+the truth:
+$\log\lambda_s = \log\mu_s - \kappa\log(\mu_s/M)$. Subtracting, and treating the
+recorded rate as given so that $\hat\mu_s = \mu_s$,
+\begin{equation}
+\label{eq:s-sens2}
+\log\hat{\lambda}_s - \log\lambda_s
+= (\kappa - \hat\kappa)\,\log\!\left(\mu_s/M\right).
+\end{equation}
+The right-hand side is a product of an error in the gain and a cell-specific
+leverage $\log(\mu_s/M)$, and the leverage is unbounded: a cell recorded far from
+the panel mean amplifies any error in $\kappa$ without limit. That is the precise
+sense in which the correction is not uniformly safe, and it is what the abstention
+rule exists to bound.
+
+On the retained set
+$\mathcal{R} = \{s : \hat\kappa < \kappa_{\mathrm{run}},\;
+m_s \in [\bar{m}^{-1}, \bar{m}]\}$ the multiplier constraint
+$m_s = (\mu_s/M)^{\hat\kappa} \in [\bar{m}^{-1},\bar{m}]$ is equivalent, on taking
+logarithms, to $|\hat\kappa \log(\mu_s/M)| \le \log\bar{m}$, hence
+\begin{equation}
+\label{eq:s-sens3}
+\left|\log(\mu_s/M)\right| \;\le\; \frac{\log\bar{m}}{\hat\kappa},
+\end{equation}
+and substituting \eqref{eq:s-sens3} into \eqref{eq:s-sens2},
+\begin{equation}
+\label{eq:s-sens4}
+\left|\log\hat{\lambda}_s - \log\lambda_s\right|
+\;\le\; \left|\kappa - \hat\kappa\right| \frac{\log\bar{m}}{\hat\kappa}
+\qquad \text{for all } s \in \mathcal{R}.
+\end{equation}
+With the implementation values $\bar{m} = 5$ and, say, $\hat\kappa = 0.85$, the
+leverage factor is $\log 5 / 0.85 = 1.893$, so a gain error of $0.01$ costs at
+most a $1.9\%$ relative error in the deflated rate. The bound is monotone
+decreasing in $\hat\kappa$, which is at first counter-intuitive: a larger gain
+gives a \emph{tighter} bound per unit of gain error. The resolution is that the
+constraint $m_s \in [\bar{m}^{-1},\bar{m}]$ is itself harder to satisfy at large
+$\hat\kappa$, so the retained set shrinks. The cost does not disappear; it moves
+from interval width into abstention rate, which is why the main text reports the
+retained fraction beside every corrected coverage number.
+
+Note finally what \eqref{eq:s-sens4} does not cover. It bounds the error from a
+wrong \emph{gain} within a correctly specified power-law recording map. An error
+in the functional \emph{form} of that map is a different failure and is treated by
+the $\Gamma$ model of Section~\ref{sec:s2}.
+
+% =====================================================================
+\section{Extended $\Gamma$-Sensitivity Frontier}
+\label{sec:s2}
+% =====================================================================
+
+The main text reports five points on the sensitivity frontier. Here we give the
+full sweep and state exactly what the construction does and does not buy.
+
+The sensitivity model is Rosenbaum's, transplanted from treatment assignment to a
+recording mechanism. Suppose the true multiplier lies within a factor
+$\Gamma \ge 1$ of the assumed one at every cell,
+\begin{equation}
+\label{eq:s-gamma}
+m^{\mathrm{true}}_s / m_s \in [\Gamma^{-1}, \Gamma]
+\qquad \text{for all } s .
+\end{equation}
+Because $\lambda_s = \mu_s/m^{\mathrm{true}}_s$ and
+$\hat{\lambda}_s = \mu_s/m_s$, \eqref{eq:s-gamma} transfers directly to the rate,
+$\lambda_s/\hat{\lambda}_s \in [\Gamma^{-1},\Gamma]$, and the inflated interval
+$[\,Q^{\mathrm{Pois}}_{\alpha/2}(\hat{\lambda}_s/\Gamma),\;
+Q^{\mathrm{Pois}}_{1-\alpha/2}(\hat{\lambda}_s\Gamma)\,]$ contains the
+un-inflated interval at the true rate for every admissible
+$m^{\mathrm{true}}$. Coverage therefore holds simultaneously over the whole band,
+and $\Gamma = 1$ recovers the plain interval.
+
+Table~\ref{tab:s-gamma} reports the frontier. Each row is the mean over $8$
+trials of $6000$ cells at true gain $\kappa = 0.6$ and target $1-\alpha = 0.90$,
+in worlds whose true multiplier deviates from the assumed one by a per-cell factor
+drawn log-uniformly on $[\Gamma^{-1},\Gamma]$. Reproduced by
+\texttt{scripts/misspecification\_sensitivity.py}; raw values in
+\texttt{outputs/gamma\_sensitivity\_frontier.json}.
+
+\begin{table}[!t]
+  \centering
+  \caption{Sensitivity frontier at $\kappa = 0.6$, target $0.90$. ``Plain'' is
+  the un-inflated corrected interval evaluated in a misspecified world;
+  ``inflated'' applies the matching $\Gamma$ band. Width is relative to
+  $\Gamma = 1$. The plain interval last meets target at $\Gamma = 1.4$
+  ($0.9057$), fails from $\Gamma = 1.6$, and reaches $0.6762$ at $\Gamma = 3$;
+  the inflated interval never falls below target.}
+  \label{tab:s-gamma}
+  \begin{tabular}{r rr r l}
+    \toprule
+    $\Gamma$ & \textbf{plain coverage} & \textbf{inflated coverage}
+    & \textbf{width $\times$} & \textbf{plain vs. target} \\
+    \midrule
+    1.0 & 0.9420 & 0.9420 & 1.00 & meets \\
+    1.2 & 0.9328 & 0.9775 & 1.27 & meets \\
+    1.4 & 0.9057 & 0.9872 & 1.51 & meets \\
+    1.6 & 0.8802 & 0.9922 & 1.72 & \textbf{fails} \\
+    1.8 & 0.8457 & 0.9939 & 1.94 & \textbf{fails} \\
+    2.0 & 0.8091 & 0.9945 & 2.14 & \textbf{fails} \\
+    2.5 & 0.7320 & 0.9965 & 2.61 & \textbf{fails} \\
+    3.0 & 0.6762 & 0.9975 & 3.07 & \textbf{fails} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Three readings, one of them unfavourable to us. The frontier is the honest object
+to report because it converts an unfalsifiable modelling assumption into a
+priced one: a practitioner who believes the recording response could be off by up
+to $60\%$ per cell can buy validity at $1.72\times$ the width, and one who
+believes it could be off threefold pays $3.07\times$. Second, the breakdown point
+of the un-inflated interval is informative in itself. Coverage survives
+$\Gamma = 1.4$ and fails by $\Gamma = 1.6$, so the plain correction tolerates
+roughly $40\%$ multiplicative misspecification before it stops being honest --
+which is a modest tolerance and should be stated as such rather than buried.
+
+Third, and this is the unfavourable part, the inflated intervals over-cover
+substantially: $0.9775$ at $\Gamma = 1.2$ rising to $0.9975$ at $\Gamma = 3$
+against a $0.90$ target. The $\Gamma$ band is a worst-case construction and pays
+for its guarantee in exactly the currency conformal prediction is meant to
+economize. A reader who needs sharp intervals under suspected misspecification
+would be better served by a model of the recording response than by our envelope
+around the absence of one. We report the envelope because it is available without
+further assumptions, not because it is efficient.
+
+% =====================================================================
+\section{Baseline Architectures and Training Protocol}
+\label{sec:s3}
+% =====================================================================
+
+Every specification in this section was read from
+\texttt{scripts/deep\_baselines.py} and \texttt{scripts/baselines.py} at the
+commit that produced the reported results, not reconstructed from memory. Where a
+value is a constructor default that the calling code does not override, we say so.
+
+\subsection{Deep spatiotemporal baselines}
+
+All four consume the same inputs as CIVIC-SAFE: a window of $W = 52$ weeks of
+counts over $C = 3$ categories concatenated with the static covariate vector, and
+all four emit ZINB or NB parameters so that CRPS is computed identically across
+methods. Table~\ref{tab:s-baselines} collects the configurations.
+
+\begin{table}[!t]
+  \centering
+  \caption{Deep baseline configurations as instantiated. All are trained with the
+  protocol of Section~\ref{sec:s3-protocol}.}
+  \label{tab:s-baselines}
+  \small
+  \begin{tabular}{l l l}
+    \toprule
+    \textbf{Model} & \textbf{Configuration} & \textbf{Output / loss} \\
+    \midrule
+    LSTM-NB & 2 stacked LSTM layers, hidden $64$,
+              dropout $0.1$, LayerNorm on the & NB $(\mu, r)$ via two
+              MLP heads; \\
+            & final hidden state, final timestep read out
+              & negative binomial NLL \\
+    \addlinespace
+    TFT-ZINB & variable-selection network with gated residual networks per
+               & ZINB $(\pi,\mu,r)$; \\
+             & variable group, $d_{\mathrm{model}} = 64$, $4$ attention heads,
+               $2$ blocks, & CRPS \\
+             & dropout $0.1$ & \\
+    \addlinespace
+    GraphWaveNet & $32$ channels, $4$ WaveNet blocks with dilations
+                   $1,2,4,8$, & ZINB $(\pi,\mu,r)$; \\
+                 & kernel size $2$, adaptive adjacency from two learned
+                   & CRPS \\
+                 & node embeddings of dimension $16$, dropout $0.1$ & \\
+    \addlinespace
+    STZINB-GNN & graph convolution over the static adjacency followed by a
+                 & ZINB $(\pi,\mu,r)$; \\
+               & temporal GRU, hidden $64$ & CRPS \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two details deserve stating rather than leaving to be inferred. GraphWaveNet's
+receptive field follows from its dilation schedule: with kernel size $k = 2$ and
+dilations $d_i = 2^i$ for $i = 0,\dots,3$, the field is
+$1 + \sum_i (k-1)d_i = 1 + (1+2+4+8) = 16$ weeks. That is less than the $52$-week
+input window, so the model cannot in principle see the annual cycle -- a genuine
+architectural disadvantage relative to the seasonal-naive baseline, and one worth
+noting when reading its CRPS. And the loss is not uniform across baselines:
+LSTM-NB is trained on negative binomial NLL while the other three are trained
+directly on CRPS. Since CRPS is the reported metric, LSTM-NB is evaluated on a
+criterion it was not trained for. We did not equalize this, and a referee is
+entitled to regard LSTM-NB's numbers as correspondingly pessimistic.
+
+\subsection{Classical baselines}
+
+\begin{itemize}
+  \item \textbf{Rolling historical average.} The mean of the $52$-week input
+  window, recomputed at every test week, so the forecast updates as new weeks
+  arrive. This is the baseline the evaluation code marks as binding, and the one
+  the main text reports skill against.
+  \item \textbf{Frozen historical average.} A single mean over the training
+  period, held fixed across the whole test year. Reported only to show how much
+  larger the apparent skill becomes against a baseline no deployment would use.
+  \item \textbf{Seasonal naive.} $\hat{y}(t) = y(t-52)$, the count from the same
+  week one year earlier, read off the first slot of the $52$-week window.
+  \item \textbf{Lag-1 persistence.} $\hat{y}(t) = y(t-1)$, the last slot of the
+  window.
+  \item \textbf{STARIMA.} An AR(1) model with a spatial-lag regressor, fitted by
+  ordinary least squares separately per spatial unit and crime category.
+  \item \textbf{Plain ZINB.} \texttt{statsmodels}
+  \texttt{ZeroInflatedNegativeBinomialP} with the covariate matrix in both the
+  count and inflation components, fitted by BFGS with \texttt{maxiter=30}. This
+  is an unregularized maximum-likelihood fit with no floor on the dispersion
+  parameter, and it diverged on NYC (CRPS $924.10$); the main text excludes it
+  from ranking rather than claiming credit for the gap.
+  \item \textbf{XGBoost.} Gradient-boosted trees on the flattened window,
+  producing point forecasts.
+\end{itemize}
+
+All seven classical baselines emit a point forecast, and CRPS is a
+distributional score, so the two must be reconciled. Our evaluation dresses each
+point forecast in a Poisson predictive distribution at that point --
+$\pi = 0$, $\mu = \hat{y}$, $r = 1000$ so the negative binomial collapses to a
+Poisson -- and scores it with the same 	exttt{crps\_zinb} routine used for every
+other method. This is a deliberately generous convention and it is not neutral: a
+Poisson at the right mean has appropriate spread for count data, so it scores far
+better than the degenerate point mass a naive reading would assign. The effect is
+large. XGBoost on Chicago has MAE $3.9688$ but CRPS $2.9157$; the gap is entirely
+the Poisson dressing.
+
+This matters for the headline comparison rather than being a technicality. When we
+report that the rolling historical average beats all four deep spatiotemporal
+baselines, the rolling average is being scored as a Poisson forecaster at the
+trailing mean, not as a bare point predictor. That is the right comparison to make
+-- it is what a competent deployment of a moving average would actually issue --
+but a reader should know that the baseline was given a well-specified
+distributional form for free, and that a less charitable convention would have
+flattered our method instead.
+
+\subsection{Training protocol and environment}
+\label{sec:s3-protocol}
+
+Optimizer AdamW, learning rate $10^{-3}$, weight decay $10^{-5}$, cosine
+annealing over the epoch budget, early stopping on validation CRPS with patience
+$10$. Deep baselines are trained for three seeds, $\{42, 137, 256\}$, and reported
+as mean $\pm$ standard deviation. CIVIC-SAFE uses five seeds,
+$\{42, 137, 256, 512, 1024\}$, combined by category-conditioned
+entropy-regularized EMOS with a fallback to uniform weighting when the learned
+weights fail to beat uniform on an internal calibration holdout.
+
+The seed budget is uneven between our method and the baselines, and this matters
+for the comparison: five seeds of ensembling is doing substantial work for us, as
+the main text states -- a single CIVIC-SAFE seed averages CRPS $3.3622$ and loses
+to TFT-ZINB's $2.9456$ on Chicago. A fully symmetric study would ensemble the
+baselines to five seeds as well. We did not, and the honest reading of the
+head-to-head result is that it compares an ensembled method against
+un-ensembled ones. Our configuration also notes that seven to eight seeds would
+be needed for paired $t$-tests at power $0.80$ with effect size $d = 0.8$; we ran
+five.
+
+% =====================================================================
+\section{Dataset, Covariate and Graph Audits}
+\label{sec:s4}
+% =====================================================================
+
+\subsection{Demographic covariates}
+
+The demographic panel is built from American Community Survey five-year estimates
+and contains, per spatial unit, exactly these fields:
+\texttt{total\_population}, \texttt{median\_household\_income},
+\texttt{poverty\_rate}, \texttt{unemployment\_rate}, \texttt{pct\_black},
+\texttt{pct\_hispanic}, \texttt{pct\_renter\_occupied} and
+\texttt{population\_density}. Seven are used as covariates with total population
+serving as the normalizer for density and rate construction.
+
+We flag one absence explicitly because it is easy to assume otherwise:
+\textbf{there is no educational-attainment variable} in the panel. Any reading of
+our fairness audit that supposes education is controlled for is mistaken. The
+demographic stratification used throughout the fairness analysis is a quartile
+split on \texttt{pct\_black}, so the ``higher-minority stratum'' of the main text
+means units above the median on that single covariate, not a composite index.
+
+\subsection{Spatial graph construction and connectivity}
+
+Two adjacency structures are built per city. Queen contiguity joins polygons that
+share any boundary point, computed by spatial join on geometries snapped to a
+$10^{-4}$-degree precision grid to defuse floating-point boundary comparisons,
+with an \texttt{intersects} fallback if \texttt{touches} yields fewer edges than
+nodes. The second graph joins each unit to its $k = 8$ nearest neighbours by
+centroid distance in a projected meter-based coordinate reference system
+(EPSG:26971 for Chicago, EPSG:32118 for New York).
+
+We correct a description here that appeared in earlier drafts of the main text.
+The second graph is \textbf{geographic}, not demographic: it connects spatially
+proximate units that do not happen to share a boundary, and it does not consult
+the covariate vector at all. Describing it as a nearest-neighbour graph in
+demographic feature space, as we previously did, misstates the construction and
+also misstates its motivation -- what it supplies is proximity beyond adjacency,
+not similarity of composition.
+
+Table~\ref{tab:s-graphs} reports the realized connectivity. The measured
+statistics justify the dual-graph design more concretely than the motivation given
+in the main text: under queen contiguity alone, \textbf{one New York precinct is
+isolated}, with degree zero, and would receive no spatial message passing
+whatever. The $k$-nearest-neighbour graph raises its degree to at least two.
+Chicago has no isolated unit but its minimum queen degree is $1$, so the same
+mechanism is operating less dramatically there.
+
+\begin{table}[!t]
+  \centering
+  \caption{Realized graph connectivity, computed from the released shapefiles by
+  \texttt{build\_adjacency\_from\_geodataframe} with $k = 8$. Degrees are
+  in-degrees. The isolated NYC precinct under queen contiguity is the concrete
+  reason the second graph is not redundant.}
+  \label{tab:s-graphs}
+  \begin{tabular}{l l r r r r r}
+    \toprule
+    \textbf{City} & \textbf{Graph} & \textbf{Nodes} & \textbf{Edges}
+    & \textbf{Mean deg.} & \textbf{Min} & \textbf{Max} \\
+    \midrule
+    Chicago & queen & 77 & 394 & 5.12 & 1 & 9 \\
+    Chicago & $k$-NN ($k{=}8$) & 77 & 616 & 8.00 & 1 & 13 \\
+    \addlinespace
+    New York & queen & 78 & 240 & 3.08 & \textbf{0} & 6 \\
+    New York & $k$-NN ($k{=}8$) & 78 & 624 & 8.00 & 2 & 13 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The $k$-NN mean in-degree is exactly $8.00$ in both cities because every node
+contributes exactly eight out-edges; the in-degree spread of $1$ to $13$ reflects
+the asymmetry of nearest-neighbour relations, and the graph is used as a directed
+edge set without symmetrization.
+
+% =====================================================================
+\section{Additional Diagnostics}
+\label{sec:s5}
+% =====================================================================
+
+\subsection{Group-stratified coverage}
+
+Table~\ref{tab:s-groups} reports coverage and mean width within each demographic
+quartile for the calibrator selected in each city. The disparity figures quoted in
+the main text, $0.0238$ and $0.0286$, are the ranges of the coverage column.
+
+\begin{table}[!t]
+  \centering
+  \caption{Coverage and width by demographic quartile for the selected
+  calibrator. Group $0$ is the lowest \texttt{pct\_black} quartile. Abstention is
+  zero in every cell, so $n_{\mathrm{issued}} = n$ throughout.}
+  \label{tab:s-groups}
+  \begin{tabular}{l l r r r}
+    \toprule
+    \textbf{City} & \textbf{Group} & $n$ & \textbf{Coverage}
+    & \textbf{Mean width} \\
+    \midrule
+    Chicago & 0 & 3180 & 0.8994 & 17.65 \\
+    (equalized & 1 & 3021 & 0.9037 & 13.36 \\
+    coverage) & 2 & 3021 & 0.9043 & 12.71 \\
+            & 3 & 3021 & 0.9232 & 14.43 \\
+    \addlinespace
+    New York & 0 & 3180 & 0.8858 & 16.94 \\
+    (variance-scaled & 1 & 3021 & 0.9020 & 19.60 \\
+    split CP) & 2 & 3180 & 0.9145 & 14.94 \\
+            & 3 & 3021 & 0.8984 & 14.35 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two observations that the marginal numbers conceal. Coverage is not uniformly at
+or above nominal within groups: Chicago group $0$ sits at $0.8994$ and New York
+groups $0$ and $3$ at $0.8858$ and $0.8984$, all below the $0.90$ target. The
+marginal guarantee is marginal, and a group-conditional guarantee is what ECRC and
+the Mondrian variants target at the cost of width. And width varies more across
+groups than coverage does -- Chicago spans $12.71$ to $17.65$, a factor of
+$1.39$ -- so equal coverage is being purchased with unequal sharpness. Whether
+that trade is acceptable is a policy question our constraint does not resolve; we
+report it because a coverage-only audit would hide it.
+
+\subsection{Per-category decomposition}
+
+Table~\ref{tab:s-categories} gives the per-category CRPS for the model and the
+rolling historical average, with the resulting skill scores.
+
+\begin{table}[!t]
+  \centering
+  \caption{Per-category CRPS and skill score against the rolling historical
+  average, Chicago. Categories differ by more than an order of magnitude in
+  scale, so the aggregate CRPS is dominated by property crime.}
+  \label{tab:s-categories}
+  \begin{tabular}{l r r r}
+    \toprule
+    \textbf{Category} & \textbf{CIVIC-SAFE CRPS} & \textbf{Rolling HA CRPS}
+    & \textbf{CRPSS} \\
+    \midrule
+    Violent & 3.1324 & 3.3220 & $+0.0571$ \\
+    Property & 4.7967 & 4.9166 & $+0.0244$ \\
+    Drug & 0.5510 & 0.5579 & $+0.0124$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The decomposition is more informative than the aggregate. Skill is concentrated in
+violent crime, at $+5.71\%$, and is close to negligible on drug crime at
+$+1.24\%$ -- which is the sparsest category, at $50.89\%$ zero cells, and
+therefore the one where the zero-inflated component of the likelihood is doing the
+most work and the least room exists to beat a trailing mean. The aggregate
+$+3.60\%$ is a scale-weighted average dominated by property crime, the category on
+which our margin is second smallest. A reader interested in violent-crime
+forecasting specifically should take $+5.71\%$; a reader interested in the
+aggregate should take $+3.60\%$; neither should take the largest number in the
+paper.
+
+\subsection{A diagnostic we cannot supply}
+
+A group-stratified probability integral transform -- PIT uniformity tested
+separately within each demographic quartile -- would sharpen the Chicago
+misspecification finding considerably, by establishing whether the compressed
+right tail is concentrated in particular strata or is uniform across them. We
+cannot compute it from the released artifacts. The randomized PIT requires the
+per-cell ZINB parameters $(\pi_s, \mu_s, r_s)$, and the persisted prediction
+file carries only observed counts, point predictions, the rolling-average
+reference, the conformal upper bound and the group label. Recomputing it requires
+re-running inference from the checkpoints and persisting the parameter tensors,
+a one-line change to the evaluation script that we have not made.
+
+We state this rather than substitute the pooled PIT and let the section heading
+imply more than was done. The pooled result stands: Chicago
+$\chi^2 = 241.84$ on nine degrees of freedom, $p = 5.25\times10^{-47}$; New York
+$\chi^2 = 10.75$, $p = 0.293$. The spatial residual map in the main text is the
+closest available proxy for the stratified question, and it shows the shortfall
+concentrated on the West Side rather than distributed evenly, with $65$ of $77$
+areas under-predicted and a correlation of $-0.66$ between an area's mean count
+and its mean residual.
+
+\end{document}

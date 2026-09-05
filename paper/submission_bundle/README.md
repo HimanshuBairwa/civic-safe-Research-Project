@@ -8,11 +8,15 @@ sources in `paper/` and re-run that script.
 ## Contents
 
 ```
-civic_safe_ieee.tex     manuscript (pure ASCII, no inputenc needed)
-references.bib          21 verified BibTeX entries
-figures/                12 figures, exactly those the manuscript cites
-tables/                 7 table floats, generated from outputs/tables/
+civic_safe_ieee.tex             main manuscript (pure ASCII, no inputenc needed)
+civic_safe_supplementary.tex    supplementary material, compiled separately
+references.bib                  21 verified BibTeX entries
+figures/                        12 figures, exactly those the manuscript cites
+tables/                         7 table floats, generated from outputs/tables/
 ```
+
+The two `.tex` files are independent compilation units. Compile each in turn; the
+supplementary shares `figures/` and needs no bibliography of its own.
 
 ## Compiling
 
@@ -55,7 +59,7 @@ Theorem environments come from plain `\newtheorem` plus IEEEtran's own
 
 ## Verification
 
-`python scripts/validate_latex.py paper/submission_bundle/civic_safe_ieee.tex`
-checks that every citation resolves to a bib entry, every `\ref` resolves to a
-`\label`, and every `\includegraphics` target exists on disk. It is static
-analysis and does not replace compiling.
+`python scripts/validate_latex.py` with no arguments validates the main manuscript,
+the supplementary and both bundle copies. It checks that every citation resolves to
+a bib entry, every `\ref` resolves to a `\label`, and every `\includegraphics`
+target exists on disk. It is static analysis and does not replace compiling.
