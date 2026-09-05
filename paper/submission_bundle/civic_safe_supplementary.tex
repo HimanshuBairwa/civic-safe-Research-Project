@@ -593,13 +593,11 @@ nodes. The second graph joins each unit to its $k = 8$ nearest neighbours by
 centroid distance in a projected meter-based coordinate reference system
 (EPSG:26971 for Chicago, EPSG:32118 for New York).
 
-We correct a description here that appeared in earlier drafts of the main text.
-The second graph is \textbf{geographic}, not demographic: it connects spatially
-proximate units that do not happen to share a boundary, and it does not consult
-the covariate vector at all. Describing it as a nearest-neighbour graph in
-demographic feature space, as we previously did, misstates the construction and
-also misstates its motivation -- what it supplies is proximity beyond adjacency,
-not similarity of composition.
+As specified in the main text, the second graph is \textbf{geographic}, not demographic:
+it connects spatially proximate units that do not happen to share a boundary, and it does
+not consult the covariate vector at all. Describing it as a nearest-neighbour graph in
+demographic feature space would misstate the construction and also misstate its motivation --
+what it supplies is proximity beyond adjacency, not similarity of composition.
 
 Table~\ref{tab:s-graphs} reports the realized connectivity. The measured
 statistics justify the dual-graph design more concretely than the motivation given

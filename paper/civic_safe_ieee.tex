@@ -171,7 +171,7 @@ rather than excuses. Section~\ref{sec:limitations} collects these.
   \centering
   \includegraphics[width=0.98\textwidth]{fig_architecture.pdf}
   \caption{End-to-end system architecture of CIVIC-SAFE across six pipeline stages.
-  \textbf{Stage 1 (Inputs \& Urban Graphs):} Weekly count tensors $\mathbf{Y} \in \mathbb{N}^{S \times T \times C}$ alongside dual spatial adjacencies ($\mathcal{E}_{\mathrm{queen}}$ for geographic contiguity and $\mathcal{E}_{k\mathrm{NN}}$ for demographic similarity) and exogenous census covariates.
+  \textbf{Stage 1 (Inputs \& Urban Graphs):} Weekly count tensors $\mathbf{Y} \in \mathbb{N}^{S \times T \times C}$ alongside dual spatial adjacencies ($\mathcal{E}_{\mathrm{queen}}$ for boundary contiguity and $\mathcal{E}_{k\mathrm{NN}}$ for centroid proximity, $k=8$) and exogenous census covariates.
   \textbf{Stage 2 (Sequential V1 Backbone):} Dual-graph GATv2 spatial attention coupled with staged temporal attention and a three-parameter Zero-Inflated Negative Binomial (ZINB) output head $(\pi, \mu, r)$ with dispersion regularization.
   \textbf{Stage 3 (Ensemble):} Five-seed EMOS ensemble trained with entropy-regularized CRPS minimization to distill robust epistemic representations.
   \textbf{Stage 4 (Conformal Calibration):} Finite-sample distribution-free CQR interval calibration across ten conformal variants evaluated under a pre-registered 3\% demographic disparity ceiling.
@@ -648,9 +648,11 @@ Section~\ref{sec:theory} is written $\varphi$ throughout to keep the two apart.
 
 \subsection{Architecture}
 Space first. Two adjacency structures feed a GATv2 encoder: queen contiguity for
-immediate geographic spillover, and $k$-nearest neighbours in demographic feature
-space for areas that behave alike without touching. Attention is computed
-dynamically over the union of both neighbourhoods,
+immediate boundary spillover, and centroid $k$-nearest neighbours ($k=8$ in
+projected coordinates; EPSG:26971 Chicago, EPSG:32118 NYC) for proximity beyond
+adjacency, which also resolves isolated precincts that have zero queen neighbours
+(see Supplementary Material Section S4). Attention is computed dynamically over
+the union of both neighbourhoods,
 \begin{equation}
 \label{eq:gat}
 \begin{aligned}

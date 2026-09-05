@@ -85,7 +85,7 @@ $$\mathcal{L}_{\text{ZINB}}(y>0) = -\log(1-\pi) - \log\Gamma(y+r) + \log\Gamma(r
 
 To capture spatial diffusion, we use a Graph Attention Network v2 (Brody et al., 2022) operating over two distinct adjacency structures:
 1. **Queen Contiguity** ($\mathcal{E}_{\text{queen}}$): Captures immediate geographic spillover.
-2. **K-Nearest Neighbors** ($\mathcal{E}_{\text{knn}}$): Captures global spatial autocorrelation between demographically similar but non-contiguous areas.
+2. **K-Nearest Neighbors** ($\mathcal{E}_{\text{knn}}$): Captures spatial proximity beyond boundary contiguity via centroid distance ($k=8$ in projected coordinates; EPSG:26971 for Chicago, EPSG:32118 for NYC), ensuring graph connectivity for non-contiguous or island spatial units.
 
 ### 2.1 Dynamic Attention
 For any edge $(j \to i)$ in the combined graph, the attention coefficient is computed dynamically:
