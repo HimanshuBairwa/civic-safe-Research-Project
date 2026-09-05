@@ -10,14 +10,14 @@ as the base predictor, not the contribution.
 Model (Allocation under Observation-Biased Feedback, AOBF)
 ----------------------------------------------------------
 * Latent incidence intensity ``lambda_s > 0`` per spatial cell ``s`` — never observed.
-* Policy allocates attention ``a_s = pi(mu_s)`` from the model's recorded-rate
+* Policy allocates attention ``a_s = phi(mu_s)`` from the model's recorded-rate
   estimate ``mu_s`` (any smooth increasing policy; e.g. patrol proportional to
   a predicted upper quantile).
 * Observation-biased recording (the Ensign et al. 2018 mechanism):
   ``y_s ~ Poisson(lambda_s * g(a_s))`` where detection gain ``g`` is smooth and
   increasing — more attention inflates what gets recorded.
 * A consistent online learner tracks the recorded mean, so the feedback fixed
-  point satisfies ``mu_s = lambda_s * g(pi(mu_s))``.
+  point satisfies ``mu_s = lambda_s * g(phi(mu_s))``.
 
 Feedback gain
 -------------
@@ -26,11 +26,11 @@ policy elasticity and the detection elasticity, evaluated at the fixed point.
 
 Main results (all verified numerically in ``tests/test_feedback_law.py``)
 -------------------------------------------------------------------------
-1. **Universal Amplification Law** (:func:`amplification_exponent`):
+1. **Amplification elasticity** (:func:`amplification_exponent`):
    ``d log mu_s / d log lambda_s = 1 / (1 - kappa)``.
    Recorded disparity is true disparity raised to ``1/(1-kappa)``. The exponent
    has a pole at ``kappa* = 1`` — the runaway threshold. The result is
-   coordinate-free (holds for any smooth increasing ``pi``, ``g``), not a
+   coordinate-free (holds for any smooth increasing ``phi``, ``g``), not a
    power-law artefact.
 
 2. **Runaway-Discrimination Corollary** (:func:`disparity_ratio`):
@@ -41,9 +41,19 @@ Main results (all verified numerically in ``tests/test_feedback_law.py``)
 3. **Passive impossibility / Active identification duality**
    (:func:`identify_kappa_did`): the confidently-wrong state is *not*
    detectable from passively observed data (a biased world and an honest world
-   induce identical observables), but ``kappa`` is point-identified by a
-   difference-in-differences on log recorded rates after an exogenous shock to
-   detection sensitivity (a staggered ShotSpotter / patrol-policy change).
+   induce identical observables). A difference-in-differences on log recorded
+   rates after an exogenous shock to detection sensitivity (a staggered
+   ShotSpotter / patrol-policy change) estimates the **recording elasticity**
+   ``rho``.
+
+   It does **not** point-identify the loop gain. ``kappa = beta * rho`` requires
+   a separately assumed policy elasticity ``beta``, and the DiD carries an
+   un-cancelled term in the unobserved latent level, so ``kappa`` belongs in a
+   sensitivity table rather than a point estimate. On real data the DiD is a
+   null. See ``docs/AUDIT_2026-07.md`` section 1 and ``MATHEMATICS.md`` section
+   0.2; the manuscript states it this way in Section III and in Limitations.
+   Earlier revisions of this docstring claimed point identification and were
+   wrong.
 
 References
 ----------

@@ -36,10 +36,10 @@
 \newtheorem{theorem}{Theorem}
 \newtheorem{corollary}{Corollary}
 
-% This manuscript carries 21 floats (12 figures, 8 tables, 1 algorithm) across
-% roughly twelve pages, several of them full-width figure* / table*. Raising the
-% limits lets floats occupy the page smoothly without "Too many unprocessed
-% floats".
+% This manuscript carries 22 floats -- 12 figures (10 single-column, 2 full-width),
+% 9 tables (the notation and latent-coverage tables inline, 7 \input from
+% paper/tables/) and 1 algorithm. Raising the per-page limits lets floats occupy
+% the page smoothly without "Too many unprocessed floats".
 \setcounter{topnumber}{4}
 \setcounter{bottomnumber}{3}
 \setcounter{totalnumber}{6}
@@ -51,10 +51,11 @@
 % The counters above govern how many floats may be PLACED per page; they do not
 % raise LaTeX's limit on how many may be HELD awaiting placement, which is 18.
 % Starred floats cannot be placed on the page that emits them, so a run of
-% figure*/table* accumulates, and 21 floats can trip that ceiling and abort the
-% build with "Too many unprocessed floats" no matter how generous the counters
-% are. \extrafloats has been a kernel command since the 2015 LaTeX release, so
-% this needs no extra package on Overleaf or in any current distribution.
+% figure*/table* accumulates -- six of the 22 floats here are starred -- and the
+% document can trip that ceiling and abort with "Too many unprocessed floats" no
+% matter how generous the counters are. \extrafloats has been a kernel command
+% since the 2015 LaTeX release, so this needs no extra package on Overleaf or in
+% any current distribution. 18 + 48 = 66 leaves 44 slots of headroom.
 \extrafloats{48}
 
 \begin{document}
@@ -1019,7 +1020,7 @@ areas.
 
 \begin{figure}[!t]
   \centering
-  \includegraphics[width=0.86\linewidth]{spatial_error_map.png}
+  \includegraphics[width=0.86\linewidth]{spatial_error_map.pdf}
   \caption{Mean signed residual per Chicago community area, violent crime, over
   the 53-week 2023 test set. Each area is shaded by
   $\overline{\hat{y} - y}$, the time-averaged prediction minus observation, on a

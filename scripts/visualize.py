@@ -76,11 +76,17 @@ def plot_spatial_error(gdf, city="chicago"):
     )
     ax.axis('off')
     
+    # Save both raster and vector. The choropleth is polygon fills and text, so a
+    # PDF stays crisp at any zoom and is what IEEE prefers for line art; the PNG
+    # is kept for the Markdown/Word mirrors, which cannot embed PDF.
     out_path = os.path.join(OUTPUT_DIR, "spatial_error_map.png")
     plt.tight_layout()
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    pdf_path = os.path.join(OUTPUT_DIR, "spatial_error_map.pdf")
+    plt.savefig(pdf_path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path}")
+    print(f"Saved: {pdf_path}")
 
 # 2. Target-Centric Spatial Attention Map (GATv2 incoming edge weights using NetworkX + GeoPandas)
 def plot_target_centric_attention(gdf, attention_weights=None):

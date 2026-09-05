@@ -167,7 +167,7 @@ Ethical Considerations rather than defend it. But the comparison the question
 implies is the wrong one. The alternative is not 93% coverage on all cells — it is
 **16.2% coverage on all cells, delivered with no warning.**
 
-**The numbers** (Table VIII, from `outputs/figure_data/fig10_latent_correction.json`):
+**The numbers** (the latent-coverage table in Section V-E of the manuscript, from `outputs/figure_data/fig10_latent_correction.json`):
 
 | κ | naive latent coverage | corrected | cells retained |
 |---:|---:|---:|---:|
@@ -253,7 +253,7 @@ converge." The observed divergence is *consistent* with dispersion collapse and 
 is the failure mode our parameterization is explicitly designed to prevent, but we
 did not instrument statsmodels' internals to confirm that `alpha` specifically ran
 away. We therefore do not claim our margin over classical ZINB as evidence of
-method superiority: Table I footnotes the NYC entry as diverged and **excludes it
+method superiority: the main benchmark table footnotes the NYC entry as diverged and **excludes it
 from ranking**. Our substantive comparison is against the rolling historical
 average and the four deep baselines, and a reviewer is entitled to ask us to
 re-fit the ZINB baseline with a higher cap and a dispersion floor. We would expect
@@ -459,8 +459,9 @@ simulator. At kappa = 0 the deflation is the identity map by algebra.
 the distribution of `mu`, so `lambda_hat_s = mu_s / m_s = mu_s` identically and the
 corrected interval is the uncorrected interval. No data-generating assumption
 enters. The empirical rows -- latent coverage 0.950 to 0.949 in
-Table VIII, routing disparity 0.287 to 0.287 with reduction exactly 0.000 in
-Fig. 11 -- are a *check that the implementation matches the algebra*, not evidence
+the latent-coverage table, routing disparity 0.287 to 0.287 with reduction exactly
+0.000 in the routing-disparity figure -- are a *check that the implementation
+matches the algebra*, not evidence
 for the algebra. A provable negative control is strictly stronger than an observed
 one, and the distinction is worth making because it is the difference between "we
 looked and found nothing" and "there is nothing to find".
