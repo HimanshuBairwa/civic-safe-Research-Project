@@ -10,7 +10,7 @@ sources in `paper/` and re-run that script.
 ```
 civic_safe_ieee.tex     manuscript (pure ASCII, no inputenc needed)
 references.bib          21 verified BibTeX entries
-figures/                10 figures, exactly those the manuscript cites
+figures/                12 figures, exactly those the manuscript cites
 tables/                 7 table floats, generated from outputs/tables/
 ```
 

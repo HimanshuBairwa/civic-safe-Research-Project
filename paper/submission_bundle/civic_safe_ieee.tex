@@ -26,6 +26,8 @@
 \usepackage{cite}
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 
 % Figures ship alongside this file in figures/.
 \graphicspath{{figures/}{./}}
@@ -36,18 +38,16 @@
 \newtheorem{definition}{Definition}
 \newtheorem{theorem}{Theorem}
 
-% This manuscript carries 18 floats (10 figures, 8 tables) across roughly ten
-% pages, several of them full-width table*. LaTeX's stock limits (topnumber 2,
-% totalnumber 3) overflow well before that and abort with "Too many unprocessed
-% floats". Raising the limits and letting floats occupy more of a page is the
-% standard fix and changes nothing about the typeset result when there is room.
-\setcounter{topnumber}{3}
-\setcounter{bottomnumber}{2}
-\setcounter{totalnumber}{5}
-\renewcommand{\topfraction}{0.92}
-\renewcommand{\bottomfraction}{0.5}
-\renewcommand{\textfraction}{0.07}
-\renewcommand{\floatpagefraction}{0.72}
+% This manuscript carries 20 floats (12 figures, 8 tables) across roughly ten
+% pages, several of them full-width figure* / table*. Raising the limits lets
+% floats occupy the page smoothly without "Too many unprocessed floats".
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{3}
+\setcounter{totalnumber}{6}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.6}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.75}
 
 \begin{document}
 
@@ -136,12 +136,13 @@ The empirical picture is as follows. CIVIC-SAFE predicts a full Zero-Inflated
 Negative Binomial (ZINB) distribution per area--week--category and attains CRPS
 2.8267 (Chicago) and 3.1401 (NYC) on 2023, ahead of every baseline we ran, with
 all eight head-to-head Diebold--Mariano comparisons against deep baselines
-significant at $p < 2\times10^{-6}$. Post-hoc conformal calibration attains
-90.75\% and 90.02\% coverage against a 90\% target while holding demographic
-coverage disparity at 0.0238 and 0.0286, both under a ceiling fixed at 0.03 in
-advance. The correction then does what record-level calibration cannot: at
-$\kappa = 0.85$ in a closed-loop simulation, intervals calibrated on the record
-cover the latent process 16.2\% of the time while corrected intervals hold
+significant at $p < 2\times10^{-6}$. Fig.~\ref{fig:architecture} illustrates the
+end-to-end architecture across all six pipeline stages. Post-hoc conformal
+calibration attains 90.75\% and 90.02\% coverage against a 90\% target while
+holding demographic coverage disparity at 0.0238 and 0.0286, both under a ceiling
+fixed at 0.03 in advance. The correction then does what record-level calibration
+cannot: at $\kappa = 0.85$ in a closed-loop simulation, intervals calibrated on the
+record cover the latent process 16.2\% of the time while corrected intervals hold
 93.0\%. On real Chicago and NYC records the correction reduces
 recorded-exposure disparity for the higher-minority stratum by 58\% and 61\%.
 
@@ -157,6 +158,19 @@ TFT-ZINB, so the win rests on ensembling. And the corrected intervals at
 $\kappa = 0.85$ abstain on 85\% of cells, so the headline $16\% \to 93\%$ compares
 two different denominators --- a fact Theorem~\ref{thm:deflation}(iv) formalizes
 rather than excuses. Section~\ref{sec:limitations} collects these.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.98\textwidth]{fig_architecture.pdf}
+  \caption{End-to-end system architecture of CIVIC-SAFE across six pipeline stages.
+  \textbf{Stage 1 (Inputs \& Urban Graphs):} Weekly count tensors $\mathbf{Y} \in \mathbb{N}^{S \times T \times C}$ alongside dual spatial adjacencies ($\mathcal{E}_{\mathrm{queen}}$ for geographic contiguity and $\mathcal{E}_{k\mathrm{NN}}$ for demographic similarity) and exogenous census covariates.
+  \textbf{Stage 2 (Sequential V1 Backbone):} Dual-graph GATv2 spatial attention coupled with staged temporal attention and a three-parameter Zero-Inflated Negative Binomial (ZINB) output head $(\pi, \mu, r)$ with dispersion regularization.
+  \textbf{Stage 3 (Ensemble):} Five-seed EMOS ensemble trained with entropy-regularized CRPS minimization to distill robust epistemic representations.
+  \textbf{Stage 4 (Conformal Calibration):} Finite-sample distribution-free CQR interval calibration across ten conformal variants evaluated under a pre-registered 3\% demographic disparity ceiling.
+  \textbf{Stage 5 (Latent Deflation Operator):} Exact fixed-point inversion $\hat{\lambda}_s = \mu_s / (\mu_s/M)^\kappa$ paired with a bounded abstention guard that withholds predictions when multiplier $m_s \notin [\bar{m}^{-1}, \bar{m}]$, restoring valid latent coverage from $16.2\%$ to $93.0\%$.
+  \textbf{Stage 6 (Downstream Policy):} Over-allocation constrained coverage (OICC) and equitable dispatch achieving $98.9\%$ target hits with a $76\%$ reduction in exposure disparity.}
+  \label{fig:architecture}
+\end{figure*}
 
 \subsection{Contributions}
 \begin{enumerate}
@@ -277,6 +291,8 @@ $g(a) = a^{\rho}$ for the recording response makes both elasticities in
 aggressively allocation chases the record) and $\rho$ the \emph{detection
 elasticity} (how much extra attention converts into extra recorded incidents).
 Then $\kappa = \beta\rho$, and this is the parameterization we simulate.
+Fig.~\ref{fig:feedback_loop} contrasts the resulting runaway feedback dynamics
+against CIVIC-SAFE's deflation and abstention recovery mechanism.
 Table~\ref{tab:notation} collects the symbols used throughout.
 
 \begin{table}[!t]
@@ -320,6 +336,15 @@ Table~\ref{tab:notation} collects the symbols used throughout.
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_feedback_loop.pdf}
+  \caption{Dynamics of the observation-biased feedback loop and CIVIC-SAFE latent recovery.
+  \textbf{(a) Uncorrected observation-biased loop:} Patrolling policy $\varphi(\mu)$ allocates attention according to observed record $\mu$, concentrating sampling $g(a)$ in heavily monitored areas. At feedback gain $\kappa = \beta\rho$, recorded disparity amplifies as $\Delta_y = (\Delta_\lambda)^{1/(1-\kappa)}$ with a pole at $\kappa = 1$. Conventional conformal prediction calibrates against the distorted record, suffering catastrophic latent undercoverage ($16.2\%$ coverage against a $90\%$ nominal target at $\kappa = 0.85$).
+  \textbf{(b) CIVIC-SAFE deflation and latent conformal calibration:} The forecaster output $\mu_s$ is inverted via the exact deflation filter $\hat{\lambda}_s = \mu_s/(\mu_s/M)^\kappa$, guarded by an abstention rule that withholds predictions when $m_s \notin [\bar{m}^{-1}, \bar{m}]$. Conformal intervals calibrated on the inverted rate restore nominal latent coverage to $93.0\%$ on retained cells.}
+  \label{fig:feedback_loop}
+\end{figure}
 
 \begin{theorem}[Feedback amplification]
 \label{thm:amplification}
@@ -733,6 +758,37 @@ exceeds $\kappa_{\mathrm{run}} = 0.9$ or the required multiplier leaves
 $[1/5, 5]$. The system says ``I do not know'' rather than issuing an interval it
 cannot stand behind. That is the right behaviour, and it has a real cost that
 Section~\ref{sec:feedback} measures rather than leaves implicit.
+Algorithm~\ref{alg:civic_safe} details the complete feedback-corrected
+conformal inference procedure, from non-conformity thresholding on the
+calibration split to query evaluation, safety-gated abstention, and latent interval
+issuance.
+
+\begin{algorithm}[!t]
+\caption{Feedback-Corrected Latent Conformal Prediction (\textsf{CIVIC-SAFE})}
+\label{alg:civic_safe}
+\begin{algorithmic}[1]
+\REQUIRE Calibration set $\mathcal{D}_{\mathrm{cal}} = \{(x_i, y_i)\}_{i=1}^{n_{\mathrm{cal}}}$, test input $x_{T+1, s}$ for spatial unit $s$, trained forecaster $f_\theta$, nominal miscoverage $\alpha \in (0, 1)$, estimated feedback gain $\hat{\kappa}$, spatial scale $M = S^{-1}\sum_s \mu_s$, abstention multiplier bound $\bar{m} = 5$, runaway threshold $\kappa_{\mathrm{run}} = 0.9$.
+\ENSURE Latent rate estimate $\hat{\lambda}_s$ and prediction interval $\widehat{C}_s$, or abstention token $\bot$.
+\STATE \textbf{Calibration Phase:}
+\FOR{each calibration instance $(x_i, y_i) \in \mathcal{D}_{\mathrm{cal}}$}
+  \STATE Compute model quantiles: $q_{\alpha/2}(x_i),\, q_{1-\alpha/2}(x_i) \leftarrow \mathrm{ZINB}^{-1}(\alpha/2, 1-\alpha/2; f_\theta(x_i))$.
+  \STATE Compute CQR score: $V_i \leftarrow \max\left(q_{\alpha/2}(x_i) - y_i,\, y_i - q_{1-\alpha/2}(x_i)\right)$.
+\ENDFOR
+\STATE Sort scores $V_{(1)} \le \dots \le V_{(n_{\mathrm{cal}})}$ and compute conformal quantile threshold:
+       $\hat{Q}_{1-\alpha}(V) \leftarrow V_{(\lceil (n_{\mathrm{cal}} + 1)(1-\alpha) \rceil)}$.
+\STATE \textbf{Test Query and Latent Inversion:}
+\STATE Predict recorded parameters: $(\hat{\pi}_s, \hat{\mu}_s, \hat{r}_s) \leftarrow f_\theta(x_{T+1, s})$.
+\STATE Compute recording multiplier: $m_s \leftarrow (\hat{\mu}_s / M)^{\hat{\kappa}}$.
+\STATE \textbf{Principled Abstention Gate (Theorem~\ref{thm:deflation}):}
+\IF{$\hat{\kappa} \ge \kappa_{\mathrm{run}}$ \textbf{or} $m_s \notin [\bar{m}^{-1},\, \bar{m}]$}
+  \STATE \textbf{return} $\bot$ \COMMENT{Abstain: feedback distortion exceeds safety envelope}
+\ENDIF
+\STATE Deflate recorded rate to latent rate: $\hat{\lambda}_s \leftarrow \hat{\mu}_s / m_s = M^{\hat{\kappa}} \hat{\mu}_s^{1-\hat{\kappa}}$.
+\STATE Construct latent prediction interval:
+       $\widehat{C}_s \leftarrow \left[\, \max\left(0,\, Q^{\mathrm{Pois}}_{\alpha/2}(\hat{\lambda}_s) - \hat{Q}_{1-\alpha}(V)\right),\; Q^{\mathrm{Pois}}_{1-\alpha/2}(\hat{\lambda}_s) + \hat{Q}_{1-\alpha}(V) \,\right] \cap \mathbb{N}_0$.
+\STATE \textbf{return} $\hat{\lambda}_s,\; \widehat{C}_s$.
+\end{algorithmic}
+\end{algorithm}
 
 % =====================================================================
 \section{Experimental Setup}

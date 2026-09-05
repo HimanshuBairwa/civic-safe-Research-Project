@@ -1,18 +1,54 @@
 # Feedback-Corrected Conformal Prediction for Spatiotemporal Crime Forecasting
 
-**Abstract** — Crime records are not crime. Records are produced by a loop: records direct patrols, patrols determine where crime is looked for, and the loop amplifies whatever disparity it began with. A forecaster fit on such records can be exactly calibrated against the record and badly wrong about reality, and no validation on records distinguishes the two cases. We formalize the loop as a fixed point, derive the elasticity with which it amplifies latent disparity, and invert it. The inversion is exact: deflating the recorded rate by the fitted recording multiplier recovers the latent rate identically, and the intervals are valid conditional on a retention rule we state and measure. In simulation at feedback gain 0.85, intervals calibrated on the record cover latent incidence 16.2% of the time against a 90% target; the corrected intervals hold 93.0%, on the 15% of cells they do not abstain on. Under bounded misspecification a Γ-inflated interval retains nominal coverage at a tabulated width cost. The forecaster is a dual-graph GATv2 model with a zero-inflated negative binomial head and a five-seed ensemble: CRPS 2.8267 (Chicago) and 3.1401 (New York) on 2023, ahead of four deep baselines in all eight Diebold–Mariano comparisons at p < 2e-6, with 90.75% and 90.02% conformal coverage under a pre-registered 3% disparity ceiling. Three limits: a rolling historical average beats every deep baseline we ran; Chicago's probability integral transform is non-uniform at p = 5.25e-47; and the feedback gain is not point-identified, so real-data results are sensitivity analyses.
+**Abstract** — Crime records are not crime. Police records are produced by a
+loop: past records direct patrols, patrols produce records, and the loop
+amplifies whatever disparity it started with. A forecaster fit on such records
+can be well calibrated against the record and badly wrong about reality, and no
+amount of held-out validation on records will reveal it. We build CIVIC-SAFE, a
+spatiotemporal forecaster that predicts a full zero-inflated negative binomial
+distribution of weekly crime counts per community area, and we pair it with a
+correction for this measurement problem. Two contributions. First, the applied
+system: a dual-graph GATv2 spatiotemporal transformer with a five-seed
+entropy-regularized EMOS ensemble reaches CRPS 2.8267 on Chicago and 3.1401 on
+New York for 2023, beating four deep baselines in all eight head-to-head
+Diebold-Mariano tests at p < 2e-6, with conformal intervals achieving 90.75% and
+90.02% coverage under a pre-registered 3% disparity ceiling. Second, and the reason for the paper: we deflate
+the recorded rate by a feedback multiplier and issue intervals for the latent
+process. In simulation at feedback gain 0.85, intervals calibrated on the record
+retain only 16.2% coverage of true incidence while our corrected intervals hold
+93.0% — though they abstain on 85% of cells to do it, a cost we quantify rather
+than hide. On real records from both cities, correction cuts exposure disparity
+by 58% and 61%. We report what fails too: Chicago's probability integral
+transform is non-uniform at p = 5e-47, and 65 of its 77 areas come in low.
 
-**Index Terms** — conformal prediction, crime forecasting, algorithmic fairness, feedback loops, measurement error, zero-inflated models, graph neural networks
+**Index Terms** — conformal prediction, crime forecasting, algorithmic fairness,
+feedback loops, measurement error, zero-inflated models, graph neural networks
 
 ---
 
 ## I. Introduction
 
-A crime forecast is also an instrument for producing the data that will train its successor. Weather forecasts do not change the weather. Crime forecasts direct patrols, patrols determine where crime is looked for, and crime that nobody looks for goes unrecorded. Send officers to a block and its recorded rate rises even if the underlying rate holds perfectly still. The training data is an artifact of past decisions by the system one is trying to improve.
+Start with the thing that makes this problem different from ordinary
+forecasting. When a weather model predicts rain, the prediction does not change
+whether it rains. When a crime model predicts crime, the prediction sends
+officers, and officers find crime. Not because they manufacture it, but because
+crime that nobody looks for goes unrecorded. Send more patrols to a block and
+the recorded rate there rises even if the underlying rate held perfectly still.
 
-The consequence is a blind spot in validation, and it is structural rather than a matter of insufficient care. Hold out a year, compute the Continuous Ranked Probability Score (CRPS), check interval coverage: passing every such test establishes that the model predicts *records* well and settles nothing about whether it predicts *crime* well. The two quantities diverge precisely where the stakes are highest, in the neighbourhoods that were over-policed to begin with. Ensign et al. [1] named the loop and showed it runs away. van Amsterdam et al. [2] characterized the general pattern: a model accurate and harmful at once, undetectable by passive validation. Neither supplies a correction.
+So the training data is an artifact of past decisions by the system you are
+trying to improve.
 
-This paper supplies one, and states the conditions under which it holds.
+This has an uncomfortable consequence that we think has been under-appreciated.
+Take a forecaster and validate it the normal way — hold out 2023, compute CRPS,
+check the coverage of your prediction intervals. Suppose everything passes. You
+have learned that the model predicts *records* well. You have learned nothing
+about whether it predicts *crime* well, and the two come apart exactly where it
+matters most: in the neighborhoods that were over-policed to begin with. Ensign
+et al. [1] named this loop and showed it runs away. van Amsterdam et al. [2]
+showed the general pattern of a model that is accurate and harmful at once,
+invisible to passive validation. What nobody has offered is a fix.
+
+That is what we build here.
 
 Our starting point is a fixed-point model. Latent incidence *λ_s* in area *s* is
 unobserved. A policy allocates attention *a_s* = *π*(*μ_s*) based on the
