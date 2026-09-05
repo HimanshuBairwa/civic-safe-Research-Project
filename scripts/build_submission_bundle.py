@@ -266,9 +266,7 @@ def main() -> None:
     # the wrong paper silently -- the worst possible failure mode for a submission
     # artifact. Rebuilding it here makes drift impossible.
     archive = PAPER / "civic_safe_submission_bundle"
-    zip_path = shutil.make_archive(
-        str(archive), "zip", root_dir=str(BUNDLE.parent), base_dir=BUNDLE.name
-    )
+    zip_path = shutil.make_archive(str(archive), "zip", root_dir=str(BUNDLE))
     zp = Path(zip_path)
     print(f"archive: {zp.name}, {zp.stat().st_size/1024:.0f} KiB -> "
           f"{zp.relative_to(PROJECT_ROOT)}")
