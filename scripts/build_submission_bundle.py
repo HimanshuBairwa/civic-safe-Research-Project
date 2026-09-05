@@ -102,11 +102,19 @@ def rewrite_graphicspath(tex: str) -> str:
     )
 
 
-def referenced_figures(tex: str) -> list[str]:
-    """Every \\includegraphics target in the manuscript, in order of appearance."""
+def referenced_figures(*tex_sources: str) -> list[str]:
+    """Every \\includegraphics target across the given sources, in order.
+
+    Takes both the manuscript and the supplementary. The supplementary is a
+    separate compilation unit but shares the bundle's figures/ directory, so a
+    figure cited only by the supplementary must still be copied in -- otherwise the
+    manuscript builds and the supplementary fails on a missing graphic, which is
+    exactly the asymmetry that makes a bundle look complete when it is not.
+    """
     return list(
         dict.fromkeys(
             m.group(1).strip()
+            for tex in tex_sources
             for m in re.finditer(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", tex)
         )
     )
@@ -135,7 +143,8 @@ sources in `paper/` and re-run that script.
 civic_safe_ieee.tex             main manuscript (pure ASCII, no inputenc needed)
 civic_safe_supplementary.tex    supplementary material, compiled separately
 references.bib                  {n_refs} verified BibTeX entries
-figures/                        {n_figs} figures, exactly those the manuscript cites
+figures/                        {n_figs} figures: 12 cited by the manuscript,
+                                4 by the supplementary
 tables/                         {n_tabs} table floats, generated from outputs/tables/
 ```
 
@@ -211,10 +220,11 @@ def main() -> None:
     #     bundle's figures/ directory, and it is a separate compilation unit, so a
     #     publisher can drop it in as the supplementary PDF without edits.
     sup_src = PAPER / SUPPLEMENT
+    sup_tex = ""
     if sup_src.exists():
+        sup_tex = sup_src.read_text(encoding="utf-8")
         (BUNDLE / SUPPLEMENT).write_text(
-            rewrite_graphicspath(sup_src.read_text(encoding="utf-8")),
-            encoding="utf-8",
+            rewrite_graphicspath(sup_tex), encoding="utf-8"
         )
         print(f"  supplementary   -> {SUPPLEMENT} (graphicspath rewritten)")
     else:
@@ -238,15 +248,19 @@ def main() -> None:
         shutil.copy2(src, BUNDLE / "tables" / name)
     print(f"  tables          -> {len(tabs)} file(s)")
 
-    # 4. figures actually referenced, resolved the way LaTeX would
-    figs = referenced_figures(tex)
+    # 4. figures actually referenced, resolved the way LaTeX would. Both documents
+    #    are scanned: they share this one figures/ directory.
+    figs = referenced_figures(tex, sup_tex)
     for name in figs:
         for cand in (FIG_SRC / name, PAPER / "figures" / name):
             if cand.exists():
                 shutil.copy2(cand, BUNDLE / "figures" / name)
                 break
         else:
-            raise SystemExit(f"manuscript references {name} but it was not found")
+            raise SystemExit(
+                f"the manuscript or supplementary references {name} "
+                "but it was not found"
+            )
     print(f"  figures         -> {len(figs)} file(s)")
 
     # 5. README, including the IEEEtran.cls situation

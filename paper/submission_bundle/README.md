@@ -11,7 +11,8 @@ sources in `paper/` and re-run that script.
 civic_safe_ieee.tex             main manuscript (pure ASCII, no inputenc needed)
 civic_safe_supplementary.tex    supplementary material, compiled separately
 references.bib                  21 verified BibTeX entries
-figures/                        12 figures, exactly those the manuscript cites
+figures/                        16 figures: 12 cited by the manuscript,
+                                4 by the supplementary
 tables/                         7 table floats, generated from outputs/tables/
 ```
 

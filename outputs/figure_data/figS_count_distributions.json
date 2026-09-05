@@ -1,0 +1,43 @@
+{
+  "city": "chicago",
+  "week_anchor": "W-MON",
+  "panel": {
+    "S": 77,
+    "T": 313,
+    "C": 3,
+    "incidents": 1326056
+  },
+  "note": "Poisson null is a mixture of cell-specific Poissons at each area's own weekly mean, not a single Poisson at the pooled mean.",
+  "per_category": {
+    "violent": {
+      "mean": 20.920086303472885,
+      "zero_frac": 0.010912410273432639,
+      "poisson_zero_frac_cellwise": 0.009457430046395966,
+      "poisson_zero_frac_pooled": 8.213380777546937e-10,
+      "max": 169,
+      "median": 14.0,
+      "variance": 398.7788094361432,
+      "var_over_mean": 19.062005942582704
+    },
+    "property": {
+      "mean": 31.9504584871997,
+      "zero_frac": 0.0019916186050371355,
+      "poisson_zero_frac_cellwise": 0.0011425645975206224,
+      "poisson_zero_frac_pooled": 1.3307368544456216e-14,
+      "max": 532,
+      "median": 24.0,
+      "variance": 890.1595306183859,
+      "var_over_mean": 27.860618368747673
+    },
+    "drug": {
+      "mean": 2.150242728517489,
+      "zero_frac": 0.5089000456412597,
+      "poisson_zero_frac_cellwise": 0.46034871186987364,
+      "poisson_zero_frac_pooled": 0.11645588717774834,
+      "max": 68,
+      "median": 0.0,
+      "variance": 29.57624044977545,
+      "var_over_mean": 13.754838027131546
+    }
+  }
+}

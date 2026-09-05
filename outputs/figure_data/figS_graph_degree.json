@@ -1,0 +1,38 @@
+{
+  "Chicago": {
+    "queen": {
+      "nodes": 77,
+      "edges": 394,
+      "mean_degree": 5.116883116883117,
+      "min_degree": 1,
+      "max_degree": 9,
+      "n_isolated": 0
+    },
+    "knn": {
+      "nodes": 77,
+      "edges": 616,
+      "mean_degree": 8.0,
+      "min_degree": 1,
+      "max_degree": 13,
+      "n_isolated": 0
+    }
+  },
+  "New York": {
+    "queen": {
+      "nodes": 78,
+      "edges": 240,
+      "mean_degree": 3.076923076923077,
+      "min_degree": 0,
+      "max_degree": 6,
+      "n_isolated": 1
+    },
+    "knn": {
+      "nodes": 78,
+      "edges": 624,
+      "mean_degree": 8.0,
+      "min_degree": 2,
+      "max_degree": 13,
+      "n_isolated": 0
+    }
+  }
+}

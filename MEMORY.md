@@ -36,11 +36,11 @@ project's main rejection trigger.
 | Path | Role |
 |---|---|
 | `paper/civic_safe_ieee.tex` | Main manuscript, IEEEtran two-column, 22 floats |
-| `paper/civic_safe_supplementary.tex` | Supplementary, IEEEtran **one-column**, S-prefixed numbering |
+| `paper/civic_safe_supplementary.tex` | Supplementary, IEEEtran **one-column**, S-prefixed numbering, 4 figures + 6 tables |
 | `paper/references.bib` | 21 verified entries, pure ASCII |
 | `paper/tables/*.tex` | 7 generated table floats — **build artifacts, never hand-edit** |
 | `paper/submission_bundle/` | Self-contained copy — **build artifact** |
-| `paper/civic_safe_submission_bundle.zip` | 23 files **at archive root** for Overleaf/ScholarOne |
+| `paper/civic_safe_submission_bundle.zip` | 27 files **at archive root** for Overleaf/ScholarOne |
 | `docs/IEEE_TPAMI_COVER_LETTER.md` | Cover letter with referee nominations |
 | `docs/REVIEWER_DEFENSE_DOSSIER.md` | Ten anticipated objections, each with a volunteered concession |
 | `docs/NOVELTY_AND_POSITIONING.md` | Adversarial novelty audit — read before touching claims |
@@ -55,6 +55,7 @@ project's main rejection trigger.
 python scripts/ablation_study.py            # outputs/tables/
 python scripts/build_paper_tables.py        # -> paper/tables/
 python scripts/make_paper_figures.py        # figs 9-11 from live experiments
+python scripts/make_supplementary_figures.py    # the 4 supplementary figures
 python scripts/generate_framework_diagrams.py   # figs 1-2 schematics
 python scripts/visualize.py                 # spatial map (PNG + PDF)
 python scripts/build_submission_bundle.py   # -> submission_bundle/ + zip
@@ -256,7 +257,43 @@ disclosed wherever that comparison appears.
 
 **Per-category sparsity (Chicago raw, 1,326,056 incidents):**
 drug 50.89% zero cells (mean 2.15/cell-week), violent 1.09% (20.92),
-property 0.20% (31.95). Zero-inflation earns its place on **drug** crime.
+property 0.20% (31.95).
+
+**The zero atom does far less than 50.89% suggests, and this was nearly
+overstated.** Compared against a *cell-heterogeneous* Poisson null — a mixture of
+per-area Poissons, each at its own weekly mean — the observed zero mass is only
+**1.11x** the null on drug (50.89% vs 46.03%), 1.15x on violent, 1.74x on
+property. A pooled-mean Poisson would have implied 11.65% for drug and so a 4.37x
+excess; that comparison is a **straw man** that credits zero inflation with what is
+really spatial variation in level. What actually justifies ZINB over Poisson is
+**overdispersion**: variance/mean is 19.06 violent, 27.86 property, 13.75 drug,
+against 1 for any Poisson. So the negative binomial carries the model and the atom
+is a modest refinement — the opposite of the emphasis "zero-inflated" invites.
+Recorded in Supplementary S4 (`sec:s4-counts`) and Fig. S2.
+
+**Week-bin anchor differs between the sparsity audit and the model panel.** The
+50.89 / 1.09 / 0.20 figures and maxima 68 / 169 / 532 reproduce *exactly* only on
+**Monday-anchored** weeks. `civicsafe.data.panel.build_spatiotemporal_panel` uses
+`freq="W-SUN"`, giving 51.00 / 1.13 / 0.23 and maxima 70 / 189 / 482. Both are
+T=313 and both bin all 1,326,056 incidents, and the per-cell **means are identical**
+(2.15 / 20.92 / 31.95) because the mean depends only on total/(S*T). Only the zero
+fraction and the maximum move. `make_supplementary_figures.py` uses W-MON so the
+figure agrees with the published prose, and says so in its docstring. No reported
+model metric depends on the choice.
+
+**The Chicago ensemble is beaten by its own best member.** EMOS gives 2.8267;
+member seeds are 2.9313, 2.8539, **2.8182**, 2.8682, 2.8935. The combination beats
+the *mean* member (2.8730) but not the best one. That member is only identifiable
+in hindsight, so averaging is still right — but "the ensemble beats every seed" is
+FALSE for Chicago. New York's ensemble does beat all five (3.1401 vs best 3.1609).
+Distinct from the seed-matched single-model figure 3.3622, which comes from
+`outputs/baselines/chicago_seed_matched.json` and is a different protocol — the two
+numbers are not in conflict.
+
+**Epistemic variance is a small share.** Chicago 2.61%, NYC 4.32% of predictive
+variance (aleatoric 32.89 / 57.37, epistemic 0.88 / 2.59). `emos_fallback_used` is
+**True in both cities**, and on NYC the learned weights are marginally *worse* on
+test than equal weights (3.140108 vs 3.140001).
 
 **Abstention has two branches with different failure modes.** Instrumented over
 24 trials: at kappa=0 the per-cell branch fires on **0.0000%** of cells and the
@@ -308,7 +345,6 @@ evaluated on a criterion it was not trained for.
 ---
 
 ## 7. Verification state at `be53911`
-
 | Check | Result |
 |---|---|
 | `pytest tests/test_calibration.py tests/test_feedback_law.py` | **67 passed** |
@@ -316,16 +352,44 @@ evaluated on a criterion it was not trained for.
 | Tabular row terminators, all 18 LaTeX sources | **0 lone trailing backslashes** (see below) |
 | Table I row parse | 27 data rows, **exactly 2 cells each** against its `ll` colspec |
 | Main manuscript | 21/21 citations, 51/51 refs, 12/12 figures |
-| Supplementary | 28/28 refs, 6 tables (S1-S6), 0 citations by design |
-| Zip vs on-disk bundle | 23 files, **0 SHA-256 mismatches** |
+| Supplementary | 34 refs / 35 labels, **4 figures**, 6 tables (S1-S6), 0 citations by design |
+| Tabular cell counts, every tabular in both documents | **0 mismatches** against colspec |
+| Zip vs on-disk bundle | **27 files**, 0 SHA-256 mismatches, 0 nested, CRC clean |
 | Zip layout | files **at archive root**, 0 nested under `submission_bundle/` |
 | ASCII in `.tex`/`.bib` | **0 non-ASCII, 0 tabs, 0 stray control chars** |
 | AI disclosures | **none** (the word "generative" in Limitations is the statistical term) |
-| Float inventory | 22 floats: 12 figures (10 single-col, 2 full-width), 9 tables, 1 algorithm; 6 starred |
+| Float inventory (main) | 22 floats: 12 figures (10 single-col, 2 full-width), 9 tables, 1 algorithm; 6 starred |
 | Float storage | `\extrafloats{48}` -> ceiling 66, **44 slots headroom** |
 | Width overflow risk | **0** — every `\includegraphics` width <= 1.0 of its unit |
 | Table shrink guards | **7/7** carry the never-upscale `\ifdim` idiom |
-| Bundle figures | **12, all PDF vector** |
+| Bundle figures | **16, all vector**; `spatial_error_map` has one 679x34 raster, its colourbar strip |
+| Font types | 4 new supplementary figures embed TrueType; **9 legacy figures still carry Type 3** — see below |
+
+**Supplementary figure numbering is by DOCUMENT ORDER, not by filename.** The
+filenames deliberately carry no number, because LaTeX assigns them by placement:
+
+| Renders as | File | Section |
+|---|---|---|
+| Fig. S1 | `figS_gamma_frontier.pdf` | S2, after Table S2 |
+| Fig. S2 | `figS_count_distributions.pdf` | S4, `sec:s4-counts` |
+| Fig. S3 | `figS_graph_degree.pdf` | S4, after Table S5 |
+| Fig. S4 | `figS_ensemble_uncertainty.pdf` | S5, `sec:s5-uncertainty` |
+
+`figS_ensemble_uncertainty` **replaces** `fig6_uncertainty_decomposition` for the
+supplementary. The old figure is a two-wedge donut for New York alone and carries a
+`CIVIC-SAFE` watermark drawn by `_add_watermark` in `generate_figures.py` — neither
+belongs in a submission. It also has a silent fallback that substitutes
+`crps_decomposition.uncertainty`/`reliability` for the aleatoric/epistemic fields if
+they are missing; they were present, so the numbers were real, but the fallback
+would have mislabelled two different quantities without warning.
+
+**`\extrafloats` in the supplementary is 32** against 4 figures and 6 tables.
+
+**Type 3 fonts.** matplotlib's PDF default is Type 3, which IEEE PDF eXpress flags.
+Nine bundled figures carry it (figs 1-5, 9-12). Fix is one rcParam,
+`pdf.fonttype: 42`, already set in `make_supplementary_figures.py`; applying it to
+`generate_figures.py` and `make_paper_figures.py` and regenerating would clear the
+rest. Not done — it would rewrite 9 accepted figures.
 
 **Float numbering** (markdown companions cannot track this — refer by name):
 Table I = notation, II = main results, III = ablation, IV = loss ablation,
@@ -421,6 +485,14 @@ in a non-IEEE format. For local builds: `tlmgr install ieeetran`.
 
 - **Never hand-edit** `paper/tables/` or `paper/submission_bundle/`. Both are
   build artifacts. The zip is rebuilt with the bundle so it cannot go stale.
+- **`build_submission_bundle.py` scans BOTH documents for figures.**
+  `referenced_figures(*tex_sources)` takes the manuscript and the supplementary,
+  because they share one `figures/` directory. Scanning only the manuscript would
+  let the manuscript build while the supplementary failed on a missing graphic —
+  a bundle that looks complete and is not.
+- **`paper/oicc_paper.tex` has 2 lone trailing backslashes.** It belongs to the
+  separate OICC line, is not in this submission, and `validate_latex.py` does not
+  cover it. Left alone deliberately; fix it if that paper is ever submitted.
 - **Every number in the paper must trace to a file** under `outputs/` or
   reproduce from a script. Figure scripts dump plotted values to
   `outputs/figure_data/*.json` for exactly this reason.

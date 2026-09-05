@@ -1,0 +1,59 @@
+{
+  "kappa": 0.6,
+  "alpha": 0.1,
+  "cells": 6000,
+  "trials": 8,
+  "target_coverage": 0.9,
+  "plain_last_meets_target_at_gamma": 1.4,
+  "plain_first_fails_at_gamma": 1.6,
+  "rows": [
+    {
+      "gamma": 1.0,
+      "plain": 0.9420416666666667,
+      "inflated": 0.9420416666666667,
+      "width_ratio": 1.0
+    },
+    {
+      "gamma": 1.2,
+      "plain": 0.9327916666666667,
+      "inflated": 0.9775416666666666,
+      "width_ratio": 1.2682957686426104
+    },
+    {
+      "gamma": 1.4,
+      "plain": 0.9056875,
+      "inflated": 0.9871666666666667,
+      "width_ratio": 1.5083167261530122
+    },
+    {
+      "gamma": 1.6,
+      "plain": 0.88025,
+      "inflated": 0.9922291666666667,
+      "width_ratio": 1.7242522020906477
+    },
+    {
+      "gamma": 1.8,
+      "plain": 0.8457083333333334,
+      "inflated": 0.9939166666666666,
+      "width_ratio": 1.9359426296100164
+    },
+    {
+      "gamma": 2.0,
+      "plain": 0.8091250000000001,
+      "inflated": 0.9944583333333333,
+      "width_ratio": 2.1355032735799218
+    },
+    {
+      "gamma": 2.5,
+      "plain": 0.7320416666666667,
+      "inflated": 0.9965,
+      "width_ratio": 2.605852363741007
+    },
+    {
+      "gamma": 3.0,
+      "plain": 0.6762291666666667,
+      "inflated": 0.9974791666666666,
+      "width_ratio": 3.065589243301244
+    }
+  ]
+}
