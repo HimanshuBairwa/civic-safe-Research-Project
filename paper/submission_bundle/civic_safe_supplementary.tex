@@ -524,7 +524,7 @@ All seven classical baselines emit a point forecast, and CRPS is a
 distributional score, so the two must be reconciled. Our evaluation dresses each
 point forecast in a Poisson predictive distribution at that point --
 $\pi = 0$, $\mu = \hat{y}$, $r = 1000$ so the negative binomial collapses to a
-Poisson -- and scores it with the same 	exttt{crps\_zinb} routine used for every
+Poisson -- and scores it with the same \texttt{crps\_zinb} routine used for every
 other method. This is a deliberately generous convention and it is not neutral: a
 Poisson at the right mean has appropriate spread for count data, so it scores far
 better than the degenerate point mass a naive reading would assign. The effect is
