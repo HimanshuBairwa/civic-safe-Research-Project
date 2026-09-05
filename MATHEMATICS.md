@@ -39,6 +39,21 @@ at $\kappa \in \{0.3, 0.5, 0.7, 0.85\}$.
 
 **§0.3 Feedback-corrected latent conformal prediction (the novel constructive step).** Given the identified $\kappa$, deflate the record by the recording multiplier $m_s=(\mu_s/M)^\kappa$ to recover $\hat\lambda_s=\mu_s/m_s$ and issue prediction intervals valid for the **latent** process, with **abstention** as $\kappa\to1$. **Prior work (Ensign 2018; van Amsterdam 2025; Algometrics 2026) diagnoses the pathology; this corrects it.** Implementation: `src/civicsafe/theory/latent_correction.py`; experiment: `scripts/latent_correction_experiment.py`.
 
+The interval itself is formed from Poisson quantiles at the deflated rate,
+written $Q^{\mathrm{Pois}}_p$ to keep it distinct from the ZINB predictive
+quantile $q_p$ of §8.1:
+
+$$\widehat{C}_s = \left[\, Q^{\mathrm{Pois}}_{\alpha/2}\!\left(\hat{\lambda}_s/\Gamma\right), \; Q^{\mathrm{Pois}}_{1-\alpha/2}\!\left(\hat{\lambda}_s\Gamma\right)\, \right]$$
+
+with $\Gamma = 1$ recovering the plain interval and $\Gamma > 1$ giving the
+sensitivity band of `theory/correction_robustness.py`. There is deliberately **no**
+additive conformity margin: the Poisson quantiles are already conservative when
+$\kappa$ is correct, and the response to a wrong $\kappa$ is the multiplicative
+$\Gamma$ band, not an additive widening calibrated on the record --- which would
+reimport the bias the deflation removes. The implementation exposes an additive
+margin as an option; it is zero in every reported result.
+
+
 ## 1. Output Distribution: Zero-Inflated Negative Binomial (ZINB)
 
 CIVIC-SAFE forecasts crime counts as a full probability distribution rather than a point estimate. Crime data is typically extremely sparse (many structural and reporting zeros) and overdispersed (variance > mean). The ZINB distribution is the statistically correct choice for this domain.

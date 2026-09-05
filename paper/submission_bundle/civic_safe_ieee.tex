@@ -37,10 +37,12 @@
 % produces "Command \proof already defined".
 \newtheorem{definition}{Definition}
 \newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
 
-% This manuscript carries 20 floats (12 figures, 8 tables) across roughly ten
-% pages, several of them full-width figure* / table*. Raising the limits lets
-% floats occupy the page smoothly without "Too many unprocessed floats".
+% This manuscript carries 21 floats (12 figures, 8 tables, 1 algorithm) across
+% roughly twelve pages, several of them full-width figure* / table*. Raising the
+% limits lets floats occupy the page smoothly without "Too many unprocessed
+% floats".
 \setcounter{topnumber}{4}
 \setcounter{bottomnumber}{3}
 \setcounter{totalnumber}{6}
@@ -48,6 +50,15 @@
 \renewcommand{\bottomfraction}{0.6}
 \renewcommand{\textfraction}{0.05}
 \renewcommand{\floatpagefraction}{0.75}
+
+% The counters above govern how many floats may be PLACED per page; they do not
+% raise LaTeX's limit on how many may be HELD awaiting placement, which is 18.
+% Starred floats cannot be placed on the page that emits them, so a run of
+% figure*/table* accumulates, and 21 floats can trip that ceiling and abort the
+% build with "Too many unprocessed floats" no matter how generous the counters
+% are. \extrafloats has been a kernel command since the 2015 LaTeX release, so
+% this needs no extra package on Overleaf or in any current distribution.
+\extrafloats{48}
 
 \begin{document}
 
@@ -418,6 +429,42 @@ Theorem~\ref{thm:deflation}(i) exact. Both statements are rearrangements of one
 identity, read in opposite directions --- forward from $\lambda$ to $\mu$ here,
 backward from $\mu$ to $\lambda$ there.
 
+Read backwards, \eqref{eq:powerlaw} answers the question a policymaker actually
+asks, which is not how much a loop amplifies but how much of an observed gap is
+real.
+
+\begin{corollary}[Disparity attribution]
+\label{cor:attribution}
+Under the hypotheses of Theorem~\ref{thm:amplification}(ii), a recorded
+between-group ratio $\Delta_y$ corresponds to a true ratio
+\begin{equation}
+\label{eq:attribution}
+\Delta_{\lambda} = \Delta_y^{\,1-\kappa},
+\end{equation}
+so the fraction of a recorded log-disparity attributable to feedback rather than
+to incidence is exactly $\kappa$.
+\end{corollary}
+
+\begin{IEEEproof}
+Invert \eqref{eq:powerlaw}, which is a bijection on $(0,\infty)$ for
+$\kappa < 1$. Taking logarithms,
+$\log\Delta_y - \log\Delta_{\lambda} = \kappa \log\Delta_y$.
+\end{IEEEproof}
+
+The arithmetic is worth spelling out because it is easy to underrate. At
+$\kappa = 0.5$ a recorded $2{:}1$ gap is a true $1.41{:}1$ gap; at
+$\kappa = 0.6$ a recorded $3{:}1$ gap is a true $1.55{:}1$ gap; at
+$\kappa = 0.85$ a recorded $5{:}1$ gap is a true $1.27{:}1$ gap. Verified against
+the numerical fixed point to $10^{-12}$ relative error across
+$\kappa \in \{0.3, 0.5, 0.6, 0.85\}$. Two consequences follow, in opposite
+directions, and honesty requires both. A recorded disparity is a poor estimate of
+a real one, and reporting recorded gaps as though they measured incidence
+overstates them by a factor that grows without bound as $\kappa \to 1$. But
+\eqref{eq:attribution} is not license to dismiss recorded disparity as an
+artifact: $\Delta_{\lambda} > 1$ whenever $\Delta_y > 1$, so the loop amplifies a
+real gap rather than manufacturing one from nothing. What it manufactures is the
+\emph{magnitude}.
+
 Stability is immediate in logarithms. Under the power-law parameterization the
 fixed-point iteration is
 $\log\mu \leftarrow \log\lambda + \kappa(\log\mu - \log M)$ with $M$ the current
@@ -767,28 +814,49 @@ issuance.
 \caption{Feedback-Corrected Latent Conformal Prediction (\textsf{CIVIC-SAFE})}
 \label{alg:civic_safe}
 \begin{algorithmic}[1]
-\REQUIRE Calibration set $\mathcal{D}_{\mathrm{cal}} = \{(x_i, y_i)\}_{i=1}^{n_{\mathrm{cal}}}$, test input $x_{T+1, s}$ for spatial unit $s$, trained forecaster $f_\theta$, nominal miscoverage $\alpha \in (0, 1)$, estimated feedback gain $\hat{\kappa}$, spatial scale $M = S^{-1}\sum_s \mu_s$, abstention multiplier bound $\bar{m} = 5$, runaway threshold $\kappa_{\mathrm{run}} = 0.9$.
-\ENSURE Latent rate estimate $\hat{\lambda}_s$ and prediction interval $\widehat{C}_s$, or abstention token $\bot$.
-\STATE \textbf{Calibration Phase:}
-\FOR{each calibration instance $(x_i, y_i) \in \mathcal{D}_{\mathrm{cal}}$}
-  \STATE Compute model quantiles: $q_{\alpha/2}(x_i),\, q_{1-\alpha/2}(x_i) \leftarrow \mathrm{ZINB}^{-1}(\alpha/2, 1-\alpha/2; f_\theta(x_i))$.
-  \STATE Compute CQR score: $V_i \leftarrow \max\left(q_{\alpha/2}(x_i) - y_i,\, y_i - q_{1-\alpha/2}(x_i)\right)$.
-\ENDFOR
-\STATE Sort scores $V_{(1)} \le \dots \le V_{(n_{\mathrm{cal}})}$ and compute conformal quantile threshold:
-       $\hat{Q}_{1-\alpha}(V) \leftarrow V_{(\lceil (n_{\mathrm{cal}} + 1)(1-\alpha) \rceil)}$.
-\STATE \textbf{Test Query and Latent Inversion:}
-\STATE Predict recorded parameters: $(\hat{\pi}_s, \hat{\mu}_s, \hat{r}_s) \leftarrow f_\theta(x_{T+1, s})$.
-\STATE Compute recording multiplier: $m_s \leftarrow (\hat{\mu}_s / M)^{\hat{\kappa}}$.
-\STATE \textbf{Principled Abstention Gate (Theorem~\ref{thm:deflation}):}
-\IF{$\hat{\kappa} \ge \kappa_{\mathrm{run}}$ \textbf{or} $m_s \notin [\bar{m}^{-1},\, \bar{m}]$}
-  \STATE \textbf{return} $\bot$ \COMMENT{Abstain: feedback distortion exceeds safety envelope}
+\REQUIRE Test input $x_{T+1, s}$ for spatial unit $s$, trained forecaster
+$f_\theta$, nominal miscoverage $\alpha \in (0,1)$, estimated feedback gain
+$\hat{\kappa}$, panel scale $M = S^{-1}\sum_s \hat{\mu}_s$, multiplier bound
+$\bar{m} = 5$, runaway threshold $\kappa_{\mathrm{run}} = 0.9$, sensitivity factor
+$\Gamma \ge 1$ ($\Gamma = 1$ in the reported results).
+\ENSURE Latent rate estimate $\hat{\lambda}_s$ and interval $\widehat{C}_s$, or
+abstention token $\bot$.
+\STATE Predict recorded parameters:
+       $(\hat{\pi}_s, \hat{\mu}_s, \hat{r}_s) \leftarrow f_\theta(x_{T+1, s})$.
+\STATE Recording multiplier: $m_s \leftarrow (\hat{\mu}_s / M)^{\hat{\kappa}}$.
+\STATE \textbf{Abstention gate} (Theorem~\ref{thm:deflation}(iii)--(iv)):
+\IF{$\hat{\kappa} \ge \kappa_{\mathrm{run}}$}
+  \STATE \textbf{return} $\bot$ \COMMENT{global: correction variance unbounded}
+\ELSIF{$m_s \notin [\bar{m}^{-1},\, \bar{m}]$}
+  \STATE \textbf{return} $\bot$ \COMMENT{per-cell: deflation outside safe envelope}
 \ENDIF
-\STATE Deflate recorded rate to latent rate: $\hat{\lambda}_s \leftarrow \hat{\mu}_s / m_s = M^{\hat{\kappa}} \hat{\mu}_s^{1-\hat{\kappa}}$.
-\STATE Construct latent prediction interval:
-       $\widehat{C}_s \leftarrow \left[\, \max\left(0,\, Q^{\mathrm{Pois}}_{\alpha/2}(\hat{\lambda}_s) - \hat{Q}_{1-\alpha}(V)\right),\; Q^{\mathrm{Pois}}_{1-\alpha/2}(\hat{\lambda}_s) + \hat{Q}_{1-\alpha}(V) \,\right] \cap \mathbb{N}_0$.
+\STATE Deflate to the latent rate (Theorem~\ref{thm:deflation}(i)):
+       $\hat{\lambda}_s \leftarrow \hat{\mu}_s / m_s
+        = M^{\hat{\kappa}}\, \hat{\mu}_s^{\,1-\hat{\kappa}}$.
+\STATE \textbf{Latent interval} (Theorem~\ref{thm:deflation}(ii)); the $\Gamma$
+       band is \eqref{eq:gamma_band}:
+       \[
+       \widehat{C}_s \leftarrow \left[\,
+         Q^{\mathrm{Pois}}_{\alpha/2}\!\left(\hat{\lambda}_s/\Gamma\right),\;
+         Q^{\mathrm{Pois}}_{1-\alpha/2}\!\left(\hat{\lambda}_s\Gamma\right)
+       \,\right].
+       \]
 \STATE \textbf{return} $\hat{\lambda}_s,\; \widehat{C}_s$.
 \end{algorithmic}
 \end{algorithm}
+
+Two features of Algorithm~\ref{alg:civic_safe} are worth flagging because they are
+easy to get wrong. It carries \emph{no} additive conformity margin: by
+Theorem~\ref{thm:deflation}(ii) the Poisson quantiles at the deflated rate are
+already conservative when $\hat\kappa = \kappa$, and the honest response to
+$\hat\kappa \ne \kappa$ is the multiplicative $\Gamma$ band of
+Section~\ref{sec:sensitivity}, not an additive widening calibrated on the
+record --- a record-calibrated margin would import exactly the bias the deflation
+removes. Our implementation exposes an additive margin as an option; it is zero in
+every number reported here. And the two abstention branches are distinct
+mechanisms with distinct causes, which Section~\ref{sec:feedback} separates
+empirically: the global branch responds to the estimated gain, the per-cell branch
+to the required deflation.
 
 % =====================================================================
 \section{Experimental Setup}
@@ -1118,10 +1186,37 @@ conditional on retention. The comparison still means something --- on the cells
 where correction is trustworthy, coverage of the truth is restored from
 catastrophic to near-nominal --- but anyone who reads $16\% \to 93\%$ as
 like-for-like has been misled, so Fig.~\ref{fig:latent} carries the retained
-fraction as a second panel and we label it wherever it appears. There is also a
-cost at the other end: at $\kappa = 0$ the corrector abstains on 25\% of cells
-while improving nothing ($0.950 \to 0.949$). The abstention rule is tuned for the
-high-gain regime and overpays at low gain.
+fraction as a second panel and we label it wherever it appears.
+
+Two properties of the $\kappa = 0$ row deserve to be read deliberately, because
+between them they answer the question a sceptical reader should ask first: does the
+correction manufacture the effect it reports? At zero gain there is nothing to
+correct, and the correction does nothing. Latent coverage moves from $0.950$ to
+$0.949$, and in the routing experiment of Fig.~\ref{fig:routing} disparity moves
+from $0.287$ to $0.287$ with a reduction of exactly $0.000$. The procedure is
+\emph{inert on an unbiased record}. That is a negative control, and it is the
+reason the reductions at higher gain can be attributed to the loop rather than to
+the machinery: a method that shrank disparity at $\kappa = 0$ would be shrinking it
+for some reason other than feedback.
+
+The same row also costs something, and the mechanism is not the one we first
+assumed. At $\kappa = 0$ the corrector abstains on a quarter of cells while
+improving nothing. The natural reading is that the per-cell multiplier bound
+$\bar{m}$ is mistuned for low gain, and that reading is wrong: at
+$\hat\kappa \to 0$ the multiplier $m_s = (\hat\mu_s/M)^{\hat\kappa} \to 1$ for
+every cell, so the per-cell branch cannot fire. Instrumenting the two branches
+separately over $24$ trials confirms it. At $\kappa = 0$ the per-cell branch fires
+on $0.0000\%$ of cells and the entire loss comes from the \emph{global} branch,
+which trips whenever the difference-in-differences estimate happens to exceed
+$\kappa_{\mathrm{run}}$; the estimator has median $\hat\kappa = 0.020$ but a
+maximum of $0.950$, and it crossed the threshold in $12\%$ of trials. At
+$\kappa = 0.85$ the picture inverts: the per-cell branch fires on $85.06\%$ of
+cells and the global branch on only $4\%$ of trials. So the high-gain cost is the
+deflation genuinely leaving the safe envelope, while the low-gain cost is variance
+in $\hat\kappa$ tripping a tripwire that has no confidence statement attached to
+it. The two need different remedies --- a tighter envelope for the first, an
+interval estimate for $\hat\kappa$ rather than a point estimate for the second ---
+and we have implemented neither.
 
 \begin{figure}[!t]
   \centering
@@ -1181,13 +1276,21 @@ ef{thm:amplification} predicts.}
 \textbf{Real records.} Applying the correction to actual Chicago and NYC records
 at an assumed $\kappa = 0.6$ reduces exposure disparity for the higher-minority
 stratum from 0.390 to 0.163 in Chicago ($-58.2\%$) and from 0.311 to 0.122 in NYC
-($-60.8\%$); see Fig.~\ref{fig:crosscity}. Two caveats travel with this result
-and must not be dropped. The gain is \emph{assumed}, not identified --- the
-real-data DiD is a null --- so this is a sensitivity analysis rather than a
-validated identification. And latent coverage cannot be evaluated here at all,
-because the true rate is unobservable on real data. The coverage guarantee lives
-in the simulation above; this shows only that correction moves real-world
-allocation in the predicted direction under a plausible gain.
+($-60.8\%$); see Fig.~\ref{fig:crosscity}. Corollary~\ref{cor:attribution} is what
+licenses reading those reductions as attribution rather than as smoothing: at
+$\kappa = 0.6$ the exponent $1-\kappa = 0.4$ says that $60\%$ of any recorded
+log-disparity is loop and $40\%$ is incidence, and the observed reductions of
+$58\%$ and $61\%$ sit close to that predicted share. We resist making more of the
+agreement than it can bear --- exposure disparity relative to population share is
+not the between-group ratio $\Delta_y$ that \eqref{eq:attribution} is stated for,
+so this is a consistency check on the magnitude, not a test of the corollary. Two
+caveats travel with the result and must not be dropped. The gain is
+\emph{assumed}, not identified --- the real-data DiD is a null --- so this is a
+sensitivity analysis rather than a validated identification. And latent coverage
+cannot be evaluated here at all, because the true rate is unobservable on real
+data. The coverage guarantee lives in the simulation above; this shows only that
+correction moves real-world allocation in the predicted direction, by roughly the
+predicted amount, under a plausible gain.
 
 \begin{figure}[!t]
   \centering

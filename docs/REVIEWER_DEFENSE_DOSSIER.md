@@ -1,19 +1,27 @@
 # Reviewer Defense Dossier — CIVIC-SAFE
 
-Prepared answers to the seven hardest questions a hostile TPAMI, TKDE, KDD or
+Prepared answers to the ten hardest questions a hostile TPAMI, TKDE, KDD or
 NeurIPS reviewer can put to this paper. Every number below was read from a file
 under `outputs/` or produced by a script under `scripts/` and is cited to its
 source. Where the evidence does not exist, the answer says so rather than
 improvising — a defense that overclaims is worse than no defense, because it hands
 the reviewer a second finding.
 
-Two of these questions rest on premises that are **false about our own system**.
-Q5 in particular describes a mechanism our code does not implement. Those are
-answered by correcting the premise, because a reviewer who reads the released code
-will find the same thing, and it is far better to have said it first. Both were
-fixed in the manuscript during this pass.
+Q1–Q7 address the paper as submitted. Q8–Q10 address attack surface that the
+paper's own later additions opened: the disparity-attribution corollary invites a
+charge of unfalsifiability (Q8), the negative control invites the charge that it is
+circular (Q9), and the abstention gate invites a post-selection-inference objection
+(Q10). Anticipating the consequences of one's own new results is the part of this
+exercise that is easy to skip.
 
-Verification date: 2026-09-04. Manuscript: `paper/civic_safe_ieee.tex`.
+Two of these questions rest on premises that are **false about our own system**.
+Q5 describes a mechanism our code does not implement, and Q10's earlier
+explanation of the low-gain abstention cost was wrong about the mechanism until it
+was instrumented. Those are answered by correcting the premise, because a reviewer
+who reads the released code will find the same thing, and it is far better to have
+said it first. Both are now fixed in the manuscript.
+
+Verification date: 2026-09-05. Manuscript: `paper/civic_safe_ieee.tex`.
 
 ---
 
@@ -401,6 +409,111 @@ system would run the same code on the hardware serving the forward pass. And the
 EMOS refit is 8.3 s, so a system that recalibrated on every new week would pay
 that; ours refits per campaign, which is the right cadence for a weekly panel but
 is a design assumption rather than a measured requirement.
+
+---
+
+## Q8. Corollary 1 attributes 60% of recorded log-disparity to feedback at kappa = 0.6, yet you concede kappa is not identified. Is that attribution not unfalsifiable?
+
+**Short answer.** The corollary is a mapping, not a measurement, and we report it
+as one. What makes it more than a tautology is that the mapping is exact, the
+sensitivity of its output to the unknown input is bounded, and the machinery is
+provably inert at kappa = 0.
+
+**What the corollary is.** Inverting the power law gives
+`Delta_lambda = Delta_y^(1-kappa)`, so the share of recorded *log*-disparity
+attributable to the loop is exactly `kappa`. That is an identity conditional on
+kappa, verified against the numerical fixed point to 1e-12 relative error across
+kappa in {0.3, 0.5, 0.6, 0.85}. It is not an estimate of how much real-world
+disparity is artificial; it is the function that converts one into the other once
+kappa is supplied. Section III states it that way and the real-data passage says
+explicitly that the agreement between the predicted 60% share and the observed
+58%/61% reductions is a consistency check on magnitude, not a test of the
+corollary -- exposure disparity relative to population share is not the
+between-group ratio the corollary is stated for.
+
+**Why it is nevertheless disciplined rather than free.** Three reasons. The
+sensitivity envelope of Section III-C bounds the consequence of a wrong kappa:
+under a bounded per-cell deviation the Gamma-inflated interval retains nominal
+coverage, and we tabulate the degradation without inflation (0.942 down to 0.679
+across deviation factors 1.0 to 3.0). The corollary is monotone and
+sign-preserving, so no value of kappa in [0,1) can turn a recorded disparity into
+no disparity: `Delta_lambda > 1` whenever `Delta_y > 1`. And at kappa = 0 the
+deflation is the identity map by algebra, not by fitting -- see Q9 -- so the
+attribution cannot be manufactured by the method in the absence of a loop.
+
+**Concession to volunteer.** A referee who wants the attribution *number* rather
+than the mapping is asking for identified kappa, which we do not have and say so
+in Limitations. The corollary's honest use is as a sensitivity instrument: it tells
+a city what its recorded gap would imply at each assumed gain, and the assumed gain
+remains the reader's to supply.
+
+---
+
+## Q9. The negative control at kappa = 0 runs on your own simulator. Of course the method is inert -- you wrote the generative model.
+
+**Short answer.** The inertness is not empirical and does not depend on the
+simulator. At kappa = 0 the deflation is the identity map by algebra.
+
+**The argument.** The recording multiplier is
+`m_s = (mu_s / M)^kappa`. At kappa = 0 this equals 1 for every cell regardless of
+the distribution of `mu`, so `lambda_hat_s = mu_s / m_s = mu_s` identically and the
+corrected interval is the uncorrected interval. No data-generating assumption
+enters. The empirical rows -- latent coverage 0.950 to 0.949 in
+Table VIII, routing disparity 0.287 to 0.287 with reduction exactly 0.000 in
+Fig. 11 -- are a *check that the implementation matches the algebra*, not evidence
+for the algebra. A provable negative control is strictly stronger than an observed
+one, and the distinction is worth making because it is the difference between "we
+looked and found nothing" and "there is nothing to find".
+
+**What the simulator is genuinely load-bearing for.** Not the negative control, but
+the positive result: the 16.2% to 93.0% restoration at kappa = 0.85 does depend on
+our generative model of the loop, because latent coverage cannot be measured
+without a known latent rate. Limitations says this plainly. The real-data results
+carry no coverage claim at all.
+
+**Concession to volunteer.** The residual 0.950 to 0.949 movement at kappa = 0 is
+not exactly zero, and it should be: it comes from the abstention gate, which drops
+a quarter of cells at kappa = 0 for reasons diagnosed in Q10, so the two coverage
+numbers are computed on slightly different sets. The algebra predicts exact
+equality on a common set, and that is what we observe when the gate is disabled.
+
+---
+
+## Q10. The abstention gate selects on m_s after seeing the model's own mu_hat. That is post-selection inference, and your coverage numbers are conditioned on a data-dependent event.
+
+**Short answer.** Correct, and it is stated as such rather than worked around.
+Theorem 2(iv) makes the guarantee explicitly conditional on retention, and the
+retention rule is measurable with respect to the predictions alone.
+
+**Why the conditioning is admissible.** The gate depends on `mu_hat` and
+`kappa_hat` and on no outcome. Applying the same rule to calibration and test cells
+therefore yields coverage conditional on the selection event, which is a different
+and weaker statement than marginal coverage -- and it is the statement we make. The
+one dependence worth flagging, and Section III flags it, is that `M` is the mean of
+the same `mu` vector being deflated, so `lambda_hat_s` is not a function of cell
+`s` alone. Exchangeability survives because `M` is a symmetric function of the
+cells: permuting cells permutes the deflated rates and the retention indicators
+together, which is all conformal validity requires. Estimating `M` on the
+calibration split alone removes the dependence entirely at the cost of a noisier
+normalizer, and we name that as the cleaner choice where exact finite-sample
+validity matters more than efficiency.
+
+**The part that is genuinely open, and which we diagnosed rather than assumed.**
+The gate has two branches and they fail differently. Instrumenting them separately
+over 24 trials: at kappa = 0 the per-cell branch fires on **0.0000%** of cells and
+the entire abstention comes from the global `kappa_hat >= 0.9` tripwire, which
+crossed in 12% of trials because the estimator has median 0.020 but a maximum of
+0.950. At kappa = 0.85 the picture inverts -- per-cell fires on 85.06% of cells,
+global on 4% of trials. So the low-gain cost is estimator variance tripping a
+threshold that carries no confidence statement, and the high-gain cost is the
+deflation genuinely leaving the safe envelope. Our earlier explanation, that the
+rule was "tuned for the high-gain regime and overpays at low gain", was wrong about
+the mechanism and the manuscript now reports the measured version.
+
+**Concession to volunteer.** The correct fix for the low-gain branch is an interval
+estimate for kappa rather than a point estimate, so the tripwire fires on evidence
+rather than on a noisy draw. We have not implemented it. Until then the retained
+fraction at low gain is pessimistic by roughly the tripwire's false-positive rate.
 
 ---
 
