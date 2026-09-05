@@ -281,6 +281,11 @@ def _write_figure(rows: list[PolicyMetrics], path: Path) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    # Embed fonts as TrueType subsets rather than matplotlib's default Type 3,
+    # which IEEE PDF eXpress rejects. Glyph storage only; the plot is unchanged.
+    plt.rcParams["pdf.fonttype"] = 42
+    plt.rcParams["ps.fonttype"] = 42
+
     path.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), constrained_layout=True)
     policies = list(POLICY_NAMES)

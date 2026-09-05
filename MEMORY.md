@@ -386,10 +386,53 @@ would have mislabelled two different quantities without warning.
 **`\extrafloats` in the supplementary is 32** against 4 figures and 6 tables.
 
 **Type 3 fonts.** matplotlib's PDF default is Type 3, which IEEE PDF eXpress flags.
-Nine bundled figures carry it (figs 1-5, 9-12). Fix is one rcParam,
-`pdf.fonttype: 42`, already set in `make_supplementary_figures.py`; applying it to
-`generate_figures.py` and `make_paper_figures.py` and regenerating would clear the
-rest. Not done — it would rewrite 9 accepted figures.
+`pdf.fonttype: 42` is now set in `make_supplementary_figures.py`,
+`make_paper_figures.py`, `visualize.py`, `simulate_policy.py` and
+`generate_figures.py`. **11 of 16 bundled figures are Type-3-free.** The five that
+are not (figs 1-5) all come from `generate_figures.py` and are BLOCKED — see below.
+
+### BLOCKED: figs 1-5 cannot be safely regenerated
+
+Three independent problems, all worse than the font issue. Do not "just regenerate".
+
+1. **`scripts/generate_figures.py` is mojibake-corrupted.** The chi-squared label at
+   line 228 is stored as bytes `c3 8f e2 80 a1 c3 82 c2 b2` = `Ï‡Â²`, valid UTF-8
+   encoding the wrong characters. Regenerating prints `Ï‡Â² p = 0.293` into the
+   figure. **Beware: a cp1252 terminal silently REPAIRS this on display**, so grep
+   and `sed` show a correct `χ²` while the bytes are wrong. Always check with
+   `repr(open(f,'rb').read())`. Per-string repair works
+   (`"Ï‡Â²".encode('cp1252').decode('utf-8')` -> `"χ²"`) but a whole-file repair
+   fails: some character went through a lossier path and hits `\x90`, which cp1252
+   cannot encode.
+2. **The committed figs 1-5 are stale and not reproducible.** They match neither
+   `--data chicago` nor `--data nyc` on current results. Committed fig2 displays
+   **`p = 0.239`**; current NYC data gives **`p = 0.293`**, which is the number the
+   manuscript and this file report. So the shipped figure shows a p-value that
+   appears in no result file. They were generated with `--data nyc` from an older
+   results snapshot, before the source was corrupted.
+3. **Figs 2 and 4 contradict their own captions.** The captions say "PIT histograms
+   for both cities" and "Hersbach decomposition of CRPS for both cities
+   (Chicago 20.6x NYC)". `generate_figures.py` takes a single `--data` city and
+   cannot produce a two-city figure. Committed fig4 is NYC alone with **Model vs
+   Recalibrated** bars — and it displays a recalibrated series the paper states was
+   **gated off** (`recal_applied: false`). Both figures also carry the `CIVIC-SAFE`
+   watermark from `_add_watermark`.
+
+Fixing this needs a decision about whether the captions or the figures are
+authoritative. It is a content question, not a typesetting one.
+
+**How the safe regenerations were proved content-preserving.** `pdf.fonttype`
+governs glyph storage in PDF/PS only and never affects PNG rasterisation, so a
+pixel-identical PNG proves the drawing did not change. figs 10-12 came back
+pixel-identical with `outputs/figure_data/*.json` value-identical; the spatial map
+pixel-identical; fig9 differs only in sub-pixel antialiasing while
+`policy_simulation_results.json` is value-identical and
+`outputs/tables/table7_policy_simulation.tex` byte-identical. Snapshot the PNGs
+before regenerating anything and compare with PIL, per figure.
+
+**`simulate_policy.py` also rewrites `outputs/tables/table7_policy_simulation.tex`
+and `policy_simulation_results.json`.** Regenerating fig9 touches a paper table.
+Both reproduced exactly, but check them.
 
 **Float numbering** (markdown companions cannot track this — refer by name):
 Table I = notation, II = main results, III = ablation, IV = loss ablation,

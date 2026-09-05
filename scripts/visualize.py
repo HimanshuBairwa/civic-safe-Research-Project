@@ -10,6 +10,12 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import matplotlib.colors as mcolors
 
+# Embed fonts as TrueType subsets in PDF/PS output. matplotlib's PDF default is
+# Type 3, which IEEE PDF eXpress rejects, so the spatial map needs this to clear
+# submission checks. It affects glyph storage only, not the rendered figure.
+plt.rcParams["pdf.fonttype"] = 42
+plt.rcParams["ps.fonttype"] = 42
+
 # Set paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")

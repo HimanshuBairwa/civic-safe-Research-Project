@@ -50,6 +50,11 @@ def _style() -> None:
         "axes.spines.right": False,
         "figure.dpi": 200,
         "savefig.bbox": "tight",
+        # Embed fonts as TrueType subsets. matplotlib's PDF default is Type 3,
+        # which IEEE PDF eXpress rejects. Storage format only -- the drawing is
+        # unchanged, and the PNG output is unaffected either way.
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
     })
 
 

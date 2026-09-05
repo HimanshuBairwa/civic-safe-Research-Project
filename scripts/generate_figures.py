@@ -41,6 +41,11 @@ plt.rcParams.update({
     'savefig.bbox': 'tight',
     'axes.grid': True,
     'grid.alpha': 0.3,
+    # Embed fonts as TrueType subsets. matplotlib's PDF default is Type 3, which
+    # IEEE PDF eXpress rejects, so this is a submission requirement rather than a
+    # preference. It changes only how glyphs are stored, not what is drawn.
+    'pdf.fonttype': 42,
+    'ps.fonttype': 42,
 })
 
 # Color palette: professional, colorblind-safe
