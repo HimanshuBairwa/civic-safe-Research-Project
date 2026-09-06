@@ -410,12 +410,11 @@ algebra rather than by integrating \eqref{eq:elasticity}, which is worth doing
 because it exhibits the proportionality constant explicitly. The fixed point
 $\mu_s = \lambda_s(\mu_s/M)^{\kappa}$ in logarithms is
 $\log\mu_s = \log\lambda_s + \kappa(\log\mu_s - \log M)$, so
-\begin{equation}
+\begin{align}
 \label{eq:closedform}
-\log \mu_s = \frac{\log \lambda_s - \kappa \log M}{1 - \kappa},
-\qquad\text{i.e.}\qquad
-\mu_s = \lambda_s^{1/(1-\kappa)}\, M^{-\kappa/(1-\kappa)}.
-\end{equation}
+\log \mu_s &= \frac{\log \lambda_s - \kappa \log M}{1 - \kappa}, \nonumber\\
+\mu_s &= \lambda_s^{1/(1-\kappa)}\, M^{-\kappa/(1-\kappa)}.
+\end{align}
 The factor $M^{-\kappa/(1-\kappa)}$ is a single scalar shared by every cell,
 because $M$ is one mean for the whole panel. It therefore cancels on taking the
 ratio of two groups, and \eqref{eq:powerlaw} follows with no residual constant.
