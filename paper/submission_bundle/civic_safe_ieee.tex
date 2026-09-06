@@ -177,7 +177,7 @@ rather than excuses. Section~\ref{sec:limitations} collects these.
   \caption{End-to-end system architecture of CIVIC-SAFE across six pipeline stages.
   \textbf{Stage 1 (Inputs \& Urban Graphs):} Weekly count tensors $\mathbf{Y} \in \mathbb{N}^{S \times T \times C}$ alongside dual spatial adjacencies ($\mathcal{E}_{\mathrm{queen}}$ for boundary contiguity and $\mathcal{E}_{k\mathrm{NN}}$ for centroid proximity, $k=8$) and exogenous census covariates.
   \textbf{Stage 2 (Sequential V1 Backbone):} Dual-graph GATv2 spatial attention coupled with staged temporal attention and a three-parameter Zero-Inflated Negative Binomial (ZINB) output head $(\pi, \mu, r)$ with dispersion regularization.
-  \textbf{Stage 3 (Ensemble):} Five-seed EMOS ensemble trained with entropy-regularized CRPS minimization to distill robust epistemic representations.
+  \textbf{Stage 3 (Ensemble):} Five-seed EMOS ensemble trained with entropy-regularized CRPS minimization to distill stable epistemic representations.
   \textbf{Stage 4 (Conformal Calibration):} Finite-sample distribution-free CQR interval calibration across ten conformal variants evaluated under a pre-registered 3\% demographic disparity ceiling.
   \textbf{Stage 5 (Latent Deflation Operator):} Exact fixed-point inversion $\hat{\lambda}_s = \mu_s / (\mu_s/M)^\kappa$ paired with a bounded abstention guard that withholds predictions when multiplier $m_s \notin [\bar{m}^{-1}, \bar{m}]$, restoring valid latent coverage from $16.2\%$ to $93.0\%$.
   \textbf{Stage 6 (Downstream Policy):} Over-allocation constrained coverage (OICC) and equitable dispatch achieving $98.9\%$ target hits with a $76\%$ reduction in exposure disparity.}
@@ -1032,8 +1032,7 @@ areas.
   incidents per area-week, and the correlation between an area's mean count and its
   residual is $-0.66$, so the shortfall concentrates in the busiest areas. The
   clustering on the West Side is spatial structure, not diffuse noise, and it
-  corroborates the PIT failure in Fig.~
-ef{fig:pit} by an independent route.}
+  corroborates the PIT failure in Fig.~\ref{fig:pit} by an independent route.}
   \label{fig:spatial_error}
 \end{figure}
 
@@ -1271,8 +1270,7 @@ labelling it.
   records. Group-1 structural over-recording factor is $1.8$. The biased curve is
   \emph{not} monotone (it falls from $0.270$ to $0.182$ over the last step), but
   the relative reduction is: $0\%$, $29.3\%$, $47.1\%$, $67.1\%$, $75.6\%$, as
-  Theorem~
-ef{thm:amplification} predicts.}
+  Theorem~\ref{thm:amplification} predicts.}
   \label{fig:routing}
 \end{figure}
 
@@ -1306,8 +1304,7 @@ predicted amount, under a plausible gain.
   \emph{assumed} at $\kappa = 0.6$ rather than identified --- the real-data
   difference-in-differences is a null --- so this is a sensitivity analysis. Latent
   coverage cannot be evaluated here at all, because the true rate is unobservable
-  on real records; Fig.~
-ef{fig:latent} carries the coverage guarantee.}
+  on real records; Fig.~\ref{fig:latent} carries the coverage guarantee.}
   \label{fig:crosscity}
 \end{figure}
 
@@ -1385,6 +1382,12 @@ coverage is measurable, which is the point, but it is not field evidence.
 \textbf{Five seeds is fewer than we would like.} Our configuration notes that
 seven to eight seeds would be needed for paired $t$-tests at power 0.80 with
 $d = 0.8$.
+
+\textbf{Group-stratified PIT cannot be computed from persisted artifacts.} The
+persisted test outputs carry observed counts, point predictions and conformal
+bounds, but not the per-cell ZINB parameters $(\pi_s, \mu_s, r_s)$ required for
+a randomized PIT test within demographic quartiles. We report the pooled test
+and use the spatial residual map as an empirical proxy.
 
 % =====================================================================
 \section{Conclusion}
