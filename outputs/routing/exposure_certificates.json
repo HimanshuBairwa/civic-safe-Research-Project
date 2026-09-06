@@ -1,0 +1,76 @@
+{
+  "n_nodes": 40,
+  "route_len": 8,
+  "n_cal": 150,
+  "n_trials": 400,
+  "kappa": 0.6,
+  "note": "Simulated risk fields. Latent incidence is unobservable on real records, so a study needing the realized latent field cannot be run on Chicago or New York. This is a mechanism check on the certificate.",
+  "rows": [
+    {
+      "policy": "record",
+      "alpha": 0.05,
+      "target_max_breach": 0.05,
+      "empirical_breach_rate": 0.0475,
+      "holds": true,
+      "mean_certified_bound": 16.3125,
+      "mean_realized_exposure": 9.66,
+      "n_cal": 150,
+      "n_trials": 400
+    },
+    {
+      "policy": "record",
+      "alpha": 0.1,
+      "target_max_breach": 0.1,
+      "empirical_breach_rate": 0.0775,
+      "holds": true,
+      "mean_certified_bound": 14.315,
+      "mean_realized_exposure": 9.1875,
+      "n_cal": 150,
+      "n_trials": 400
+    },
+    {
+      "policy": "record",
+      "alpha": 0.2,
+      "target_max_breach": 0.2,
+      "empirical_breach_rate": 0.1725,
+      "holds": true,
+      "mean_certified_bound": 12.405,
+      "mean_realized_exposure": 9.4175,
+      "n_cal": 150,
+      "n_trials": 400
+    },
+    {
+      "policy": "deflated",
+      "alpha": 0.05,
+      "target_max_breach": 0.05,
+      "empirical_breach_rate": 0.0225,
+      "holds": true,
+      "mean_certified_bound": 16.1875,
+      "mean_realized_exposure": 9.23,
+      "n_cal": 150,
+      "n_trials": 400
+    },
+    {
+      "policy": "deflated",
+      "alpha": 0.1,
+      "target_max_breach": 0.1,
+      "empirical_breach_rate": 0.11,
+      "holds": false,
+      "mean_certified_bound": 14.335,
+      "mean_realized_exposure": 9.965,
+      "n_cal": 150,
+      "n_trials": 400
+    },
+    {
+      "policy": "deflated",
+      "alpha": 0.2,
+      "target_max_breach": 0.2,
+      "empirical_breach_rate": 0.185,
+      "holds": true,
+      "mean_certified_bound": 12.42,
+      "mean_realized_exposure": 9.5,
+      "n_cal": 150,
+      "n_trials": 400
+    }
+  ]
+}

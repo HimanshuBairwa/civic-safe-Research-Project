@@ -49,7 +49,7 @@ author e-mail: bairwahimanshu29@gmail.com.}%
 
 \begin{abstract}
 This document supplies the derivations, protocols and audits that the main
-manuscript states without proof or in summary. Section~\ref{sec:s1} gives the
+manuscript states without proof or only in brief. Section~\ref{sec:s1} gives the
 full spectral argument for the log-linearized Jacobian, a complete proof of the
 attribution corollary including sign preservation, a treatment of why integer
 conformity scores make coverage conservative, and the sensitivity bound for a
@@ -67,6 +67,9 @@ predictive variance across ensemble seeds. Every value plotted is recomputed fro
 raw data or a persisted result file by
 \texttt{scripts/make\_supplementary\_figures.py}, which also writes the plotted
 numbers to \texttt{outputs/figure\_data/} so any panel can be checked against them.
+Section~\ref{sec:s6} adds the tail score and the routing guarantee that consumes
+it: threshold-weighted CRPS on the busiest decile, which is roughly twice the
+aggregate, and finite-sample certificates on realized route exposure.
 \end{abstract}
 
 % =====================================================================
@@ -78,12 +81,71 @@ Throughout, $s \in \{1,\dots,S\}$ indexes spatial units, $\lambda_s > 0$ is the
 unobserved latent incidence rate, $\mu_s > 0$ the recorded-rate estimate,
 $M = S^{-1}\sum_s \mu_s$ the panel mean, $\kappa \in [0,1)$ the closed-loop
 feedback gain, $\varphi$ the allocation policy, and $g$ the recording response.
-Notation follows Table~I of the main text exactly. Section~\ref{sec:s1-jacobian}
+Notation follows Table~I of the main text exactly.
+Section~\ref{sec:s1-scm} writes the loop as a causal graph and marks the one edge
+the correction inverts, Section~\ref{sec:s1-jacobian}
 proves the spectral claim behind the stability threshold,
 Section~\ref{sec:s1-attribution} the attribution corollary and its sign
 preservation, Section~\ref{sec:s1-lattice} the lattice effect that makes discrete
 coverage conservative, and Section~\ref{sec:s1-sensitivity} the error bound for a
 mismeasured gain.
+
+\subsection{The loop as a causal graph}
+\label{sec:s1-scm}
+
+The main text writes the loop as a fixed point. Reading it as a causal graph
+first is worth the half page, because it makes visible which single edge the
+correction inverts and which quantities are observed.
+
+Fix an area $s$ and a week $t$. Write $Z_s$ for the static covariates,
+$\lambda_{s,t}$ for latent incidence, and $a_{s,t}$ for allocated attention. Write
+$m_{s,t}$ for the recording multiplier, $y_{s,t}$ for the recorded count, and
+$\mu_{s,t}$ for the learner's recorded-rate estimate. The structural assignments
+are
+\begin{align}
+\lambda_{s,t} &\leftarrow f_{\lambda}(Z_s,\, \varepsilon_{s,t}),
+\label{eq:s-scm-lambda}\\
+a_{s,t} &\leftarrow \varphi(\mu_{s,t-1}),
+\label{eq:s-scm-a}\\
+m_{s,t} &\leftarrow g(a_{s,t}),
+\label{eq:s-scm-m}\\
+y_{s,t} &\leftarrow \mathrm{Poisson}\!\left(\lambda_{s,t}\, m_{s,t}\right),
+\label{eq:s-scm-y}\\
+\mu_{s,t} &\leftarrow \mathrm{learner}\!\left(y_{s,\le t},\, Z_s\right),
+\label{eq:s-scm-mu}
+\end{align}
+which as a graph is the cycle
+\begin{equation}
+\label{eq:s-dag}
+Z_s \rightarrow \lambda_{s,t} \rightarrow y_{s,t} \rightarrow \mu_{s,t}
+\rightarrow a_{s,t+1} \rightarrow m_{s,t+1} \rightarrow y_{s,t+1}
+\rightarrow \cdots
+\end{equation}
+with $m_{s,t}$ entering $y_{s,t}$ multiplicatively beside $\lambda_{s,t}$. Three
+things follow, and the third is the contribution.
+
+\emph{The cycle is not a violation of acyclicity.} Unrolled in time the graph is a
+directed acyclic graph, one copy of \eqref{eq:s-scm-lambda}--\eqref{eq:s-scm-mu}
+per week, with edges only forward in $t$. The fixed point of the main text is its
+stationary solution, the configuration in which $\mu_{s,t} = \mu_{s,t-1}$ for
+every $s$. So the fixed-point algebra and the causal reading describe one object.
+
+\emph{Only $y$ and $Z$ are observed.} The latent rate $\lambda$, the attention
+$a$, and the multiplier $m$ are all unobserved in our data. A forecaster trained
+on records estimates the product $\lambda_{s,t} m_{s,t}$ and cannot separate the
+factors from records alone, which is the identification problem the paper's
+Section~V-E is honest about: $\kappa$ is not point-identified.
+
+\emph{The correction is an intervention on one edge.} Deflation replaces the
+recorded rate by $\hat{\lambda}_s = \mu_s / m_s$, which is exactly the operation
+that deletes the $m_{s,t} \rightarrow y_{s,t}$ edge and leaves
+$\lambda_{s,t} \rightarrow y_{s,t}$ intact. In do-calculus notation the target is
+$\mathbb{E}[y_{s,t} \mid \mathrm{do}(m_{s,t} = 1)]$, the count that would have been
+recorded had attention been uniform. Theorem~2(i) says this is computable in closed
+form from $\mu$ and $\kappa$, with no unobserved constant left over. It also shows
+why the estimand is a counterfactual and not an observed quantity: no week of real
+data has $m \equiv 1$, so nothing in the record can validate the recovered value
+directly. That is the formal reason latent coverage is checked in simulation only.
 
 \subsection{The log-linearized Jacobian and exact spectral radius}
 \label{sec:s1-jacobian}
@@ -887,5 +949,136 @@ closest available proxy for the stratified question, and it shows the shortfall
 concentrated on the West Side rather than distributed evenly, with $65$ of $77$
 areas under-predicted and a correlation of $-0.66$ between an area's mean count
 and its mean residual.
+
+% =====================================================================
+\section{Tail Calibration and Route Exposure Certificates}
+\label{sec:s6}
+% =====================================================================
+
+The main text reports aggregate CRPS and marginal coverage. Neither says how the
+model behaves on the weeks that matter operationally, which are the busy ones. This
+section reports the tail score we compute and the routing guarantee that consumes
+it, and it says plainly where each one stops.
+
+\subsection{Threshold-weighted CRPS on the upper tail}
+\label{sec:s6-tail}
+
+Aggregate CRPS averages over all cell-weeks, so a model can score well by being
+sharp on quiet cells while missing surges. The threshold-weighted CRPS of
+Gneiting and Ranjan reweights the integrand to a region of interest. We evaluate
+it on the empirical upper decile, taking the threshold as the $90$th percentile of
+observed counts. Table~\ref{tab:s-tail} reports the result for the calibrator
+selected in each city.
+
+\begin{table}[!t]
+  \centering
+  \caption{Threshold-weighted CRPS on the upper decile of observed counts. The
+  threshold is the empirical $90$th percentile; \texttt{tail\_n} is the number of
+  cell-weeks at or above it. ``twCRPS tail'' is the score restricted to those
+  cells, and the final column is its ratio to aggregate CRPS. Read from
+  \texttt{outputs/tail\_metrics/*.json}.}
+  \label{tab:s-tail}
+  \begin{tabular}{l r r r r r r}
+    \toprule
+    \textbf{City} & \textbf{Thresh.} & \textbf{tail $n$}
+    & \textbf{tail frac.} & \textbf{twCRPS} & \textbf{twCRPS tail}
+    & \textbf{ratio to CRPS} \\
+    \midrule
+    Chicago  & 51 & 1291 & 0.1054 & 0.7444 & 6.3787 & $2.26\times$ \\
+    New York & 61 & 1278 & 0.1030 & 0.7677 & 6.4582 & $2.06\times$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The number to take from the table is the ratio, and it is unflattering. On the
+busiest decile the score is $2.26\times$ the aggregate in Chicago and
+$2.06\times$ in New York. Forecasting is materially harder exactly where a
+deployment would care most. The low overall twCRPS ($0.7444$, $0.7677$) is not
+evidence against this. The weight function is near zero on
+the $89\%$ of cells below threshold. So the aggregate twCRPS is small by
+construction, and only the tail-restricted column belongs beside CRPS. We report
+both so the comparison cannot be made the wrong way round.
+
+\subsection{Conformal route exposure certificates}
+\label{sec:s6-exposure}
+
+A civilian following an advisory route cares about the risk they actually meet,
+not the risk the model predicted. Those differ whenever the predicted field is
+wrong. Fix a routing policy $\pi$ mapping a predicted node-risk field to an
+ordered path. On $n$ calibration scenarios, each carrying a predicted field and
+the risk field that materialized, score the realized exposure
+\begin{equation}
+\label{eq:s-exposure}
+E_i \;=\; \sum_{s \,\in\, \pi(\text{predicted}_i)} \text{realized}_i[s],
+\end{equation}
+and let $Q$ be the $k$th smallest of $\{E_i\}$ with
+$k = \lceil (n+1)(1-\alpha) \rceil$. Split conformal then gives
+\begin{equation}
+\label{eq:s-exposure-guarantee}
+\Pr\!\left(E_{n+1} \le Q\right) \;\ge\; 1 - \alpha
+\end{equation}
+for an exchangeable new scenario. Two features of \eqref{eq:s-exposure-guarantee}
+are worth stating. It needs no monotonicity in the router's risk aversion. That
+matters because realized exposure is \emph{not} monotone in aversion: planning on
+a mis-calibrated field can route a civilian through a genuinely dangerous node. A
+conformal-risk-control argument over a monotone threshold family would therefore be
+unsound here. And it is a bound on a scalar functional of the route, not on each
+node's risk, which is what makes it distribution-free at this strength.
+
+Table~\ref{tab:s-exposure} measures whether the bound holds in practice, and
+compares two policies: one planning on the recorded field, one on the deflated
+field $\hat{\lambda}$ of Theorem~2. Reproduced by
+\texttt{scripts/exposure\_certificate\_study.py}; raw values in
+\texttt{outputs/routing/exposure\_certificates.json}.
+
+\begin{table}[!t]
+  \centering
+  \caption{Empirical breach rate of the certified exposure bound,
+  $400$ trials per row, $n = 150$ calibration scenarios, $40$ nodes, routes of
+  $8$ nodes, feedback gain $\kappa = 0.6$. ``Breach'' is the fraction of trials
+  whose realized exposure exceeded the certificate; the guarantee caps it at
+  $\alpha$. Bound and exposure columns are trial means.}
+  \label{tab:s-exposure}
+  \begin{tabular}{l r r r r l}
+    \toprule
+    \textbf{Plans on} & $\alpha$ & \textbf{breach}
+    & \textbf{cert. bound} & \textbf{realized} & \textbf{within $\alpha$?} \\
+    \midrule
+    record   & 0.05 & 0.0475 & 16.31 & 9.66 & yes \\
+    record   & 0.10 & 0.0775 & 14.31 & 9.19 & yes \\
+    record   & 0.20 & 0.1725 & 12.40 & 9.42 & yes \\
+    \addlinespace
+    deflated & 0.05 & 0.0225 & 16.19 & 9.23 & yes \\
+    deflated & 0.10 & 0.1100 & 14.34 & 9.96 & no (see text) \\
+    deflated & 0.20 & 0.1850 & 12.42 & 9.50 & yes \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Five of the six rows sit at or below their target. One does not: the deflated
+policy at $\alpha = 0.10$ breaches on $11.00\%$ of trials against a $10\%$ cap. We
+report it rather than enlarging the trial count until it disappears. With $400$
+trials the standard error at $\alpha = 0.10$ is $0.015$, so $0.1100$ is
+$0.67$ standard errors above target, and a one-sided binomial test of
+$H_0: \Pr(\text{breach}) \le 0.10$ gives $p = 0.275$. The row is consistent with
+the guarantee holding and with finite-sample noise; it is not evidence of a
+violation. A reader who wants the cleaner table can raise the trial count, and the
+script takes it as a constant.
+
+Note also what the certificate does \emph{not} deliver. It bounds realized
+exposure for the policy it was calibrated on. A policy chosen by looking at these
+numbers therefore needs a fresh fold; \texttt{select\_risk\_budget} in the same
+module implements that split, and we report the certificate rather than a selected
+policy. The certified bounds also sit well above mean realized exposure ($16.31$
+against $9.66$ at $\alpha = 0.05$). That gap is the usual price of a
+distribution-free upper quantile, not a sharpness claim.
+
+The risk fields in Table~\ref{tab:s-exposure} are simulated, and that is a
+limitation of the same kind as the latent-coverage one. The realized field in the
+crime setting is latent incidence, which real records never reveal, so a study
+requiring it cannot be run on Chicago or New York. What Table~\ref{tab:s-exposure}
+establishes is that the certificate machinery behaves as its proof says under a
+feedback-inflated recording process. It is a mechanism check, not field evidence,
+and the routing layer stays advisory throughout the paper for this reason.
 
 \end{document}

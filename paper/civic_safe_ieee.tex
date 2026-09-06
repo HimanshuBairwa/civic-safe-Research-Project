@@ -236,20 +236,32 @@ recording factor $m_s$ of \eqref{eq:deflation}.
 Stated more generally, the covariate-shift line of work extends \emph{which}
 exchangeability condition a calibration set must satisfy --- from plain
 exchangeability, to weighted exchangeability under covariate shift, to online
-adaptation under drift --- while holding the target variable fixed. We move along
-a different axis: the target variable itself changes, from the recorded $y$ to the
-latent $\lambda$. The two are composable rather than competing, since weighted CP
-could be applied to the deflated rate if the covariates shifted as well.
+adaptation under drift, to Barber \emph{et al.}'s~\cite{barber2023conformal}
+bound that prices any departure from exchangeability by a total-variation
+coverage gap --- while holding the target variable fixed. That last result is the
+most general form of the move, and it still assumes the target is the observed
+one. We move along a different axis: the target variable itself changes, from the
+recorded $y$ to the latent $\lambda$. Our calibration set stays exchangeable, so
+we are not repairing a broken exchangeability condition; we are changing what the
+interval is required to cover. The two are composable rather than competing, since
+weighted CP could be applied to the deflated rate if the covariates shifted as
+well.
 Section~\ref{sec:calibration} makes the structural version of this argument, which
 turns out to cover the whole reweighting family and not just the covariate-shift
 member of it.
 
-\textbf{Feedback loops in predictive policing.} Ensign
-\emph{et al.}~\cite{ensign2018runaway} formalized the runaway loop with
+\textbf{Feedback loops in predictive policing.} Lum and
+Isaac~\cite{lum2016predict} established the measurement premise this paper builds
+on. They compared Oakland drug-arrest records against public-health prevalence
+estimates and found the records track policing, not drug use. That is a
+measurement claim, and it is the reason a forecaster fit on records can be
+calibrated against the record and wrong about the world. Ensign
+\emph{et al.}~\cite{ensign2018runaway} then formalized the loop with
 attention-dependent recording and showed a P\'olya-urn model drives allocation to
-a degenerate fixed point. We differ in two ways: our amplification is a smooth
-power law with a finite pole at $\kappa = 1$ rather than unconditional runaway,
-and we supply a correction. Hashimoto
+a degenerate fixed point. We differ from Ensign \emph{et al.} in two ways: our
+amplification is a smooth power law with a finite pole at $\kappa = 1$ rather than
+unconditional runaway, and we supply a correction. Both papers diagnose. Neither
+inverts the loop, and inverting it is what we do. Hashimoto
 \emph{et al.}~\cite{hashimoto2018fairness} and Wyllie
 \emph{et al.}~\cite{wyllie2024fairness} study disparity amplification in
 retraining loops empirically, without a closed-form exponent or a fix.

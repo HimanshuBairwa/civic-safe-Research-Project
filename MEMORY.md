@@ -3,7 +3,7 @@
 Durable project memory. Written to survive session boundaries: architecture,
 mathematics, verified numbers, corrected errors, and the one task that remains.
 
-**Anchor commit: `be53911`** on `origin/main`, working tree clean.
+**Anchor commit: `a40d48f`+1** on `origin/main`, working tree clean.
 Every number below was read from a file under `outputs/` or reproduced by a script
 under `scripts/`. Nothing here is recalled from conversation.
 
@@ -36,8 +36,8 @@ project's main rejection trigger.
 | Path | Role |
 |---|---|
 | `paper/civic_safe_ieee.tex` | Main manuscript, IEEEtran two-column, 22 floats |
-| `paper/civic_safe_supplementary.tex` | Supplementary, IEEEtran **one-column**, S-prefixed numbering, 4 figures + 6 tables |
-| `paper/references.bib` | 21 verified entries, pure ASCII |
+| `paper/civic_safe_supplementary.tex` | Supplementary, IEEEtran **one-column**, S-prefixed, 6 sections, 4 figures + 8 tables |
+| `paper/references.bib` | 23 verified entries, pure ASCII (Lum & Isaac 2016 and Barber 2023 added, Crossref-verified) |
 | `paper/tables/*.tex` | 7 generated table floats — **build artifacts, never hand-edit** |
 | `paper/submission_bundle/` | Self-contained copy — **build artifact** |
 | `paper/civic_safe_submission_bundle.zip` | 27 files **at archive root** for Overleaf/ScholarOne |
@@ -352,7 +352,7 @@ evaluated on a criterion it was not trained for.
 | Tabular row terminators, all 18 LaTeX sources | **0 lone trailing backslashes** (see below) |
 | Table I row parse | 27 data rows, **exactly 2 cells each** against its `ll` colspec |
 | Main manuscript | 21/21 citations, 51/51 refs, 12/12 figures |
-| Supplementary | 34 refs / 35 labels, **4 figures**, 6 tables (S1-S6), 0 citations by design |
+| Supplementary | 41 refs / 49 labels, **4 figures**, 8 tables (S1-S8), 6 sections, 0 citations by design |
 | Tabular cell counts, every tabular in both documents | **0 mismatches** against colspec |
 | Zip vs on-disk bundle | **27 files**, 0 SHA-256 mismatches, 0 nested, CRC clean |
 | Zip layout | files **at archive root**, 0 nested under `submission_bundle/` |
@@ -383,7 +383,41 @@ belongs in a submission. It also has a silent fallback that substitutes
 they are missing; they were present, so the numbers were real, but the fallback
 would have mislabelled two different quantities without warning.
 
-**`\extrafloats` in the supplementary is 32** against 4 figures and 6 tables.
+**`\extrafloats` in the supplementary is 32** against 4 figures and 8 tables.
+
+### Supplementary Sections S1.1 and S6 (added after `a40d48f`)
+
+**S1.1 — the loop as a causal graph.** Structural assignments (eq. S1-S5) and the
+unrolled DAG `Z -> lambda -> y -> mu -> a -> m -> y ...`. Three points: the cycle is
+acyclic once unrolled in time, so the fixed point is its stationary solution; only
+`y` and `Z` are observed, which is *why* `kappa` is not point-identified; and the
+deflation is an **intervention deleting the `m -> y` edge**, i.e. the estimand is
+`E[y | do(m = 1)]`. That is the formal reason latent coverage is simulation-only —
+no week of real data has `m == 1`, so no record can validate the recovered value.
+
+**S6 tail calibration — twCRPS on the upper decile is roughly 2x aggregate CRPS.**
+Chicago threshold 51, tail n=1291 (10.54%), twCRPS_tail 6.3787 vs CRPS 2.8267 =
+**2.26x**; NYC threshold 61, n=1278 (10.30%), 6.4582 vs 3.1401 = **2.06x**.
+Forecasting is materially harder exactly where a deployment cares most. **Beware the
+aggregate twCRPS** (0.7444 / 0.7677) — it is small only because the weight function
+is ~0 on the 89% of cells below threshold. Only the tail-restricted column is
+comparable to CRPS. Source: `outputs/tail_metrics/*.json`.
+
+**S6 route exposure certificates now have persisted numbers.**
+`scripts/exposure_certificate_study.py` -> `outputs/routing/exposure_certificates.json`.
+400 trials/row, n_cal=150, 40 nodes, 8-node routes, kappa=0.6. Breach rates:
+record 0.0475 / 0.0775 / 0.1725 at alpha 0.05 / 0.10 / 0.20; deflated
+0.0225 / **0.1100** / 0.1850. Five of six rows at or under target. The deflated
+alpha=0.10 row at 0.1100 is **0.67 SE above target** (SE 0.015), one-sided binomial
+**p = 0.275** — sampling noise, not a violation. Reported in the supplementary
+rather than buried by raising the trial count. Fields are **simulated**: the
+realized field is latent incidence, unobservable on real records, so this is a
+mechanism check, not field evidence.
+
+**`src/civicsafe/routing/exposure_conformal.py` is real and tested** (6/6 in
+`tests/test_exposure_conformal.py`, taking the core suite to **73 passed**), but its
+only other driver is `experiments/oicc_runs/make_routing_figure.py`, which belongs
+to the separate OICC line. Nothing under `outputs/` referenced it before this work.
 
 **Type 3 fonts — 100% ELIMINATED (16/16 TrueType).** matplotlib's PDF default is Type 3, which IEEE PDF eXpress flags.
 `pdf.fonttype: 42` and `ps.fonttype: 42` are set across all figure generation scripts.
@@ -512,6 +546,16 @@ in a non-IEEE format. For local builds: `tlmgr install ieeetran`.
   because they share one `figures/` directory. Scanning only the manuscript would
   let the manuscript build while the supplementary failed on a missing graphic —
   a bundle that looks complete and is not.
+- **`build_submission_bundle.py` has NO argparse and NO `--check` flag.** It
+  always rebuilds. `--check` is silently ignored, so a command that looks like a
+  dry run in fact overwrites `paper/submission_bundle/` and the zip. Verify
+  integrity separately by hashing the zip against the on-disk bundle.
+- **`scripts/scholar_search.py` emits non-ASCII and ranks poorly.** It returned a
+  head-and-neck-cancer paper for "performative prediction" and missed Perdomo
+  2020, and its BibTeX carries raw accented bytes (`g\xc3\xb3is2024...`), which
+  would break the pure-ASCII rule. Use it to *verify* a known reference, not to
+  discover one, and prefer the Crossref REST API for exact metadata (title,
+  volume, issue, pages, DOI) before adding a `.bib` entry.
 - **`paper/oicc_paper.tex` has 2 lone trailing backslashes.** It belongs to the
   separate OICC line, is not in this submission, and `validate_latex.py` does not
   cover it. Left alone deliberately; fix it if that paper is ever submitted.
